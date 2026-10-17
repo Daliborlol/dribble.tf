@@ -13,7 +13,9 @@
 //    plan's groups), checks the schema, hydrates with src/highlander/extras/hydrate.ts (bundled with esbuild), runs
 //    the section 3.6 alignment rule against the child's samples, computes the acceptance counts and compares them
 //    with the expectation file.
-// 3. Prints a JSON summary, including this process's VmHWM: the extras path alone. Exit code 1 on any failure.
+// 3. Prints a JSON summary. memory.vmHwmMB is this process's VmHWM right after hydration (the steps ExtrasWorker.ts
+//    runs: the extras path alone); memory.vmHwmTotalMB includes the checker's own counting afterwards, and
+//    memoryStages has VmRSS/VmHWM at each step. Exit code 1 on any failure.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -167,8 +169,8 @@ const { getters, findTicks, HL, BLD, RULES, condSet } = lib
 let alignment = null
 if (base) {
   const { targets, window: stride } = base.samples
-  const raw = Buffer.from(base.samples.data, 'base64')
-  const data = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4)
+  const sampleBytes = Buffer.from(base.samples.data, 'base64')
+  const data = new Float32Array(sampleBytes.buffer, sampleBytes.byteOffset, sampleBytes.byteLength / 4)
   const players = base.nextMappedPlayer
   alignment = lib.checkAlignmentWith(x, {
     startTick: base.startTick,

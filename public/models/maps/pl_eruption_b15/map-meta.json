@@ -1,0 +1,4309 @@
+{
+ "schema": "dribble.map-meta",
+ "version": 1,
+ "map": "pl_eruption_b15",
+ "bspVersion": 20,
+ "coordinateSpace": "source",
+ "sceneTransform": "scene = source - worldBounds.boundaryMin",
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -9600,
+   "y": -4608,
+   "z": -960
+  },
+  "boundaryMax": {
+   "x": 2560,
+   "y": 3200,
+   "z": 2560
+  }
+ },
+ "gameMode": "payload",
+ "camera": {
+  "rtsCenter": {
+   "x": 5754,
+   "y": 4950,
+   "z": 701
+  },
+  "cameraOffset": {
+   "x": 0,
+   "y": -1063,
+   "z": 1701
+  },
+  "focusSource": [
+   -3845.8,
+   342.1,
+   -259.5
+  ],
+  "method": "payload-first-push",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 0,
+   "azimuthDeg": 0,
+   "distance": 2006,
+   "focusShift": 0
+  }
+ },
+ "spawns": [
+  {
+   "team": 2,
+   "origin": [
+    1504,
+    -832,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1504,
+    -768,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1504,
+    -704,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1504,
+    -640,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1568,
+    -832,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1568,
+    -768,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1568,
+    -704,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1568,
+    -640,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1632,
+    -832,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1632,
+    -768,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1632,
+    -704,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1632,
+    -640,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1696,
+    -832,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1696,
+    -768,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1696,
+    -704,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 2,
+   "origin": [
+    1696,
+    -640,
+    -96
+   ],
+   "yaw": 180,
+   "name": "Red_spawn_pointB"
+  },
+  {
+   "team": 3,
+   "origin": [
+    752,
+    1616,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    752,
+    1680,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    752,
+    1488,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    752,
+    1552,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    816,
+    1488,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    816,
+    1552,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    816,
+    1616,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    816,
+    1680,
+    -151.4
+   ],
+   "yaw": 180,
+   "name": "Blu_spawnpoint_B",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2432,
+    -1344,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2496,
+    -1344,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2496,
+    -1400,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2432,
+    -1400,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2432,
+    -1296,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -2496,
+    -1296,
+    44
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointC",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6464,
+    288,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6464,
+    352,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6400,
+    288,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6336,
+    288,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6336,
+    352,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6272,
+    288,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6272,
+    352,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6272,
+    416,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6336,
+    416,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6336,
+    480,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6272,
+    480,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6400,
+    416,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6400,
+    352,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6464,
+    480,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6464,
+    416,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    -6400,
+    480,
+    -218
+   ],
+   "yaw": 0,
+   "name": "Blu_spawnpoint_A"
+  },
+  {
+   "team": 3,
+   "origin": [
+    1536,
+    -784,
+    -112
+   ],
+   "yaw": 165,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    1600,
+    -672,
+    -112
+   ],
+   "yaw": 195,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    1664,
+    -608,
+    -112
+   ],
+   "yaw": 195,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    1600,
+    -576,
+    -112
+   ],
+   "yaw": 195,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    1600,
+    -832,
+    -112
+   ],
+   "yaw": 165,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    1664,
+    -832,
+    -112
+   ],
+   "yaw": 165,
+   "name": "Blu_spawnpoint_C",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3824,
+    -2272,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3888,
+    -2144,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3888,
+    -2096,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3872,
+    -2208,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3824,
+    -2208,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3872,
+    -2272,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3888,
+    -2336,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 2,
+   "origin": [
+    -3904,
+    -2384,
+    -16
+   ],
+   "yaw": 0,
+   "name": "Red_spawn_pointD",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    -5687.2,
+    -310.6,
+    -218
+   ],
+   "yaw": 345,
+   "name": "Blu_spawnpoint_A+",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    -5608.8,
+    -265.4,
+    -218
+   ],
+   "yaw": 345,
+   "name": "Blu_spawnpoint_A+",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    -5670.6,
+    -248.8,
+    -218
+   ],
+   "yaw": 345,
+   "name": "Blu_spawnpoint_A+",
+   "disabled": true
+  },
+  {
+   "team": 3,
+   "origin": [
+    -5625.4,
+    -327.2,
+    -218
+   ],
+   "yaw": 345,
+   "name": "Blu_spawnpoint_A+",
+   "disabled": true
+  }
+ ],
+ "controlPoints": [
+  {
+   "name": "cp_one",
+   "index": 0,
+   "printName": "#Badwater_cap_1",
+   "origin": [
+    -2640,
+    0,
+    -311.9
+   ],
+   "defaultOwner": 2,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": [
+    0
+   ]
+  },
+  {
+   "name": "cp_two",
+   "index": 1,
+   "printName": "#Badwater_cap_2",
+   "origin": [
+    -256,
+    528,
+    -440
+   ],
+   "defaultOwner": 2,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": []
+  },
+  {
+   "name": "cp_three",
+   "index": 2,
+   "printName": "#Badwater_cap_3",
+   "origin": [
+    -232,
+    -2368,
+    -32
+   ],
+   "defaultOwner": 2,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": []
+  },
+  {
+   "name": "cp_four",
+   "index": 3,
+   "printName": "#Badwater_cap_4",
+   "origin": [
+    -2736,
+    -2240,
+    -176
+   ],
+   "defaultOwner": 2,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": []
+  }
+ ],
+ "captureAreas": [
+  {
+   "name": "sspl_pushzone",
+   "capPoint": "cp_one",
+   "timeToCap": 10000,
+   "canCap": {
+    "2": false,
+    "3": true
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": "sspl_train",
+   "startDisabled": false,
+   "bspModelIndex": 13,
+   "node": null,
+   "mins": [
+    -5184,
+    256,
+    -448
+   ],
+   "maxs": [
+    -4960,
+    448,
+    -336
+   ]
+  }
+ ],
+ "koth": null,
+ "roundTimers": [
+  {
+   "name": "sspl_timer",
+   "timerLength": 270,
+   "setupLength": 70,
+   "maxLength": 600,
+   "startPaused": false,
+   "showInHud": true
+  }
+ ],
+ "payload": [
+  {
+   "watcher": "sspl_watcher",
+   "team": 0,
+   "train": "sspl_train",
+   "startNode": "sspl_path_start",
+   "goalNode": "sspl_path_end",
+   "canRecede": true,
+   "path": [
+    {
+     "name": "sspl_path_start",
+     "origin": [
+      -5200,
+      448,
+      -400
+     ],
+     "distance": 0,
+     "next": "sspl_path_A_1"
+    },
+    {
+     "name": "sspl_path_A_1",
+     "origin": [
+      -4872,
+      448,
+      -400
+     ],
+     "distance": 328,
+     "next": "sspl_path_A_2"
+    },
+    {
+     "name": "sspl_path_A_2",
+     "origin": [
+      -4616,
+      448,
+      -336
+     ],
+     "distance": 591.9,
+     "next": "sspl_path_A_3"
+    },
+    {
+     "name": "sspl_path_A_3",
+     "origin": [
+      -4472,
+      448,
+      -336
+     ],
+     "distance": 735.9,
+     "next": "sspl_path_A_21"
+    },
+    {
+     "name": "sspl_path_A_21",
+     "origin": [
+      -4436,
+      456,
+      -336
+     ],
+     "distance": 772.8,
+     "next": "sspl_path_A_22"
+    },
+    {
+     "name": "sspl_path_A_22",
+     "origin": [
+      -4408,
+      472,
+      -336
+     ],
+     "distance": 805,
+     "next": "sspl_path_A_24"
+    },
+    {
+     "name": "sspl_path_A_24",
+     "origin": [
+      -4372,
+      492,
+      -336
+     ],
+     "distance": 846.2,
+     "next": "sspl_path_A_25"
+    },
+    {
+     "name": "sspl_path_A_25",
+     "origin": [
+      -4340,
+      512,
+      -336
+     ],
+     "distance": 883.9,
+     "next": "sspl_path_A_26"
+    },
+    {
+     "name": "sspl_path_A_26",
+     "origin": [
+      -4308,
+      532,
+      -336
+     ],
+     "distance": 921.7,
+     "next": "sspl_path_A_27"
+    },
+    {
+     "name": "sspl_path_A_27",
+     "origin": [
+      -4272,
+      540,
+      -336
+     ],
+     "distance": 958.5,
+     "next": "sspl_path_A_4"
+    },
+    {
+     "name": "sspl_path_A_4",
+     "origin": [
+      -4240,
+      544,
+      -336
+     ],
+     "distance": 990.8,
+     "next": "sspl_path_A_5"
+    },
+    {
+     "name": "sspl_path_A_5",
+     "origin": [
+      -4184,
+      544,
+      -336
+     ],
+     "distance": 1046.8,
+     "next": "sspl_path_A_6"
+    },
+    {
+     "name": "sspl_path_A_6",
+     "origin": [
+      -4068,
+      544,
+      -312
+     ],
+     "distance": 1165.2,
+     "next": "sspl_path_A_7"
+    },
+    {
+     "name": "sspl_path_A_7",
+     "origin": [
+      -3992,
+      544,
+      -284
+     ],
+     "distance": 1246.2,
+     "next": "sspl_path_A_28"
+    },
+    {
+     "name": "sspl_path_A_28",
+     "origin": [
+      -3928,
+      523.9,
+      -264
+     ],
+     "distance": 1316.2,
+     "next": "sspl_path_A_29"
+    },
+    {
+     "name": "sspl_path_A_29",
+     "origin": [
+      -3880,
+      478,
+      -262
+     ],
+     "distance": 1382.7,
+     "next": "sspl_path_A_30"
+    },
+    {
+     "name": "sspl_path_A_30",
+     "origin": [
+      -3856,
+      432,
+      -262
+     ],
+     "distance": 1434.6,
+     "next": "sspl_path_A_8"
+    },
+    {
+     "name": "sspl_path_A_8",
+     "origin": [
+      -3848,
+      360,
+      -264
+     ],
+     "distance": 1507,
+     "next": "sspl_path_A_31"
+    },
+    {
+     "name": "sspl_path_A_31",
+     "origin": [
+      -3840,
+      296,
+      -248
+     ],
+     "distance": 1573.5,
+     "next": "sspl_path_A_9"
+    },
+    {
+     "name": "sspl_path_A_9",
+     "origin": [
+      -3848,
+      160,
+      -240
+     ],
+     "distance": 1710,
+     "next": "sspl_path_A_10"
+    },
+    {
+     "name": "sspl_path_A_10",
+     "origin": [
+      -3848,
+      96,
+      -240
+     ],
+     "distance": 1774,
+     "next": "sspl_path_A_11"
+    },
+    {
+     "name": "sspl_path_A_11",
+     "origin": [
+      -3832,
+      56,
+      -240
+     ],
+     "distance": 1817,
+     "next": "sspl_path_A_12"
+    },
+    {
+     "name": "sspl_path_A_12",
+     "origin": [
+      -3808,
+      32,
+      -240
+     ],
+     "distance": 1851,
+     "next": "sspl_path_A_13"
+    },
+    {
+     "name": "sspl_path_A_13",
+     "origin": [
+      -3776,
+      8,
+      -240
+     ],
+     "distance": 1891,
+     "next": "sspl_path_A_14"
+    },
+    {
+     "name": "sspl_path_A_14",
+     "origin": [
+      -3736,
+      0,
+      -240
+     ],
+     "distance": 1931.8,
+     "next": "sspl_path_A_15"
+    },
+    {
+     "name": "sspl_path_A_15",
+     "origin": [
+      -3704,
+      0,
+      -240
+     ],
+     "distance": 1963.8,
+     "next": "sspl_path_A_16"
+    },
+    {
+     "name": "sspl_path_A_16",
+     "origin": [
+      -3576,
+      0,
+      -192
+     ],
+     "distance": 2100.5,
+     "next": "sspl_path_A_17"
+    },
+    {
+     "name": "sspl_path_A_17",
+     "origin": [
+      -3464,
+      0,
+      -172
+     ],
+     "distance": 2214.2,
+     "next": "sspl_path_A_18"
+    },
+    {
+     "name": "sspl_path_A_18",
+     "origin": [
+      -3196,
+      0,
+      -172
+     ],
+     "distance": 2482.2,
+     "next": "sspl_path_A_19"
+    },
+    {
+     "name": "sspl_path_A_19",
+     "origin": [
+      -3064,
+      0,
+      -184
+     ],
+     "distance": 2614.8,
+     "next": "sspl_path_A_20"
+    },
+    {
+     "name": "sspl_path_A_20",
+     "origin": [
+      -2808,
+      0,
+      -260
+     ],
+     "distance": 2881.8,
+     "next": "sspl_path_A_23"
+    },
+    {
+     "name": "sspl_path_A_23",
+     "origin": [
+      -2744,
+      0,
+      -272
+     ],
+     "distance": 2946.9,
+     "next": "sspl_path_cp_one1"
+    },
+    {
+     "name": "sspl_path_cp_one1",
+     "origin": [
+      -2720,
+      0,
+      -271.9
+     ],
+     "distance": 2970.9,
+     "next": "sspl_path_cp_one2"
+    },
+    {
+     "name": "sspl_path_cp_one2",
+     "origin": [
+      -2699,
+      0,
+      -267.9
+     ],
+     "distance": 2992.3,
+     "next": "sspl_path_cp_one3"
+    },
+    {
+     "name": "sspl_path_cp_one3",
+     "origin": [
+      -2640,
+      0,
+      -267.9
+     ],
+     "distance": 3051.3,
+     "next": "sspl_path_cp_one4"
+    },
+    {
+     "name": "sspl_path_cp_one4",
+     "origin": [
+      -2581,
+      0,
+      -267.9
+     ],
+     "distance": 3110.3,
+     "next": "sspl_path_cp_one5"
+    },
+    {
+     "name": "sspl_path_cp_one5",
+     "origin": [
+      -2560,
+      0,
+      -271.9
+     ],
+     "distance": 3131.7,
+     "next": "sspl_path_cp_one6"
+    },
+    {
+     "name": "sspl_path_cp_one6",
+     "origin": [
+      -2504,
+      0,
+      -271.9
+     ],
+     "distance": 3187.7,
+     "next": "sspl_path_cp_one7"
+    },
+    {
+     "name": "sspl_path_cp_one7",
+     "origin": [
+      -2464,
+      4,
+      -276
+     ],
+     "distance": 3228.1,
+     "next": "sspl_path_cp_one8"
+    },
+    {
+     "name": "sspl_path_cp_one8",
+     "origin": [
+      -2420,
+      12,
+      -288
+     ],
+     "distance": 3274.4,
+     "next": "sspl_path_cp_one9"
+    },
+    {
+     "name": "sspl_path_cp_one9",
+     "origin": [
+      -2352,
+      34,
+      -300
+     ],
+     "distance": 3346.9,
+     "next": "sspl_path_cp_one10"
+    },
+    {
+     "name": "sspl_path_cp_one10",
+     "origin": [
+      -2302,
+      44,
+      -314
+     ],
+     "distance": 3399.8,
+     "next": "sspl_path_cp_one11"
+    },
+    {
+     "name": "sspl_path_cp_one11",
+     "origin": [
+      -2252,
+      46,
+      -322
+     ],
+     "distance": 3450.4,
+     "next": "sspl_path_B_2"
+    },
+    {
+     "name": "sspl_path_B_2",
+     "origin": [
+      -2140,
+      64,
+      -346
+     ],
+     "distance": 3566.4,
+     "next": "sspl_path_B_6"
+    },
+    {
+     "name": "sspl_path_B_6",
+     "origin": [
+      -1912,
+      64,
+      -400
+     ],
+     "distance": 3800.7,
+     "next": "sspl_path_B_7"
+    },
+    {
+     "name": "sspl_path_B_7",
+     "origin": [
+      -1632,
+      64,
+      -400
+     ],
+     "distance": 4080.7,
+     "next": "sspl_path_B_8"
+    },
+    {
+     "name": "sspl_path_B_8",
+     "origin": [
+      -1600,
+      72,
+      -400
+     ],
+     "distance": 4113.7,
+     "next": "sspl_path_B_25"
+    },
+    {
+     "name": "sspl_path_B_25",
+     "origin": [
+      -1568,
+      88,
+      -400
+     ],
+     "distance": 4149.4,
+     "next": "sspl_path_B_26"
+    },
+    {
+     "name": "sspl_path_B_26",
+     "origin": [
+      -1552,
+      112,
+      -400
+     ],
+     "distance": 4178.3,
+     "next": "sspl_path_B_9"
+    },
+    {
+     "name": "sspl_path_B_9",
+     "origin": [
+      -1536,
+      168,
+      -400
+     ],
+     "distance": 4236.5,
+     "next": "sspl_path_B_10"
+    },
+    {
+     "name": "sspl_path_B_10",
+     "origin": [
+      -1536,
+      192,
+      -400
+     ],
+     "distance": 4260.5,
+     "next": "sspl_path_B_11"
+    },
+    {
+     "name": "sspl_path_B_11",
+     "origin": [
+      -1536,
+      224,
+      -400
+     ],
+     "distance": 4292.5,
+     "next": "sspl_path_B_20"
+    },
+    {
+     "name": "sspl_path_B_20",
+     "origin": [
+      -1536,
+      792,
+      -400
+     ],
+     "distance": 4860.5,
+     "next": "sspl_path_B_21"
+    },
+    {
+     "name": "sspl_path_B_21",
+     "origin": [
+      -1536,
+      936,
+      -424
+     ],
+     "distance": 5006.5,
+     "next": "sspl_path_B_12"
+    },
+    {
+     "name": "sspl_path_B_12",
+     "origin": [
+      -1536,
+      1000,
+      -432
+     ],
+     "distance": 5071,
+     "next": "sspl_path_B_13"
+    },
+    {
+     "name": "sspl_path_B_13",
+     "origin": [
+      -1528,
+      1040,
+      -432
+     ],
+     "distance": 5111.8,
+     "next": "sspl_path_B_28"
+    },
+    {
+     "name": "sspl_path_B_28",
+     "origin": [
+      -1516,
+      1080,
+      -432
+     ],
+     "distance": 5153.6,
+     "next": "sspl_path_B_30"
+    },
+    {
+     "name": "sspl_path_B_30",
+     "origin": [
+      -1492,
+      1120,
+      -432
+     ],
+     "distance": 5200.2,
+     "next": "sspl_path_B_31"
+    },
+    {
+     "name": "sspl_path_B_31",
+     "origin": [
+      -1460,
+      1156,
+      -432
+     ],
+     "distance": 5248.4,
+     "next": "sspl_path_B_14"
+    },
+    {
+     "name": "sspl_path_B_14",
+     "origin": [
+      -1424,
+      1184,
+      -432
+     ],
+     "distance": 5294,
+     "next": "sspl_path_B_32"
+    },
+    {
+     "name": "sspl_path_B_32",
+     "origin": [
+      -1368,
+      1208,
+      -432
+     ],
+     "distance": 5354.9,
+     "next": "sspl_path_B_15"
+    },
+    {
+     "name": "sspl_path_B_15",
+     "origin": [
+      -1328,
+      1216,
+      -432
+     ],
+     "distance": 5395.7,
+     "next": "sspl_path_B_16"
+    },
+    {
+     "name": "sspl_path_B_16",
+     "origin": [
+      -1272,
+      1216,
+      -432
+     ],
+     "distance": 5451.7,
+     "next": "sspl_path_B_17"
+    },
+    {
+     "name": "sspl_path_B_17",
+     "origin": [
+      -1016,
+      1216,
+      -528
+     ],
+     "distance": 5725.1,
+     "next": "sspl_path_B_18"
+    },
+    {
+     "name": "sspl_path_B_18",
+     "origin": [
+      -948,
+      1216,
+      -536
+     ],
+     "distance": 5793.6,
+     "next": "sspl_path_B_19"
+    },
+    {
+     "name": "sspl_path_B_19",
+     "origin": [
+      -708,
+      1216,
+      -536
+     ],
+     "distance": 6033.6,
+     "next": "sspl_path_B_22"
+    },
+    {
+     "name": "sspl_path_B_22",
+     "origin": [
+      -648,
+      1216,
+      -528
+     ],
+     "distance": 6094.1,
+     "next": "sspl_path_B_23"
+    },
+    {
+     "name": "sspl_path_B_23",
+     "origin": [
+      -336,
+      1216,
+      -528
+     ],
+     "distance": 6406.1,
+     "next": "sspl_path_B_27"
+    },
+    {
+     "name": "sspl_path_B_27",
+     "origin": [
+      -304,
+      1200,
+      -528
+     ],
+     "distance": 6441.9,
+     "next": "sspl_path_B_33"
+    },
+    {
+     "name": "sspl_path_B_33",
+     "origin": [
+      -272,
+      1168,
+      -528
+     ],
+     "distance": 6487.2,
+     "next": "sspl_path_B_34"
+    },
+    {
+     "name": "sspl_path_B_34",
+     "origin": [
+      -256,
+      1136,
+      -528
+     ],
+     "distance": 6522.9,
+     "next": "sspl_path_B_35"
+    },
+    {
+     "name": "sspl_path_B_35",
+     "origin": [
+      -256,
+      1088,
+      -518
+     ],
+     "distance": 6572,
+     "next": "sspl_path_B_24"
+    },
+    {
+     "name": "sspl_path_B_24",
+     "origin": [
+      -256,
+      1040,
+      -506
+     ],
+     "distance": 6621.4,
+     "next": "sspl_path_B_29"
+    },
+    {
+     "name": "sspl_path_B_29",
+     "origin": [
+      -256,
+      804,
+      -412
+     ],
+     "distance": 6875.5,
+     "next": "sspl_path_B_36"
+    },
+    {
+     "name": "sspl_path_B_36",
+     "origin": [
+      -256,
+      776,
+      -404
+     ],
+     "distance": 6904.6,
+     "next": "sspl_path_B_38"
+    },
+    {
+     "name": "sspl_path_B_38",
+     "origin": [
+      -256,
+      736,
+      -398
+     ],
+     "distance": 6945,
+     "next": "sspl_path_B_37"
+    },
+    {
+     "name": "sspl_path_B_37",
+     "origin": [
+      -256,
+      656,
+      -400
+     ],
+     "distance": 7025.1,
+     "next": "sspl_path_cp_two1"
+    },
+    {
+     "name": "sspl_path_cp_two1",
+     "origin": [
+      -256,
+      608,
+      -400
+     ],
+     "distance": 7073.1,
+     "next": "sspl_path_cp_two2"
+    },
+    {
+     "name": "sspl_path_cp_two2",
+     "origin": [
+      -256,
+      587,
+      -396
+     ],
+     "distance": 7094.4,
+     "next": "sspl_path_cp_two3"
+    },
+    {
+     "name": "sspl_path_cp_two3",
+     "origin": [
+      -256,
+      528,
+      -396
+     ],
+     "distance": 7153.4,
+     "next": "sspl_path_cp_two4"
+    },
+    {
+     "name": "sspl_path_cp_two4",
+     "origin": [
+      -256,
+      469,
+      -396
+     ],
+     "distance": 7212.4,
+     "next": "sspl_path_cp_two5"
+    },
+    {
+     "name": "sspl_path_cp_two5",
+     "origin": [
+      -256,
+      448,
+      -400
+     ],
+     "distance": 7233.8,
+     "next": "sspl_path_C_1"
+    },
+    {
+     "name": "sspl_path_C_1",
+     "origin": [
+      -256,
+      416,
+      -400
+     ],
+     "distance": 7265.8,
+     "next": "sspl_path_C_2"
+    },
+    {
+     "name": "sspl_path_C_2",
+     "origin": [
+      -248,
+      376,
+      -400
+     ],
+     "distance": 7306.6,
+     "next": "sspl_path_C_3"
+    },
+    {
+     "name": "sspl_path_C_3",
+     "origin": [
+      -192,
+      256,
+      -400
+     ],
+     "distance": 7439,
+     "next": "sspl_path_C_7"
+    },
+    {
+     "name": "sspl_path_C_7",
+     "origin": [
+      -192,
+      -308,
+      -400
+     ],
+     "distance": 8003,
+     "next": "sspl_path_C_12"
+    },
+    {
+     "name": "sspl_path_C_12",
+     "origin": [
+      -192,
+      -376,
+      -384
+     ],
+     "distance": 8072.9,
+     "next": "sspl_path_C_22"
+    },
+    {
+     "name": "sspl_path_C_22",
+     "origin": [
+      -192,
+      -612,
+      -308
+     ],
+     "distance": 8320.8,
+     "next": "sspl_path_C_34"
+    },
+    {
+     "name": "sspl_path_C_34",
+     "origin": [
+      -192,
+      -676,
+      -284
+     ],
+     "distance": 8389.2,
+     "next": "sspl_path_C_8"
+    },
+    {
+     "name": "sspl_path_C_8",
+     "origin": [
+      -192,
+      -740,
+      -272
+     ],
+     "distance": 8454.3,
+     "next": "sspl_path_C_9"
+    },
+    {
+     "name": "sspl_path_C_9",
+     "origin": [
+      -192,
+      -896,
+      -272
+     ],
+     "distance": 8610.3,
+     "next": "sspl_path_C_10"
+    },
+    {
+     "name": "sspl_path_C_10",
+     "origin": [
+      -176,
+      -936,
+      -272
+     ],
+     "distance": 8653.4,
+     "next": "sspl_path_C_11"
+    },
+    {
+     "name": "sspl_path_C_11",
+     "origin": [
+      -152,
+      -976,
+      -272
+     ],
+     "distance": 8700,
+     "next": "sspl_path_C_13"
+    },
+    {
+     "name": "sspl_path_C_13",
+     "origin": [
+      -112,
+      -1008,
+      -272
+     ],
+     "distance": 8751.2,
+     "next": "sspl_path_C_20"
+    },
+    {
+     "name": "sspl_path_C_20",
+     "origin": [
+      -80,
+      -1024,
+      -272
+     ],
+     "distance": 8787,
+     "next": "sspl_path_C_14"
+    },
+    {
+     "name": "sspl_path_C_14",
+     "origin": [
+      304,
+      -1024,
+      -272
+     ],
+     "distance": 9171,
+     "next": "sspl_path_C_21"
+    },
+    {
+     "name": "sspl_path_C_21",
+     "origin": [
+      352,
+      -1032,
+      -272
+     ],
+     "distance": 9219.7,
+     "next": "sspl_path_C_15"
+    },
+    {
+     "name": "sspl_path_C_15",
+     "origin": [
+      416,
+      -1064,
+      -272
+     ],
+     "distance": 9291.2,
+     "next": "sspl_path_C_16"
+    },
+    {
+     "name": "sspl_path_C_16",
+     "origin": [
+      472,
+      -1120,
+      -272
+     ],
+     "distance": 9370.4,
+     "next": "sspl_path_C_17"
+    },
+    {
+     "name": "sspl_path_C_17",
+     "origin": [
+      488,
+      -1144,
+      -272
+     ],
+     "distance": 9399.3,
+     "next": "sspl_path_C_18"
+    },
+    {
+     "name": "sspl_path_C_18",
+     "origin": [
+      504,
+      -1192,
+      -272
+     ],
+     "distance": 9449.9,
+     "next": "sspl_path_C_19"
+    },
+    {
+     "name": "sspl_path_C_19",
+     "origin": [
+      512,
+      -1272,
+      -272
+     ],
+     "distance": 9530.3,
+     "next": "sspl_path_C_35"
+    },
+    {
+     "name": "sspl_path_C_35",
+     "origin": [
+      512,
+      -1328,
+      -250
+     ],
+     "distance": 9590.4,
+     "next": "sspl_path_C_36"
+    },
+    {
+     "name": "sspl_path_C_36",
+     "origin": [
+      512,
+      -1436,
+      -196
+     ],
+     "distance": 9711.2,
+     "next": "sspl_path_C_37"
+    },
+    {
+     "name": "sspl_path_C_37",
+     "origin": [
+      512,
+      -1540,
+      -150
+     ],
+     "distance": 9824.9,
+     "next": "sspl_path_C_38"
+    },
+    {
+     "name": "sspl_path_C_38",
+     "origin": [
+      512,
+      -1660,
+      -108
+     ],
+     "distance": 9952,
+     "next": "sspl_path_C_23"
+    },
+    {
+     "name": "sspl_path_C_23",
+     "origin": [
+      512,
+      -1788,
+      -84
+     ],
+     "distance": 10082.3,
+     "next": "sspl_path_C_24"
+    },
+    {
+     "name": "sspl_path_C_24",
+     "origin": [
+      512,
+      -1928,
+      -80
+     ],
+     "distance": 10222.3,
+     "next": "sspl_path_C_25"
+    },
+    {
+     "name": "sspl_path_C_25",
+     "origin": [
+      512,
+      -2264,
+      -80
+     ],
+     "distance": 10558.3,
+     "next": "sspl_path_C_26"
+    },
+    {
+     "name": "sspl_path_C_26",
+     "origin": [
+      504,
+      -2304,
+      -80
+     ],
+     "distance": 10599.1,
+     "next": "sspl_path_C_27"
+    },
+    {
+     "name": "sspl_path_C_27",
+     "origin": [
+      480,
+      -2336,
+      -80
+     ],
+     "distance": 10639.1,
+     "next": "sspl_path_C_28"
+    },
+    {
+     "name": "sspl_path_C_28",
+     "origin": [
+      448,
+      -2360,
+      -80
+     ],
+     "distance": 10679.1,
+     "next": "sspl_path_C_30"
+    },
+    {
+     "name": "sspl_path_C_30",
+     "origin": [
+      408,
+      -2368,
+      -80
+     ],
+     "distance": 10719.9,
+     "next": "sspl_path_C_33"
+    },
+    {
+     "name": "sspl_path_C_33",
+     "origin": [
+      304,
+      -2368,
+      -80
+     ],
+     "distance": 10823.9,
+     "next": "sspl_path_C_31"
+    },
+    {
+     "name": "sspl_path_C_31",
+     "origin": [
+      264,
+      -2368,
+      -80
+     ],
+     "distance": 10863.9,
+     "next": "sspl_path_C_32"
+    },
+    {
+     "name": "sspl_path_C_32",
+     "origin": [
+      8,
+      -2368,
+      -16
+     ],
+     "distance": 11127.8,
+     "next": "sspl_path_C_29"
+    },
+    {
+     "name": "sspl_path_C_29",
+     "origin": [
+      -112,
+      -2368,
+      8
+     ],
+     "distance": 11250.2,
+     "next": "sspl_path_cp_three1"
+    },
+    {
+     "name": "sspl_path_cp_three1",
+     "origin": [
+      -152,
+      -2368,
+      8
+     ],
+     "distance": 11290.2,
+     "next": "sspl_path_cp_three2"
+    },
+    {
+     "name": "sspl_path_cp_three2",
+     "origin": [
+      -173,
+      -2368,
+      12
+     ],
+     "distance": 11311.5,
+     "next": "sspl_path_cp_three3"
+    },
+    {
+     "name": "sspl_path_cp_three3",
+     "origin": [
+      -232,
+      -2368,
+      12
+     ],
+     "distance": 11370.5,
+     "next": "sspl_path_cp_three4"
+    },
+    {
+     "name": "sspl_path_cp_three4",
+     "origin": [
+      -291,
+      -2368,
+      12
+     ],
+     "distance": 11429.5,
+     "next": "sspl_path_cp_three5"
+    },
+    {
+     "name": "sspl_path_cp_three5",
+     "origin": [
+      -312,
+      -2368,
+      8
+     ],
+     "distance": 11450.9,
+     "next": "sspl_path_cp_three6"
+    },
+    {
+     "name": "sspl_path_cp_three6",
+     "origin": [
+      -352,
+      -2368,
+      8
+     ],
+     "distance": 11490.9,
+     "next": "sspl_path_D_16"
+    },
+    {
+     "name": "sspl_path_D_16",
+     "origin": [
+      -392,
+      -2368,
+      8
+     ],
+     "distance": 11530.9,
+     "next": "sspl_path_D_15"
+    },
+    {
+     "name": "sspl_path_D_15",
+     "origin": [
+      -504,
+      -2368,
+      8
+     ],
+     "distance": 11642.9,
+     "next": "sspl_path_D_17"
+    },
+    {
+     "name": "sspl_path_D_17",
+     "origin": [
+      -648,
+      -2368,
+      -2
+     ],
+     "distance": 11787.3,
+     "next": "sspl_path_D_18"
+    },
+    {
+     "name": "sspl_path_D_18",
+     "origin": [
+      -776,
+      -2368,
+      -16
+     ],
+     "distance": 11916,
+     "next": "sspl_path_D_8"
+    },
+    {
+     "name": "sspl_path_D_8",
+     "origin": [
+      -1168,
+      -2368,
+      -208
+     ],
+     "distance": 12352.5,
+     "next": "sspl_path_D_9"
+    },
+    {
+     "name": "sspl_path_D_9",
+     "origin": [
+      -1536,
+      -2368,
+      -208
+     ],
+     "distance": 12720.5,
+     "next": "sspl_path_D_10"
+    },
+    {
+     "name": "sspl_path_D_10",
+     "origin": [
+      -1656,
+      -2368,
+      -144
+     ],
+     "distance": 12856.5,
+     "next": "sspl_path_D_26"
+    },
+    {
+     "name": "sspl_path_D_26",
+     "origin": [
+      -1776,
+      -2368,
+      -144
+     ],
+     "distance": 12976.5,
+     "next": "sspl_path_D_27"
+    },
+    {
+     "name": "sspl_path_D_27",
+     "origin": [
+      -1824,
+      -2352,
+      -144
+     ],
+     "distance": 13027.1,
+     "next": "sspl_path_D_29"
+    },
+    {
+     "name": "sspl_path_D_29",
+     "origin": [
+      -1904,
+      -2320,
+      -144
+     ],
+     "distance": 13113.3,
+     "next": "sspl_path_D_28"
+    },
+    {
+     "name": "sspl_path_D_28",
+     "origin": [
+      -1952,
+      -2288,
+      -144
+     ],
+     "distance": 13171,
+     "next": "sspl_path_D_30"
+    },
+    {
+     "name": "sspl_path_D_30",
+     "origin": [
+      -1984,
+      -2272,
+      -144
+     ],
+     "distance": 13206.8,
+     "next": "sspl_path_D_31"
+    },
+    {
+     "name": "sspl_path_D_31",
+     "origin": [
+      -2016,
+      -2256,
+      -144
+     ],
+     "distance": 13242.5,
+     "next": "sspl_path_D_20"
+    },
+    {
+     "name": "sspl_path_D_20",
+     "origin": [
+      -2040,
+      -2240,
+      -144
+     ],
+     "distance": 13271.4,
+     "next": "sspl_path_D_22"
+    },
+    {
+     "name": "sspl_path_D_22",
+     "origin": [
+      -2096,
+      -2240,
+      -144
+     ],
+     "distance": 13327.4,
+     "next": "sspl_path_D_23"
+    },
+    {
+     "name": "sspl_path_D_23",
+     "origin": [
+      -2512,
+      -2240,
+      -144
+     ],
+     "distance": 13743.4,
+     "next": "sspl_path_D_21",
+     "flags": 32
+    },
+    {
+     "name": "sspl_path_D_21",
+     "origin": [
+      -2552,
+      -2240,
+      -144
+     ],
+     "distance": 13783.4,
+     "next": "sspl_path_end",
+     "flags": 32
+    },
+    {
+     "name": "sspl_path_end",
+     "origin": [
+      -2696,
+      -2240,
+      -96
+     ],
+     "distance": 13935.2,
+     "next": null,
+     "flags": 32
+    }
+   ],
+   "length": 13935.2,
+   "linked": [
+    {
+     "pathTrack": "sspl_path_cp_one3",
+     "controlPoint": "cp_one",
+     "pathIndex": 34,
+     "distance": 3051.3
+    },
+    {
+     "pathTrack": "sspl_path_cp_two3",
+     "controlPoint": "cp_two",
+     "pathIndex": 79,
+     "distance": 7153.4
+    },
+    {
+     "pathTrack": "sspl_path_cp_three3",
+     "controlPoint": "cp_three",
+     "pathIndex": 119,
+     "distance": 11370.5
+    },
+    {
+     "pathTrack": "sspl_path_end",
+     "controlPoint": "cp_four",
+     "pathIndex": 140,
+     "distance": 13935.2
+    }
+   ],
+   "cart": {
+    "origin": [
+     -5072,
+     352,
+     -400
+    ],
+    "brush": {
+     "bspModelIndex": 12,
+     "node": "model_12_func_tracktrain_sspl_train",
+     "mins": [
+      -5118,
+      327,
+      -448
+     ],
+     "maxs": [
+      -5030,
+      377,
+      -380
+     ]
+    },
+    "models": [
+     "models/props_trainyard/bomb_cart.mdl"
+    ],
+    "attached": [
+     {
+      "classname": "prop_physics_override",
+      "name": "sspl_cart"
+     },
+     {
+      "classname": "trigger_capture_area",
+      "name": "sspl_pushzone"
+     },
+     {
+      "classname": "dispenser_touch_trigger",
+      "name": "sspl_dispenser"
+     },
+     {
+      "classname": "mapobj_cart_dispenser",
+      "name": null
+     },
+     {
+      "classname": "info_particle_system",
+      "name": "sspl_flashinglight"
+     },
+     {
+      "classname": "env_spark",
+      "name": "sspl_cartsparks"
+     },
+     {
+      "classname": "env_spark",
+      "name": "sspl_cartsparks"
+     },
+     {
+      "classname": "trigger_hurt",
+      "name": null
+     }
+    ]
+   }
+  }
+ ],
+ "doors": [
+  {
+   "name": "door_red_large_win_14",
+   "classname": "func_door",
+   "origin": [
+    -2176,
+    -1517.8,
+    58.9
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 3,
+   "node": "model_3_func_door_door_red_large_win_14",
+   "mins": [
+    -2272,
+    -1519,
+    0.4
+   ],
+   "maxs": [
+    -2080,
+    -1514,
+    117.4
+   ]
+  },
+  {
+   "name": "PointC_blocked_door1",
+   "classname": "func_door",
+   "origin": [
+    -2176,
+    -1512,
+    64.4
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 100,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 5,
+   "node": "model_5_func_door_PointC_blocked_door1",
+   "mins": [
+    -2272,
+    -1528,
+    0.4
+   ],
+   "maxs": [
+    -2080,
+    -1512,
+    128.4
+   ]
+  },
+  {
+   "name": "setupgate_stage1_15_bottom",
+   "classname": "func_door",
+   "origin": [
+    -5088,
+    -160,
+    -216
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_bottom.mdl"
+   ],
+   "bspModelIndex": 6,
+   "node": "model_6_func_door_setupgate_stage1_15_bottom",
+   "mins": [
+    -5184,
+    -163,
+    -256
+   ],
+   "maxs": [
+    -4992,
+    -157,
+    -176
+   ]
+  },
+  {
+   "name": "setupgate_stage1_15_top",
+   "classname": "func_door",
+   "origin": [
+    -5088,
+    -160,
+    -136
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_top.mdl"
+   ],
+   "bspModelIndex": 7,
+   "node": "model_7_func_door_setupgate_stage1_15_top",
+   "mins": [
+    -5184,
+    -163,
+    -176
+   ],
+   "maxs": [
+    -4992,
+    -157,
+    -96
+   ]
+  },
+  {
+   "name": "setupgate_stage1_14_bottom",
+   "classname": "func_door",
+   "origin": [
+    -5664,
+    928,
+    -408
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_bottom.mdl"
+   ],
+   "bspModelIndex": 8,
+   "node": "model_8_func_door_setupgate_stage1_14_bottom",
+   "mins": [
+    -5667,
+    832,
+    -448
+   ],
+   "maxs": [
+    -5661,
+    1024,
+    -368
+   ]
+  },
+  {
+   "name": "setupgate_stage1_14_top",
+   "classname": "func_door",
+   "origin": [
+    -5664,
+    928,
+    -328
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_top.mdl"
+   ],
+   "bspModelIndex": 9,
+   "node": "model_9_func_door_setupgate_stage1_14_top",
+   "mins": [
+    -5667,
+    832,
+    -368
+   ],
+   "maxs": [
+    -5661,
+    1024,
+    -288
+   ]
+  },
+  {
+   "name": "setupgate_stage1_13_bottom",
+   "classname": "func_door",
+   "origin": [
+    -5408,
+    416,
+    -408
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_bottom.mdl"
+   ],
+   "bspModelIndex": 10,
+   "node": "model_10_func_door_setupgate_stage1_13_bottom",
+   "mins": [
+    -5411,
+    320,
+    -448
+   ],
+   "maxs": [
+    -5405,
+    512,
+    -368
+   ]
+  },
+  {
+   "name": "setupgate_stage1_13_top",
+   "classname": "func_door",
+   "origin": [
+    -5408,
+    416,
+    -328
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/door_grate003_top.mdl"
+   ],
+   "bspModelIndex": 11,
+   "node": "model_11_func_door_setupgate_stage1_13_top",
+   "mins": [
+    -5411,
+    320,
+    -368
+   ],
+   "maxs": [
+    -5405,
+    512,
+    -288
+   ]
+  },
+  {
+   "name": "PointC_shortcut_door",
+   "classname": "func_door",
+   "origin": [
+    -2096,
+    -1848,
+    221.1
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 17,
+   "node": "model_17_func_door_PointC_shortcut_door",
+   "mins": [
+    -2040,
+    -2000,
+    64
+   ],
+   "maxs": [
+    -2024,
+    -1872,
+    256
+   ]
+  },
+  {
+   "name": "door_red_large_win_12",
+   "classname": "func_door",
+   "origin": [
+    -1824,
+    -1918.3,
+    -133.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 19,
+   "node": "model_19_func_door_door_red_large_win_12",
+   "mins": [
+    -3392,
+    -1990,
+    -192
+   ],
+   "maxs": [
+    -3200,
+    -1985,
+    -75
+   ]
+  },
+  {
+   "name": "door_red_large_win_13",
+   "classname": "func_door",
+   "origin": [
+    -1824,
+    -2413.8,
+    122.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 21,
+   "node": "model_21_func_door_door_red_large_win_13",
+   "mins": [
+    -3392,
+    -2483,
+    64
+   ],
+   "maxs": [
+    -3200,
+    -2478,
+    181
+   ]
+  },
+  {
+   "name": "door_blu_large_win_3",
+   "classname": "func_door",
+   "origin": [
+    -240,
+    1782.3,
+    -261.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 26,
+   "node": "model_26_func_door_door_blu_large_win_3",
+   "mins": [
+    -336,
+    1781,
+    -320
+   ],
+   "maxs": [
+    -144,
+    1786,
+    -203
+   ]
+  },
+  {
+   "name": "door_red_large_win_11",
+   "classname": "func_door",
+   "origin": [
+    1178.3,
+    -768,
+    -69.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 28,
+   "node": "model_28_func_door_door_red_large_win_11",
+   "mins": [
+    1177,
+    -864,
+    -128
+   ],
+   "maxs": [
+    1182,
+    -672,
+    -11
+   ]
+  },
+  {
+   "name": "door_blu_large_win_4",
+   "classname": "func_door",
+   "origin": [
+    136,
+    1008,
+    -133.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 30,
+   "node": "model_30_func_door_door_blu_large_win_4",
+   "mins": [
+    137,
+    928,
+    -192
+   ],
+   "maxs": [
+    142,
+    1120,
+    -75
+   ]
+  },
+  {
+   "name": "point_C_arrow_for_Blu",
+   "classname": "func_door",
+   "origin": [
+    -1536,
+    440,
+    -408
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": 0,
+   "speed": 100,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_billboard001_sm.mdl"
+   ],
+   "bspModelIndex": 32,
+   "node": "model_32_func_door_point_C_arrow_for_Blu",
+   "mins": [
+    -1616,
+    440,
+    -464
+   ],
+   "maxs": [
+    -1456,
+    448,
+    -352
+   ]
+  },
+  {
+   "name": "last_respawn_door_left",
+   "classname": "func_door",
+   "origin": [
+    -1880,
+    -2412,
+    -128
+   ],
+   "moveDir": [
+    -1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 500,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 35,
+   "node": "model_35_func_door_last_respawn_door_left",
+   "mins": [
+    -3408,
+    -2488,
+    -192
+   ],
+   "maxs": [
+    -3296,
+    -2472,
+    -64
+   ]
+  },
+  {
+   "name": "last_respawn_door_right",
+   "classname": "func_door",
+   "origin": [
+    -1824,
+    -2412,
+    -128
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 500,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 39,
+   "node": "model_39_func_door_last_respawn_door_right",
+   "mins": [
+    -3296,
+    -2488,
+    -192
+   ],
+   "maxs": [
+    -3184,
+    -2472,
+    -64
+   ]
+  },
+  {
+   "name": "door_red_small_dyn_1",
+   "classname": "func_door",
+   "origin": [
+    1328,
+    -1014.5,
+    -69.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 73,
+   "node": "model_73_func_door_door_red_small_dyn_1",
+   "mins": [
+    1280,
+    -1015,
+    -128
+   ],
+   "maxs": [
+    1376,
+    -1014,
+    -11
+   ]
+  }
+ ],
+ "respawnRooms": [
+  {
+   "name": "red_respawn_tiggerB",
+   "team": 2,
+   "bspModelIndex": 34,
+   "node": null,
+   "mins": [
+    -3456,
+    -2496,
+    -192
+   ],
+   "maxs": [
+    -3104,
+    -1984,
+    32
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerB",
+   "team": 2,
+   "bspModelIndex": 44,
+   "node": null,
+   "mins": [
+    -3456,
+    -2464,
+    64
+   ],
+   "maxs": [
+    -3040,
+    -2016,
+    352
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerA",
+   "team": 2,
+   "bspModelIndex": 53,
+   "node": null,
+   "mins": [
+    1184,
+    -992,
+    -128
+   ],
+   "maxs": [
+    1856,
+    -448,
+    176
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerB",
+   "team": 2,
+   "bspModelIndex": 56,
+   "node": null,
+   "mins": [
+    -4480,
+    -2688,
+    -128
+   ],
+   "maxs": [
+    -3456,
+    -1792,
+    544
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerA",
+   "team": 3,
+   "bspModelIndex": 58,
+   "node": null,
+   "mins": [
+    -7680,
+    -512,
+    -448
+   ],
+   "maxs": [
+    -6016,
+    1024,
+    64
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerB",
+   "team": 3,
+   "bspModelIndex": 61,
+   "node": null,
+   "mins": [
+    136,
+    896,
+    -192
+   ],
+   "maxs": [
+    640,
+    1408,
+    0
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerA",
+   "team": 2,
+   "bspModelIndex": 63,
+   "node": null,
+   "mins": [
+    1248,
+    -1024,
+    -128
+   ],
+   "maxs": [
+    1408,
+    -992,
+    128
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerB",
+   "team": 3,
+   "bspModelIndex": 68,
+   "node": null,
+   "mins": [
+    160,
+    1408,
+    -224
+   ],
+   "maxs": [
+    896,
+    1792,
+    256
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerB",
+   "team": 3,
+   "bspModelIndex": 79,
+   "node": null,
+   "mins": [
+    -384,
+    1792,
+    -320
+   ],
+   "maxs": [
+    512,
+    2176,
+    0
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerB",
+   "team": 2,
+   "bspModelIndex": 85,
+   "node": null,
+   "mins": [
+    -4544,
+    -3072,
+    -128
+   ],
+   "maxs": [
+    -3680,
+    -2688,
+    384
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerA",
+   "team": 3,
+   "bspModelIndex": 87,
+   "node": null,
+   "mins": [
+    -5376,
+    -512,
+    -256
+   ],
+   "maxs": [
+    -4928,
+    -128,
+    64
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerA",
+   "team": 3,
+   "bspModelIndex": 89,
+   "node": null,
+   "mins": [
+    -6016,
+    -512,
+    -448
+   ],
+   "maxs": [
+    -5632,
+    1088,
+    64
+   ]
+  },
+  {
+   "name": "red_respawn_tiggerB",
+   "team": 2,
+   "bspModelIndex": 94,
+   "node": null,
+   "mins": [
+    -2560,
+    -1504,
+    0
+   ],
+   "maxs": [
+    -2048,
+    -1184,
+    224
+   ]
+  },
+  {
+   "name": "blu_respawn_tiggerA",
+   "team": 3,
+   "bspModelIndex": 97,
+   "node": null,
+   "mins": [
+    -5632,
+    -512,
+    -448
+   ],
+   "maxs": [
+    -5376,
+    768,
+    64
+   ]
+  }
+ ],
+ "respawnVisualizers": [
+  {
+   "room": "blu_respawn_tiggerB",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 25,
+   "node": "model_25_func_respawnroomvisualizer",
+   "mins": [
+    -336,
+    1780,
+    -320
+   ],
+   "maxs": [
+    -144,
+    1812,
+    -192
+   ]
+  },
+  {
+   "room": "blu_respawn_tiggerA",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 45,
+   "node": "model_45_func_respawnroomvisualizer",
+   "mins": [
+    -5408,
+    320,
+    -448
+   ],
+   "maxs": [
+    -5376,
+    512,
+    -288
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerA",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 48,
+   "node": "model_48_func_respawnroomvisualizer_respawnroomvisualizer_team_swap",
+   "mins": [
+    1152,
+    -864,
+    -128
+   ],
+   "maxs": [
+    1184,
+    -672,
+    0
+   ]
+  },
+  {
+   "room": "blu_respawn_tiggerA",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 50,
+   "node": "model_50_func_respawnroomvisualizer",
+   "mins": [
+    -5184,
+    -160,
+    -256
+   ],
+   "maxs": [
+    -4992,
+    -128,
+    -96
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerA",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 52,
+   "node": "model_52_func_respawnroomvisualizer_respawnroomvisualizer_team_swap",
+   "mins": [
+    1280,
+    -1024,
+    -128
+   ],
+   "maxs": [
+    1376,
+    -992,
+    0
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerB",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 60,
+   "node": "model_60_func_respawnroomvisualizer",
+   "mins": [
+    -2272,
+    -1536,
+    0
+   ],
+   "maxs": [
+    -2080,
+    -1504,
+    128
+   ]
+  },
+  {
+   "room": "blu_respawn_tiggerA",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 77,
+   "node": "model_77_func_respawnroomvisualizer",
+   "mins": [
+    -5664,
+    832,
+    -448
+   ],
+   "maxs": [
+    -5632,
+    1024,
+    -288
+   ]
+  },
+  {
+   "room": "blu_respawn_tiggerB",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 81,
+   "node": "model_81_func_respawnroomvisualizer",
+   "mins": [
+    136,
+    928,
+    -192
+   ],
+   "maxs": [
+    160,
+    1120,
+    -64
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerB",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 83,
+   "node": "model_83_func_respawnroomvisualizer",
+   "mins": [
+    -3392,
+    -2016,
+    -192
+   ],
+   "maxs": [
+    -3200,
+    -1984,
+    -64
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerB",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 93,
+   "node": "model_93_func_respawnroomvisualizer",
+   "mins": [
+    -3392,
+    -2496,
+    -192
+   ],
+   "maxs": [
+    -3200,
+    -2464,
+    -64
+   ]
+  },
+  {
+   "room": "red_respawn_tiggerB",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 98,
+   "node": "model_98_func_respawnroomvisualizer",
+   "mins": [
+    -3392,
+    -2496,
+    64
+   ],
+   "maxs": [
+    -3200,
+    -2464,
+    192
+   ]
+  }
+ ],
+ "resupply": [
+  {
+   "team": 2,
+   "locker": "prop_locker_red_3",
+   "bspModelIndex": 1,
+   "node": null,
+   "mins": [
+    -2224,
+    -1280,
+    0
+   ],
+   "maxs": [
+    -2128,
+    -1184,
+    128
+   ]
+  },
+  {
+   "team": 2,
+   "locker": "prop_locker_red_4",
+   "bspModelIndex": 2,
+   "node": null,
+   "mins": [
+    -3291.9,
+    -2139.9,
+    64
+   ],
+   "maxs": [
+    -3156.1,
+    -2004.1,
+    192
+   ]
+  },
+  {
+   "team": 3,
+   "locker": "prop_locker_blu_2",
+   "bspModelIndex": 22,
+   "node": null,
+   "mins": [
+    -5568,
+    -112,
+    -222.4
+   ],
+   "maxs": [
+    -5472,
+    -16,
+    -94.4
+   ]
+  },
+  {
+   "team": 3,
+   "locker": "prop_locker_blu_5",
+   "bspModelIndex": 23,
+   "node": null,
+   "mins": [
+    -5856,
+    320,
+    -448
+   ],
+   "maxs": [
+    -5760,
+    416,
+    -320
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "prop_locker_red_2",
+   "bspModelIndex": 27,
+   "node": null,
+   "mins": [
+    1440,
+    -544,
+    -128
+   ],
+   "maxs": [
+    1536,
+    -448,
+    0
+   ]
+  },
+  {
+   "team": 3,
+   "locker": "prop_locker_blu_3",
+   "bspModelIndex": 29,
+   "node": null,
+   "mins": [
+    193.7,
+    1440,
+    -192
+   ],
+   "maxs": [
+    289.7,
+    1536,
+    -64
+   ]
+  },
+  {
+   "team": 2,
+   "locker": "prop_locker_red_5",
+   "bspModelIndex": 31,
+   "node": null,
+   "mins": [
+    -3272,
+    -2288,
+    -192
+   ],
+   "maxs": [
+    -3176,
+    -2192,
+    -64
+   ]
+  }
+ ],
+ "items": [
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    40,
+    1648,
+    -316.5
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    24,
+    1688,
+    -316.5
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -160,
+    -288,
+    -247.8
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -96,
+    -288,
+    -247.8
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -2784,
+    -3104,
+    73
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    228,
+    -2644,
+    20
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -1152,
+    -1504,
+    64.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    568,
+    -1260,
+    -54
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -2439.7,
+    -815.2,
+    -160
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -928,
+    136,
+    -576
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -292,
+    -1568,
+    18
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -832,
+    136,
+    -576
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -2032,
+    -3168,
+    -191.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    260,
+    -2660,
+    20
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -608,
+    -928,
+    -319.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -2364.9,
+    -832,
+    -157
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -1088,
+    -2464,
+    128.2
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -2944,
+    832,
+    -149.2
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -648,
+    -3424,
+    -120
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -1088,
+    -2528,
+    128.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -3760,
+    -416,
+    -192
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    928,
+    -2816,
+    -272
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -872,
+    1568,
+    -582
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -704,
+    -896,
+    -319.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -2032,
+    -3104,
+    -191.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    520,
+    -1296,
+    -54
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    144,
+    -2880,
+    -252.8
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -824,
+    1568,
+    -582
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -3768,
+    -360,
+    -192
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -1088,
+    -1504,
+    64.2
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -2896,
+    896,
+    -154.9
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -236,
+    -1572,
+    16
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    40,
+    704,
+    -320.8
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -2144,
+    -1728,
+    -182
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "full",
+   "origin": [
+    -2224,
+    -1728,
+    -182
+   ]
+  }
+ ],
+ "teleports": [
+  {
+   "name": "last_redspawn_teleport",
+   "destination": [
+    -3856,
+    -2240,
+    48
+   ],
+   "bspModelIndex": 95,
+   "node": null,
+   "mins": [
+    -2560,
+    -1504,
+    0
+   ],
+   "maxs": [
+    -2048,
+    -1184,
+    192
+   ]
+  },
+  {
+   "name": "first_redspawn_teleport",
+   "destination": [
+    -2400,
+    -1344,
+    76
+   ],
+   "bspModelIndex": 96,
+   "node": null,
+   "mins": [
+    1184,
+    -992,
+    -128
+   ],
+   "maxs": [
+    1856,
+    -448,
+    192
+   ]
+  }
+ ],
+ "gameplayProps": [
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_3",
+   "origin": [
+    -2176,
+    -1200.4,
+    0.2
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_4",
+   "origin": [
+    -3201.7,
+    -2049.7,
+    64.2
+   ],
+   "angles": [
+    0,
+    225,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_14",
+   "origin": [
+    -2176,
+    -1516,
+    0.4
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_top.mdl",
+   "parent": "setupgate_stage1_15_top",
+   "origin": [
+    -5088,
+    -160,
+    -136
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_bottom.mdl",
+   "parent": "setupgate_stage1_15_bottom",
+   "origin": [
+    -5088,
+    -160,
+    -216
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_top.mdl",
+   "parent": "setupgate_stage1_14_top",
+   "origin": [
+    -5664,
+    928,
+    -328
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_bottom.mdl",
+   "parent": "setupgate_stage1_14_bottom",
+   "origin": [
+    -5664,
+    928,
+    -408
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_top.mdl",
+   "parent": "setupgate_stage1_13_top",
+   "origin": [
+    -5408,
+    416,
+    -328
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/door_grate003_bottom.mdl",
+   "parent": "setupgate_stage1_13_bottom",
+   "origin": [
+    -5408,
+    416,
+    -408
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_trainyard/bomb_cart.mdl",
+   "name": "sspl_cart",
+   "origin": [
+    -5072,
+    352,
+    -416
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_12",
+   "origin": [
+    -3296,
+    -1988,
+    -192
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_13",
+   "origin": [
+    -3296,
+    -2480,
+    64
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_2",
+   "origin": [
+    -5485.4,
+    -59,
+    -222.3
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_5",
+   "origin": [
+    -5776.4,
+    368,
+    -447.8
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_blu_large_win_3",
+   "origin": [
+    -240,
+    1784,
+    -320
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_2",
+   "origin": [
+    1488,
+    -464.4,
+    -127.8
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_11",
+   "origin": [
+    1180,
+    -768,
+    -128
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_3",
+   "origin": [
+    208.3,
+    1479.4,
+    -191.8
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_blu_large_win_4",
+   "origin": [
+    140,
+    1024,
+    -192
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_5",
+   "origin": [
+    -3192.4,
+    -2240,
+    -191.8
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ]
+  },
+  {
+   "model": "models/flag/briefcase.mdl",
+   "origin": [
+    1288,
+    -528,
+    -64
+   ],
+   "angles": [
+    0,
+    75,
+    0
+   ],
+   "skin": 7
+  },
+  {
+   "model": "models/props_gameplay/door_slide_small_dynamic.mdl",
+   "name": "door_red_small_dyn_1_prop",
+   "origin": [
+    1328,
+    -987,
+    -64
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  }
+ ],
+ "light": {
+  "environment": {
+   "sun": {
+    "color": [
+     253,
+     243,
+     208
+    ],
+    "brightness": 500
+   },
+   "sunHDR": {
+    "color": [
+     0,
+     0,
+     0
+    ],
+    "brightness": 1
+   },
+   "ambient": {
+    "color": [
+     124,
+     138,
+     203
+    ],
+    "brightness": 300
+   },
+   "ambientHDR": {
+    "color": [
+     124,
+     138,
+     203
+    ],
+    "brightness": 350
+   },
+   "pitch": -64,
+   "yaw": 43,
+   "sunSpreadAngle": 5,
+   "direction": [
+    0.3206,
+    0.299,
+    -0.8988
+   ]
+  },
+  "shadow": {
+   "direction": [
+    -0.1583,
+    -0.3918,
+    -0.9063
+   ],
+   "color": [
+    109,
+    121,
+    152
+   ],
+   "distance": 75
+  },
+  "sunSprite": {
+   "direction": [
+    0.3206,
+    0.299,
+    0.8988
+   ],
+   "color": [
+    250,
+    220,
+    162
+   ],
+   "size": 25
+  }
+ },
+ "sky": {
+  "name": "sky_tf2_04",
+  "camera": {
+   "origin": [
+    -6144,
+    8448,
+    -1061
+   ],
+   "scale": 16
+  }
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   159,
+   165,
+   152
+  ],
+  "start": 200,
+  "end": 13000,
+  "maxDensity": 1,
+  "farZ": -1
+ },
+ "water": [
+  {
+   "material": "maps/pl_eruption_b15/water/water_island_dx80_-8896_-1408_-400",
+   "triangles": 52,
+   "mins": [
+    -9600,
+    -1536,
+    -464
+   ],
+   "maxs": [
+    -8256,
+    1216,
+    -464
+   ],
+   "surfaceZ": -464
+  },
+  {
+   "material": "maps/pl_eruption_b15/water/water_island_dx80_-6592_2944_-400",
+   "triangles": 146,
+   "mins": [
+    -6912,
+    768,
+    -464
+   ],
+   "maxs": [
+    -1792,
+    3200,
+    -464
+   ],
+   "surfaceZ": -464
+  },
+  {
+   "material": "maps/pl_eruption_b15/water/water_island_dx80_2496_-4256_-400",
+   "triangles": 102,
+   "mins": [
+    -640,
+    -4352,
+    -464
+   ],
+   "maxs": [
+    2560,
+    -512,
+    -464
+   ],
+   "surfaceZ": -464
+  },
+  {
+   "material": "maps/pl_eruption_b15/water/water_hydro_cheap_-6592_2944_-400",
+   "triangles": 2,
+   "mins": [
+    -1024,
+    2048,
+    -640
+   ],
+   "maxs": [
+    -640,
+    2048,
+    -580
+   ],
+   "surfaceZ": -580
+  },
+  {
+   "material": "maps/pl_eruption_b15/water/water_island_dx80_-832_1248_-516",
+   "triangles": 72,
+   "mins": [
+    -1152,
+    -384,
+    -580
+   ],
+   "maxs": [
+    -512,
+    2048,
+    -580
+   ],
+   "surfaceZ": -580
+  },
+  {
+   "material": "maps/pl_eruption_b15/water/water_island_dx80_-6368_352_-175",
+   "triangles": 29,
+   "mins": [
+    -8271,
+    -384,
+    -464
+   ],
+   "maxs": [
+    -6656,
+    1216,
+    -464
+   ],
+   "surfaceZ": -464
+  },
+  {
+   "material": "water/water_well_beneath.vmt",
+   "triangles": 397,
+   "mins": [
+    -9600,
+    -4352,
+    -640
+   ],
+   "maxs": [
+    2560,
+    3200,
+    -464
+   ],
+   "surfaceZ": -464
+  }
+ ]
+}

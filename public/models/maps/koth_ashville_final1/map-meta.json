@@ -1,0 +1,1040 @@
+{
+ "schema": "dribble.map-meta",
+ "version": 1,
+ "map": "koth_ashville_final1",
+ "bspVersion": 20,
+ "coordinateSpace": "source",
+ "sceneTransform": "scene = source - worldBounds.boundaryMin",
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -3563,
+   "y": -4356,
+   "z": 1058
+  },
+  "boundaryMax": {
+   "x": 3463,
+   "y": 4356,
+   "z": 2635
+  }
+ },
+ "gameMode": "koth",
+ "camera": {
+  "rtsCenter": {
+   "x": 3522,
+   "y": 4363,
+   "z": 537
+  },
+  "cameraOffset": {
+   "x": 0,
+   "y": -866,
+   "z": 1385
+  },
+  "focusSource": [
+   -41,
+   7,
+   1595
+  ],
+  "method": "koth-point",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 1,
+   "azimuthDeg": 90,
+   "distance": 1633,
+   "focusShift": 0
+  }
+ },
+ "spawns": [
+  {
+   "team": 2,
+   "origin": [
+    257,
+    -3655,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    347,
+    -3657,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    439,
+    -3661,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    549,
+    -3659,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    447,
+    -3541,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    557,
+    -3539,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    355,
+    -3537,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    265,
+    -3535,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    -356,
+    3658,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -446,
+    3660,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -538,
+    3664,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -648,
+    3662,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -546,
+    3544,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -656,
+    3542,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -454,
+    3540,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -364,
+    3538,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -244,
+    3657,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    -252,
+    3537,
+    1591
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    143,
+    -3536,
+    1593
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    135,
+    -3656,
+    1593
+   ],
+   "yaw": 90
+  }
+ ],
+ "controlPoints": [
+  {
+   "name": "cp_koth",
+   "index": 0,
+   "printName": "#koth_viaduct_cap",
+   "origin": [
+    -41,
+    7,
+    1595
+   ],
+   "defaultOwner": 0,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": [
+    0
+   ]
+  }
+ ],
+ "captureAreas": [
+  {
+   "name": null,
+   "capPoint": "cp_koth",
+   "timeToCap": 10,
+   "canCap": {
+    "2": true,
+    "3": true
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": null,
+   "startDisabled": false,
+   "bspModelIndex": 51,
+   "node": null,
+   "mins": [
+    -256,
+    -177,
+    1589
+   ],
+   "maxs": [
+    164,
+    179,
+    1726
+   ]
+  }
+ ],
+ "koth": {
+  "timerLength": 180,
+  "unlockPoint": 30
+ },
+ "roundTimers": [],
+ "payload": [],
+ "doors": [
+  {
+   "name": "bluesided",
+   "classname": "func_door",
+   "origin": [
+    555,
+    -2332.9,
+    1678.4
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 450,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 7,
+   "node": "model_7_func_door_bluesided",
+   "mins": [
+    552,
+    -2490,
+    1587
+   ],
+   "maxs": [
+    558,
+    -2176,
+    1759
+   ]
+  },
+  {
+   "name": "bluesided23",
+   "classname": "func_door",
+   "origin": [
+    -194,
+    -677,
+    1606.7
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 600,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 8,
+   "node": "model_8_func_door_bluesided23",
+   "mins": [
+    -358,
+    -680,
+    1587
+   ],
+   "maxs": [
+    -30,
+    -674,
+    1729
+   ]
+  },
+  {
+   "name": "door_red_spawngate_1b",
+   "classname": "func_door",
+   "origin": [
+    122,
+    -3233.8,
+    1651.8
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 300,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 10,
+   "node": "model_10_func_door_door_red_spawngate_1b",
+   "mins": [
+    26,
+    -3235.8,
+    1587
+   ],
+   "maxs": [
+    218,
+    -3231.8,
+    1709
+   ]
+  },
+  {
+   "name": "door_red_spawngate_1a",
+   "classname": "func_door",
+   "origin": [
+    719,
+    -3045,
+    1651.8
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 300,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 12,
+   "node": "model_12_func_door_door_red_spawngate_1a",
+   "mins": [
+    626,
+    -3236,
+    1587
+   ],
+   "maxs": [
+    814,
+    -3232,
+    1709
+   ]
+  },
+  {
+   "name": "bluesided2",
+   "classname": "func_door",
+   "origin": [
+    -655,
+    2332.9,
+    1678.4
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 450,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 22,
+   "node": "model_22_func_door_bluesided2",
+   "mins": [
+    -658,
+    2176,
+    1587
+   ],
+   "maxs": [
+    -652,
+    2490,
+    1759
+   ]
+  },
+  {
+   "name": "bluesided234",
+   "classname": "func_door",
+   "origin": [
+    94,
+    677,
+    1606.7
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 600,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 23,
+   "node": "model_23_func_door_bluesided234",
+   "mins": [
+    -70,
+    674,
+    1587
+   ],
+   "maxs": [
+    258,
+    680,
+    1729
+   ]
+  },
+  {
+   "name": "door_blue_spawngate_1b",
+   "classname": "func_door",
+   "origin": [
+    -222,
+    3233.8,
+    1651.8
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 300,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 25,
+   "node": "model_25_func_door_door_blue_spawngate_1b",
+   "mins": [
+    -318,
+    3231.8,
+    1587
+   ],
+   "maxs": [
+    -126,
+    3235.8,
+    1709
+   ]
+  },
+  {
+   "name": "door_blue_spawngate_1a",
+   "classname": "func_door",
+   "origin": [
+    -821,
+    3423,
+    1651.8
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 2,
+   "speed": 300,
+   "spawnflags": 32,
+   "props": [],
+   "bspModelIndex": 27,
+   "node": "model_27_func_door_door_blue_spawngate_1a",
+   "mins": [
+    -914,
+    3232,
+    1587
+   ],
+   "maxs": [
+    -726,
+    3236,
+    1709
+   ]
+  }
+ ],
+ "respawnRooms": [
+  {
+   "name": "respawnred",
+   "team": 0,
+   "bspModelIndex": 35,
+   "node": null,
+   "mins": [
+    -121,
+    -3867,
+    1585
+   ],
+   "maxs": [
+    922,
+    -3327,
+    1719
+   ]
+  },
+  {
+   "name": "respawnblue",
+   "team": 0,
+   "bspModelIndex": 36,
+   "node": null,
+   "mins": [
+    -999,
+    3292,
+    1585
+   ],
+   "maxs": [
+    44,
+    3832,
+    1719
+   ]
+  }
+ ],
+ "respawnVisualizers": [
+  {
+   "room": "respawnblue",
+   "team": 0,
+   "solidToEnemies": true,
+   "bspModelIndex": 47,
+   "node": "model_47_func_respawnroomvisualizer",
+   "mins": [
+    -914,
+    3232,
+    1587
+   ],
+   "maxs": [
+    -722,
+    3236,
+    1709
+   ]
+  },
+  {
+   "room": "respawnblue",
+   "team": 0,
+   "solidToEnemies": true,
+   "bspModelIndex": 48,
+   "node": "model_48_func_respawnroomvisualizer",
+   "mins": [
+    -319,
+    3232,
+    1587
+   ],
+   "maxs": [
+    -127,
+    3236,
+    1709
+   ]
+  },
+  {
+   "room": "respawnred",
+   "team": 0,
+   "solidToEnemies": true,
+   "bspModelIndex": 49,
+   "node": "model_49_func_respawnroomvisualizer",
+   "mins": [
+    26,
+    -3236,
+    1587
+   ],
+   "maxs": [
+    218,
+    -3232,
+    1709
+   ]
+  },
+  {
+   "room": "respawnred",
+   "team": 0,
+   "solidToEnemies": true,
+   "bspModelIndex": 50,
+   "node": "model_50_func_respawnroomvisualizer",
+   "mins": [
+    620,
+    -3236,
+    1587
+   ],
+   "maxs": [
+    812,
+    -3232,
+    1709
+   ]
+  }
+ ],
+ "resupply": [
+  {
+   "team": 0,
+   "locker": "resup1",
+   "bspModelIndex": 13,
+   "node": null,
+   "mins": [
+    200,
+    -3354,
+    1586
+   ],
+   "maxs": [
+    335,
+    -3284,
+    1699
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "resup2",
+   "bspModelIndex": 14,
+   "node": null,
+   "mins": [
+    502,
+    -3352,
+    1586
+   ],
+   "maxs": [
+    633,
+    -3280,
+    1699
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "resup3",
+   "bspModelIndex": 28,
+   "node": null,
+   "mins": [
+    -435,
+    3284,
+    1586
+   ],
+   "maxs": [
+    -300,
+    3354,
+    1699
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "resup4",
+   "bspModelIndex": 29,
+   "node": null,
+   "mins": [
+    -733,
+    3280,
+    1586
+   ],
+   "maxs": [
+    -602,
+    3352,
+    1699
+   ]
+  }
+ ],
+ "items": [
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -52,
+    46,
+    1371
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -56,
+    -30,
+    1371
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    1123,
+    -1416,
+    1758
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    1123,
+    -1340,
+    1758
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -200,
+    -1194,
+    1588
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -274,
+    -1193,
+    1588
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -646,
+    -539,
+    1607
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -1223,
+    1416,
+    1758
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -1223,
+    1340,
+    1758
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    98,
+    1193,
+    1588
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    174,
+    1193,
+    1588
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    546,
+    538,
+    1611
+   ]
+  }
+ ],
+ "teleports": [],
+ "gameplayProps": [
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "prop_red_spawngate_1b",
+   "origin": [
+    123.1,
+    -3259.8,
+    1651
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "prop_red_spawngate_1a",
+   "origin": [
+    718,
+    -3260,
+    1651
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "resup1",
+   "origin": [
+    266,
+    -3296,
+    1586.1
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "resup2",
+   "origin": [
+    566,
+    -3296,
+    1586.1
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "prop_blue_spawngate_1b",
+   "origin": [
+    -223.1,
+    3259.8,
+    1651
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "prop_blue_spawngate_1a",
+   "origin": [
+    -818,
+    3260,
+    1651
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "resup3",
+   "origin": [
+    -366,
+    3296,
+    1586.1
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "resup4",
+   "origin": [
+    -666,
+    3296,
+    1586.1
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/cap_point_base.mdl",
+   "name": "cp_koth_prop",
+   "origin": [
+    -41,
+    6,
+    1598
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/cap_point_base.mdl",
+   "name": "cp_koth_prop",
+   "origin": [
+    -41,
+    6,
+    1599
+   ],
+   "angles": [
+    0,
+    0,
+    180
+   ],
+   "skin": 0
+  }
+ ],
+ "light": {
+  "environment": {
+   "sun": {
+    "color": [
+     167,
+     180,
+     194
+    ],
+    "brightness": 190
+   },
+   "sunHDR": {
+    "color": [
+     167,
+     180,
+     194
+    ],
+    "brightness": 190
+   },
+   "ambient": {
+    "color": [
+     23,
+     27,
+     36
+    ],
+    "brightness": 90
+   },
+   "ambientHDR": {
+    "color": [
+     23,
+     27,
+     36
+    ],
+    "brightness": 90
+   },
+   "pitch": -35,
+   "yaw": 131,
+   "sunSpreadAngle": 0,
+   "direction": [
+    -0.5374,
+    0.6182,
+    -0.5736
+   ]
+  },
+  "shadow": {
+   "direction": [
+    -0.5374,
+    0.6182,
+    -0.5736
+   ],
+   "color": [
+    23,
+    27,
+    36
+   ],
+   "distance": 100
+  },
+  "sunSprite": null
+ },
+ "sky": {
+  "name": "sky_midnight_01",
+  "camera": {
+   "origin": [
+    11600.8,
+    -12892.9,
+    382.5
+   ],
+   "scale": 16
+  }
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   45,
+   46,
+   57
+  ],
+  "start": -2000,
+  "end": 7500,
+  "maxDensity": 1,
+  "farZ": -1
+ },
+ "water": []
+}

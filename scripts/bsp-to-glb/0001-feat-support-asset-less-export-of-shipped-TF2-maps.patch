@@ -1,0 +1,798 @@
+From 1720f9c3385e6add6e74d1326faab42e9808964c Mon Sep 17 00:00:00 2001
+From: Daliborlol <dalibor@pyro.tf>
+Date: Sat, 17 Oct 2026 13:29:36 +0200
+Subject: [PATCH 1/2] feat: support asset-less export of shipped TF2 maps
+
+- --allow-unresolved-patch-includes: report a Patch VMT whose include
+  target is not mounted (VBSP cubemap patches) as an unresolved material
+  (role patchInclude) instead of failing the whole export.
+- --lightmap-styles strict|first|all|N,...: compose faces that store
+  several light styles by summing decoded ColorRGBExp32 samples of the
+  selected styles (manifest records composedStyles). Default stays strict.
+- Export texdata reflectivity as materials[].extras.sourceReflectivity so
+  untextured consumers can render compile-time average albedo.
+- Treat non-finite displacement blend alphas as 0 (pl_eruption_b15
+  DISPINFO 56) and count them in stats.sanitizedDisplacementAlphas;
+  non-finite positions still fail closed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/lib.rs               | 187 +++++++++++++++++++++++++++++++++++----
+ src/main.rs              |  42 ++++++++-
+ src/materials.rs         |  95 ++++++++++++++++++--
+ tests/direct_export.rs   |   3 +-
+ tests/lightmap_export.rs |  90 ++++++++++++++++++-
+ tests/materials.rs       |  31 +++++++
+ 6 files changed, 421 insertions(+), 27 deletions(-)
+
+diff --git a/src/lib.rs b/src/lib.rs
+index 0524bfa..50d6a2d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -36,6 +36,7 @@ pub use entities::{
+ pub use material_resolver::{
+     MATERIAL_MOUNT_PLAN_VERSION, MaterialResolverLimits, MountedMaterialResolver,
+ };
++pub use materials::MaterialBuildPolicy;
+ pub use materials::{
+     BuiltInTextureBinding, EmbeddedResourceMetadata, MATERIAL_MANIFEST_VERSION,
+     MATERIAL_TEXTURE_MANIFEST_VERSION, ManifestResource, ManifestTexture, MaterialLimitations,
+@@ -45,7 +46,8 @@ pub use materials::{
+     SourceMaterialManifest, SourceMaterialPackage, TextureDecodeStatus, TextureSemantic,
+     UnresolvedAsset, UnsupportedMaterialFeatures, VmtFeatures, VmtMaterial, VmtProxyDefinition,
+     VmtProxyParameter, VmtShaderMetadata, VmtTextureInputs, build_source_material_manifest,
+-    build_source_material_package, parse_vmt, read_bsp_pak_resources,
++    build_source_material_manifest_with_policy, build_source_material_package,
++    build_source_material_package_with_policy, parse_vmt, read_bsp_pak_resources,
+ };
+ pub use studiomodel::{
+     STUDIO_MODEL_MDL_VERSIONS, STUDIO_MODEL_PACKAGE_VERSION, StudioModelExport, StudioModelInput,
+@@ -256,11 +258,51 @@ pub enum LightmapSet {
+     None,
+ }
+ 
++/// How faces that store more than one light style are exported.
++///
++/// Source stores one lightmap per style (style 0 is static light, 1-31 are
++/// animated presets and 32+ are switchable named lights). The default keeps
++/// the historical fail-closed behavior; the other policies compose a single
++/// flat/directional lightmap per face by summing decoded linear samples.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum LightmapStylePolicy {
++    /// Abort export when a face stores more than one style.
++    #[default]
++    Strict,
++    /// Keep only the first stored style of every face.
++    First,
++    /// Sum every stored style (all switchable lights on).
++    All,
++    /// Sum only styles whose bit is set (bit `n` of word `n / 64`); other
++    /// styles contribute nothing, so a face lit only by disabled styles is black.
++    Enabled([u64; 4]),
++}
++
++impl LightmapStylePolicy {
++    pub fn enabled_styles(styles: &[u8]) -> Self {
++        let mut words = [0_u64; 4];
++        for style in styles {
++            words[usize::from(*style) / 64] |= 1 << (style % 64);
++        }
++        Self::Enabled(words)
++    }
++
++    fn includes(&self, position: usize, style: u8) -> bool {
++        match self {
++            Self::Strict | Self::All => true,
++            Self::First => position == 0,
++            Self::Enabled(words) => words[usize::from(style) / 64] & (1 << (style % 64)) != 0,
++        }
++    }
++}
++
+ #[derive(Clone, Copy, Debug)]
+ pub struct ExportOptions {
+     pub lightmap_set: LightmapSet,
+     pub atlas_width: u32,
+     pub material_texture_selection: Option<VtfImageSelection>,
++    pub lightmap_styles: LightmapStylePolicy,
++    pub material_policy: MaterialBuildPolicy,
+ }
+ 
+ impl Default for ExportOptions {
+@@ -269,6 +311,8 @@ impl Default for ExportOptions {
+             lightmap_set: LightmapSet::Auto,
+             atlas_width: DEFAULT_ATLAS_WIDTH,
+             material_texture_selection: None,
++            lightmap_styles: LightmapStylePolicy::Strict,
++            material_policy: MaterialBuildPolicy::default(),
+         }
+     }
+ }
+@@ -308,6 +352,7 @@ pub struct ExportStats {
+     pub unresolved_prop_models: usize,
+     pub displacement_vertices: usize,
+     pub displacement_triangles: usize,
++    pub sanitized_displacement_alphas: usize,
+     pub capabilities: CapabilityReport,
+ }
+ 
+@@ -433,6 +478,8 @@ struct LightmapManifestFace {
+     lightmap_mins: [i32; 2],
+     lightmap_size: [i32; 2],
+     styles: Vec<u8>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    composed_styles: Option<Vec<u8>>,
+     bump_light: bool,
+ }
+ 
+@@ -676,6 +723,7 @@ struct TexInfo {
+ 
+ #[derive(Clone, Copy)]
+ struct TexData {
++    reflectivity: [f32; 3],
+     name_index: i32,
+     width: i32,
+     height: i32,
+@@ -730,6 +778,7 @@ struct DisplacementGeometry {
+     normals: Vec<[f32; 3]>,
+     triangles: Vec<[usize; 3]>,
+     alphas: Vec<f32>,
++    non_finite_alphas: usize,
+     triangle_tags: Vec<u16>,
+     source_triangle_tags: Vec<u16>,
+     dispinfo_index: usize,
+@@ -1097,6 +1146,7 @@ fn parse_texdata(data: &[u8]) -> Result<Vec<TexData>, String> {
+         .map(|index| {
+             let offset = index * TEXDATA_SIZE;
+             Ok(TexData {
++                reflectivity: read_vec3(data, offset, "texdata reflectivity")?,
+                 name_index: read_i32(data, offset + 12, "texdata")?,
+                 width: read_i32(data, offset + 16, "texdata")?,
+                 height: read_i32(data, offset + 20, "texdata")?,
+@@ -2628,7 +2678,11 @@ fn select_lightmap_lumps(
+     Ok(selected)
+ }
+ 
+-fn face_styles(face: Face, face_index: usize) -> Result<Vec<u8>, String> {
++fn face_styles(
++    face: Face,
++    face_index: usize,
++    policy: LightmapStylePolicy,
++) -> Result<Vec<u8>, String> {
+     let first_unused = face
+         .styles
+         .iter()
+@@ -2643,7 +2697,7 @@ fn face_styles(face: Face, face_index: usize) -> Result<Vec<u8>, String> {
+         ));
+     }
+     let styles = face.styles[..first_unused].to_vec();
+-    if styles.len() > 1 {
++    if styles.len() > 1 && policy == LightmapStylePolicy::Strict {
+         return Err(format!(
+             "face {face_index} uses multiple light styles {:?}; style composition is unsupported",
+             styles
+@@ -2659,6 +2713,7 @@ fn extract_lightmaps(
+     texinfos: &[TexInfo],
+     face_owner: &[Option<usize>],
+     atlas_max_width: u32,
++    style_policy: LightmapStylePolicy,
+ ) -> Result<Option<ExtractedLightmaps>, String> {
+     let Some(lighting_lump) = selected.lighting else {
+         return Ok(None);
+@@ -2700,7 +2755,7 @@ fn extract_lightmaps(
+                 face.lightmap_size
+             ));
+         }
+-        let styles = face_styles(face, face_index)?;
++        let styles = face_styles(face, face_index, style_policy)?;
+         if styles.is_empty() {
+             continue;
+         }
+@@ -2787,7 +2842,46 @@ fn extract_lightmaps(
+     let mut manifest_faces = Vec::with_capacity(candidates.len());
+ 
+     for candidate in candidates {
++        let selected_styles: Vec<usize> = candidate
++            .styles
++            .iter()
++            .enumerate()
++            .filter(|(position, style)| style_policy.includes(*position, **style))
++            .map(|(position, _)| position)
++            .collect();
++        let style_stride = candidate.sample_bytes * if candidate.bump_light { 4 } else { 1 };
++        let passthrough = selected_styles == [0];
++        let compose_channel = |channel_offset: usize, destination: &mut [u8]| {
++            let width = candidate.placement.width as usize;
++            for row in 0..candidate.placement.height as usize {
++                for column in 0..width {
++                    let texel = (row * width + column) * 4;
++                    let mut sum = [0.0_f32; 3];
++                    for position in &selected_styles {
++                        let start = candidate.source_start
++                            + position * style_stride
++                            + channel_offset
++                            + texel;
++                        let sample = decode_color_rgb_exp32(&light_data[start..start + 4]);
++                        for axis in 0..3 {
++                            sum[axis] += sample[axis];
++                        }
++                    }
++                    let destination_start = ((candidate.placement.y as usize + row)
++                        * used_width as usize
++                        + candidate.placement.x as usize
++                        + column)
++                        * 4;
++                    destination[destination_start..destination_start + 4]
++                        .copy_from_slice(&encode_color_rgb_exp32(sum));
++                }
++            }
++        };
+         let copy_channel = |source_offset: usize, destination: &mut [u8]| {
++            if !passthrough {
++                compose_channel(source_offset - candidate.source_start, destination);
++                return;
++            }
+             for row in 0..candidate.placement.height as usize {
+                 let row_bytes = candidate.placement.width as usize * 4;
+                 let source_start = source_offset + row * row_bytes;
+@@ -2818,6 +2912,12 @@ fn extract_lightmaps(
+             light_offset: candidate.face.light_offset,
+             lightmap_mins: candidate.face.lightmap_mins,
+             lightmap_size: candidate.face.lightmap_size,
++            composed_styles: (!passthrough).then(|| {
++                selected_styles
++                    .iter()
++                    .map(|position| candidate.styles[*position])
++                    .collect()
++            }),
+             styles: candidate.styles,
+             bump_light: candidate.bump_light,
+         });
+@@ -2862,9 +2962,18 @@ fn extract_lightmaps(
+                     .collect(),
+             },
+             styles: LightmapManifestStyles {
+-                supported_per_face: 1,
++                supported_per_face: if style_policy == LightmapStylePolicy::Strict {
++                    1
++                } else {
++                    4
++                },
+                 unused_value: 255,
+-                composition: "single-style",
++                composition: match style_policy {
++                    LightmapStylePolicy::Strict => "single-style",
++                    LightmapStylePolicy::First => "first-style",
++                    LightmapStylePolicy::All => "sum-all-styles",
++                    LightmapStylePolicy::Enabled(_) => "sum-enabled-styles",
++                },
+                 storage_order: "style-major-then-flat-and-directional",
+             },
+             faces: manifest_faces,
+@@ -2873,6 +2982,33 @@ fn extract_lightmaps(
+     Ok(Some(ExtractedLightmaps { artifacts, by_face }))
+ }
+ 
++/// Decodes a Source `ColorRGBExp32` sample to linear RGB.
++fn decode_color_rgb_exp32(sample: &[u8]) -> [f32; 3] {
++    let scale = 2_f32.powi(i32::from(sample[3] as i8)) / 255.0;
++    [
++        f32::from(sample[0]) * scale,
++        f32::from(sample[1]) * scale,
++        f32::from(sample[2]) * scale,
++    ]
++}
++
++/// Encodes linear RGB as a Source `ColorRGBExp32` sample.
++fn encode_color_rgb_exp32(color: [f32; 3]) -> [u8; 4] {
++    let max = color[0].max(color[1]).max(color[2]);
++    if !max.is_finite() || max <= 0.0 {
++        return [0, 0, 0, 0];
++    }
++    let exponent = (max.log2().floor() as i32 + 1).clamp(-128, 127);
++    let scale = 255.0 / 2_f32.powi(exponent);
++    let channel = |value: f32| (value.max(0.0) * scale).round().clamp(0.0, 255.0) as u8;
++    [
++        channel(color[0]),
++        channel(color[1]),
++        channel(color[2]),
++        exponent as i8 as u8,
++    ]
++}
++
+ fn lightmap_uv(
+     placement: LightmapPlacement,
+     atlas: &LightmapImage,
+@@ -3332,16 +3468,18 @@ fn build_displacement_geometry(
+         .zip(source_vertices)
+         .map(|(flat, vertex)| add(*flat, scale(vertex.vector, vertex.distance)))
+         .collect();
+-    if positions
+-        .iter()
+-        .flatten()
+-        .chain(source_vertices.iter().map(|vertex| &vertex.alpha))
+-        .any(|value| !value.is_finite())
+-    {
++    if positions.iter().flatten().any(|value| !value.is_finite()) {
+         return Err(format!(
+             "DISPINFO {dispinfo_index} generated a non-finite vertex value"
+         ));
+     }
++    // Blend alpha only drives material blending, never geometry. Some shipped
++    // maps contain NaN alphas (e.g. pl_eruption_b15 DISPINFO 56), which the
++    // engine tolerates; export them as zero and report the count.
++    let non_finite_alphas = source_vertices
++        .iter()
++        .filter(|vertex| !vertex.alpha.is_finite())
++        .count();
+ 
+     let mut all_triangles = Vec::with_capacity(triangle_count);
+     push_displacement_triangles(
+@@ -3395,7 +3533,17 @@ fn build_displacement_geometry(
+         lightmap_coordinates,
+         normals,
+         triangles,
+-        alphas: source_vertices.iter().map(|vertex| vertex.alpha).collect(),
++        alphas: source_vertices
++            .iter()
++            .map(|vertex| {
++                if vertex.alpha.is_finite() {
++                    vertex.alpha
++                } else {
++                    0.0
++                }
++            })
++            .collect(),
++        non_finite_alphas,
+         triangle_tags: exported_triangle_tags,
+         source_triangle_tags: triangle_tags,
+         dispinfo_index,
+@@ -3680,18 +3828,24 @@ fn export_bsp_internal(
+     let material_textures = options
+         .material_texture_selection
+         .map(|selection| {
+-            build_source_material_package(
++            build_source_material_package_with_policy(
+                 &material_names,
+                 &embedded_resources,
+                 material_resolver,
+                 selection,
++                options.material_policy,
+             )
+         })
+         .transpose()?;
+     let material_manifest = if let Some(package) = &material_textures {
+         package.material_manifest.clone()
+     } else {
+-        build_source_material_manifest(&material_names, &embedded_resources, material_resolver)?
++        build_source_material_manifest_with_policy(
++            &material_names,
++            &embedded_resources,
++            material_resolver,
++            options.material_policy,
++        )?
+     };
+     let models = parse_models(&bsp.lumps[LUMP_MODELS])?;
+     let static_props = find_static_props(&bsp, data)?;
+@@ -3783,6 +3937,7 @@ fn export_bsp_internal(
+         &texinfos,
+         &face_owner,
+         options.atlas_width,
++        options.lightmap_styles,
+     )?;
+     let mut visibility = include_visibility
+         .then(|| build_visibility(&bsp, &planes, &faces, &models, &face_owner))
+@@ -3892,6 +4047,7 @@ fn export_bsp_internal(
+                 "extras": {
+                     "sourceMaterial": name,
+                     "sourceMaterialManifestIndex": index,
++                    "sourceReflectivity": texdata.get(index).map(|item| item.reflectivity),
+                     "sourceShaderFamily": metadata.map(|item| item.shader.family.as_str()),
+                     "sourceAdditive": metadata.is_some_and(|item| item.features.additive),
+                     "unsupportedProxies": metadata
+@@ -4184,6 +4340,7 @@ fn export_bsp_internal(
+                 }
+             }
+             if let Some(geometry) = &displacement {
++                stats.sanitized_displacement_alphas += geometry.non_finite_alphas;
+                 primitive
+                     .displacement_alphas
+                     .extend_from_slice(&geometry.alphas);
+diff --git a/src/main.rs b/src/main.rs
+index bb24bf6..b90bc28 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,8 +1,9 @@
+ use bsp_to_glb::static_physics::{StaticPhysicsLimits, export_bsp_static_physics};
+ use bsp_to_glb::{
+-    CollisionExportInput, ExportOptions, LightmapSet, MaterialResolver, MountedMaterialResolver,
+-    StudioModelInput, VtfImageSelection, build_metadata, encode_lightmap_png,
+-    export_bsp_with_material_resolver, export_bsp_with_material_resolver_and_visibility,
++    CollisionExportInput, ExportOptions, LightmapSet, LightmapStylePolicy, MaterialResolver,
++    MountedMaterialResolver, StudioModelInput, VtfImageSelection, build_metadata,
++    encode_lightmap_png, export_bsp_with_material_resolver,
++    export_bsp_with_material_resolver_and_visibility,
+     export_bsp_with_options_and_material_resolver,
+     export_bsp_with_options_and_material_resolver_and_visibility, export_collision_sidecar,
+     export_entity_graph, export_studio_metadata_model, export_studio_model, read_bsp_pak_archive,
+@@ -15,7 +16,7 @@ use std::path::{Path, PathBuf};
+ use std::process::ExitCode;
+ 
+ fn usage() -> &'static str {
+-    "Usage: bsp-to-glb --bsp <compiled.bsp> [--out <map.glb>] [--pak-output <directory> --pak-manifest <pak.json>] [--collision-out <map.collision.json>] [--physics-manifest <map.physics.json> --physics-binary <map.physics.bin>] [--entities-out <map.entities.json>] [--decal-overlays-out <map.decal-overlays.json>] [--visibility-out <map.visibility.json>] [--lightmaps <lightmap_data.json> | --lightmap-set <auto|ldr|hdr|none>] [--atlas-width <pixels>] [--lightmap-atlas <flat.png>] [--lightmap-manifest <lightmaps.json>] [--material-mount-plan <mounts.json>] [--material-manifest <materials.json>] [--texture-output <directory> [--texture-manifest <textures.json>] [--texture-mip <level>] [--texture-frame <index>] [--texture-face <index>] [--texture-slice <index>]] [--props-out <props.json>]\n       bsp-to-glb --studio-source-path <models/model.mdl> --studio-mdl <model.mdl> [--studio-vvd <model.vvd> --studio-vtx <model.dx90.vtx>] [--studio-ani <model.ani>] [--studio-phy <model.phy>] [--studio-skin <index>] --studio-out <model.glb> --studio-manifest <model.json>\n       bsp-to-glb --version | --version-json"
++    "Usage: bsp-to-glb --bsp <compiled.bsp> [--out <map.glb>] [--pak-output <directory> --pak-manifest <pak.json>] [--collision-out <map.collision.json>] [--physics-manifest <map.physics.json> --physics-binary <map.physics.bin>] [--entities-out <map.entities.json>] [--decal-overlays-out <map.decal-overlays.json>] [--visibility-out <map.visibility.json>] [--lightmaps <lightmap_data.json> | --lightmap-set <auto|ldr|hdr|none>] [--atlas-width <pixels>] [--lightmap-styles <strict|first|all|N[,N...]>] [--allow-unresolved-patch-includes <true|false>] [--lightmap-atlas <flat.png>] [--lightmap-manifest <lightmaps.json>] [--material-mount-plan <mounts.json>] [--material-manifest <materials.json>] [--texture-output <directory> [--texture-manifest <textures.json>] [--texture-mip <level>] [--texture-frame <index>] [--texture-face <index>] [--texture-slice <index>]] [--props-out <props.json>]\n       bsp-to-glb --studio-source-path <models/model.mdl> --studio-mdl <model.mdl> [--studio-vvd <model.vvd> --studio-vtx <model.dx90.vtx>] [--studio-ani <model.ani>] [--studio-phy <model.phy>] [--studio-skin <index>] --studio-out <model.glb> --studio-manifest <model.json>\n       bsp-to-glb --version | --version-json"
+ }
+ 
+ fn create_parent(path: &Path) -> Result<(), String> {
+@@ -301,6 +302,39 @@ fn run() -> Result<(), String> {
+                     .map_err(|_| format!("invalid atlas width: {}", value.to_string_lossy()))?;
+             }
+             "--visibility-out" => visibility_path = Some(value.into()),
++            "--lightmap-styles" => {
++                options.lightmap_styles = match value.to_string_lossy().as_ref() {
++                    "strict" => LightmapStylePolicy::Strict,
++                    "first" => LightmapStylePolicy::First,
++                    "all" => LightmapStylePolicy::All,
++                    list => {
++                        let styles = list
++                            .split(',')
++                            .filter(|item| !item.is_empty())
++                            .map(|item| {
++                                item.trim().parse::<u8>().map_err(|_| {
++                                    format!("invalid light style {item:?} in --lightmap-styles")
++                                })
++                            })
++                            .collect::<Result<Vec<_>, _>>()?;
++                        LightmapStylePolicy::enabled_styles(&styles)
++                    }
++                };
++            }
++            "--allow-unresolved-patch-includes" => {
++                options.material_policy.allow_unresolved_patch_includes = match value
++                    .to_string_lossy()
++                    .as_ref()
++                {
++                    "true" => true,
++                    "false" => false,
++                    other => {
++                        return Err(format!(
++                            "--allow-unresolved-patch-includes expects true or false, got {other}"
++                        ));
++                    }
++                };
++            }
+             _ => return Err(format!("unknown argument: {flag}\n{}", usage())),
+         }
+         index += 2;
+diff --git a/src/materials.rs b/src/materials.rs
+index 301493c..0dc5059 100644
+--- a/src/materials.rs
++++ b/src/materials.rs
+@@ -982,13 +982,25 @@ struct ResolvedVmt {
+     dependencies: Vec<ManifestResource>,
+ }
+ 
++/// Outcome of resolving a VMT whose Patch chain may reference unavailable files.
++enum VmtResolution {
++    Resolved(Box<ResolvedVmt>),
++    /// A Patch include could not be found and the caller allowed this; the
++    /// material is reported as unresolved instead of failing the export.
++    MissingPatchInclude {
++        include_path: String,
++        dependencies: Vec<ManifestResource>,
++    },
++}
++
+ fn resolve_effective_vmt(
+     root_data: &[u8],
+     root_path: &str,
+     embedded_resources: &[PakResource],
+     by_path: &HashMap<String, usize>,
+     resolver: Option<&dyn MaterialResolver>,
+-) -> Result<ResolvedVmt, String> {
++    allow_unresolved_patch_includes: bool,
++) -> Result<VmtResolution, String> {
+     let mut document = parse_vmt_document(root_data)
+         .map_err(|error| format!("failed to parse {root_path}: {error}"))?;
+     let mut current_path = root_path.to_owned();
+@@ -1025,6 +1037,11 @@ fn resolve_effective_vmt(
+                     Cow::Owned(resource.data),
+                     external_provenance(resource.provenance),
+                 )
++            } else if allow_unresolved_patch_includes {
++                return Ok(VmtResolution::MissingPatchInclude {
++                    include_path,
++                    dependencies,
++                });
+             } else {
+                 return Err(format!(
+                     "Patch VMT {current_path} includes unavailable dependency {include_path}"
+@@ -1042,10 +1059,10 @@ fn resolve_effective_vmt(
+ 
+     apply_patch_entries(&mut document.values, &changes.insert, false, 1)?;
+     apply_patch_entries(&mut document.values, &changes.replace, true, 1)?;
+-    Ok(ResolvedVmt {
++    Ok(VmtResolution::Resolved(Box::new(ResolvedVmt {
+         material: material_from_document(document)?,
+         dependencies,
+-    })
++    })))
+ }
+ 
+ struct TexturePackageBuilder {
+@@ -1565,11 +1582,22 @@ fn material_texture_references(material: &VmtMaterial) -> Vec<(&TextureInputSpec
+         .collect()
+ }
+ 
++/// Policy knobs for material manifest construction.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct MaterialBuildPolicy {
++    /// Report a Patch VMT whose include target is unavailable as an unresolved
++    /// material (role `patchInclude`) instead of failing the whole export. This
++    /// is needed for asset-less conversion, where VBSP cubemap patch materials
++    /// reference stock VMTs that are not mounted.
++    pub allow_unresolved_patch_includes: bool,
++}
++
+ fn build_materials(
+     material_names: &[String],
+     embedded_resources: &[PakResource],
+     resolver: Option<&dyn MaterialResolver>,
+     texture_selection: Option<VtfImageSelection>,
++    policy: MaterialBuildPolicy,
+ ) -> Result<MaterialBuild, String> {
+     let mut by_path = HashMap::new();
+     for (index, resource) in embedded_resources.iter().enumerate() {
+@@ -1616,15 +1644,39 @@ fn build_materials(
+             });
+             (None, ResourceProvenance::Unresolved)
+         };
+-        let resolved_vmt = vmt_data
++        let resolution = vmt_data
+             .as_deref()
+             .map(|data| {
+-                resolve_effective_vmt(data, &vmt_path, embedded_resources, &by_path, resolver)
++                resolve_effective_vmt(
++                    data,
++                    &vmt_path,
++                    embedded_resources,
++                    &by_path,
++                    resolver,
++                    policy.allow_unresolved_patch_includes,
++                )
+             })
+             .transpose()?;
++        let (resolved_vmt, unresolved_dependencies) = match resolution {
++            Some(VmtResolution::Resolved(resolved)) => (Some(*resolved), None),
++            Some(VmtResolution::MissingPatchInclude {
++                include_path,
++                dependencies,
++            }) => {
++                unresolved_assets.push(UnresolvedAsset {
++                    kind: PakResourceKind::Vmt,
++                    lookup_path: include_path,
++                    referenced_by: name.clone(),
++                    role: "patchInclude".to_owned(),
++                });
++                (None, Some(dependencies))
++            }
++            None => (None, None),
++        };
+         let dependencies = resolved_vmt
+             .as_ref()
+             .map(|resolved| resolved.dependencies.clone())
++            .or(unresolved_dependencies)
+             .unwrap_or_default();
+         let metadata = resolved_vmt.map(|resolved| resolved.material);
+         let mut textures = Vec::new();
+@@ -1757,7 +1809,21 @@ pub fn build_source_material_manifest(
+     embedded_resources: &[PakResource],
+     resolver: Option<&dyn MaterialResolver>,
+ ) -> Result<SourceMaterialManifest, String> {
+-    Ok(build_materials(material_names, embedded_resources, resolver, None)?.manifest)
++    build_source_material_manifest_with_policy(
++        material_names,
++        embedded_resources,
++        resolver,
++        MaterialBuildPolicy::default(),
++    )
++}
++
++pub fn build_source_material_manifest_with_policy(
++    material_names: &[String],
++    embedded_resources: &[PakResource],
++    resolver: Option<&dyn MaterialResolver>,
++    policy: MaterialBuildPolicy,
++) -> Result<SourceMaterialManifest, String> {
++    Ok(build_materials(material_names, embedded_resources, resolver, None, policy)?.manifest)
+ }
+ 
+ pub fn build_source_material_package(
+@@ -1765,12 +1831,29 @@ pub fn build_source_material_package(
+     embedded_resources: &[PakResource],
+     resolver: Option<&dyn MaterialResolver>,
+     selection: VtfImageSelection,
++) -> Result<SourceMaterialPackage, String> {
++    build_source_material_package_with_policy(
++        material_names,
++        embedded_resources,
++        resolver,
++        selection,
++        MaterialBuildPolicy::default(),
++    )
++}
++
++pub fn build_source_material_package_with_policy(
++    material_names: &[String],
++    embedded_resources: &[PakResource],
++    resolver: Option<&dyn MaterialResolver>,
++    selection: VtfImageSelection,
++    policy: MaterialBuildPolicy,
+ ) -> Result<SourceMaterialPackage, String> {
+     let built = build_materials(
+         material_names,
+         embedded_resources,
+         resolver,
+         Some(selection),
++        policy,
+     )?;
+     let (manifest, artifacts) = built
+         .texture_package
+diff --git a/tests/direct_export.rs b/tests/direct_export.rs
+index 6eeea78..835ccb2 100644
+--- a/tests/direct_export.rs
++++ b/tests/direct_export.rs
+@@ -1737,7 +1737,8 @@ fn exports_a_local_displacement_map() {
+ fn no_displacement_export_remains_byte_and_metric_stable() {
+     let result = export_bsp(&synthetic_bsp(false), None).unwrap();
+ 
+-    assert_eq!(fnv1a64(&result.glb), 16_361_024_428_849_545_199);
++    // Golden hash includes the per-material `sourceReflectivity` extra.
++    assert_eq!(fnv1a64(&result.glb), 16_315_478_812_346_526_558);
+     assert_eq!(result.stats.faces, 2);
+     assert_eq!(result.stats.vertices, 8);
+     assert_eq!(result.stats.triangles, 4);
+diff --git a/tests/lightmap_export.rs b/tests/lightmap_export.rs
+index 21c43d6..152bada 100644
+--- a/tests/lightmap_export.rs
++++ b/tests/lightmap_export.rs
+@@ -1,4 +1,6 @@
+-use bsp_to_glb::{ExportOptions, LightmapSet, encode_lightmap_png, export_bsp_with_options};
++use bsp_to_glb::{
++    ExportOptions, LightmapSet, LightmapStylePolicy, encode_lightmap_png, export_bsp_with_options,
++};
+ use serde_json::Value;
+ use std::fs;
+ use std::process::Command;
+@@ -549,3 +551,89 @@ fn cli_writes_flat_directional_atlases_and_versioned_manifest() {
+ 
+     fs::remove_dir_all(directory).unwrap();
+ }
++
++fn decode(sample: &[u8]) -> [f32; 3] {
++    let scale = 2_f32.powi(i32::from(sample[3] as i8)) / 255.0;
++    [
++        f32::from(sample[0]) * scale,
++        f32::from(sample[1]) * scale,
++        f32::from(sample[2]) * scale,
++    ]
++}
++
++fn assert_close(actual: [f32; 3], expected: [f32; 3]) {
++    for axis in 0..3 {
++        let tolerance = expected[axis].abs() * 0.01 + 1e-4;
++        assert!(
++            (actual[axis] - expected[axis]).abs() <= tolerance,
++            "{actual:?} != {expected:?}"
++        );
++    }
++}
++
++#[test]
++fn composes_multi_style_faces_when_a_style_policy_is_selected() {
++    let bsp = synthetic_bsp(
++        Some(lighting(10, true, 2)),
++        None,
++        true,
++        [0, 32, 255, 255],
++        0,
++        0,
++    );
++    let export = |policy| {
++        export_bsp_with_options(
++            &bsp,
++            &ExportOptions {
++                lightmap_set: LightmapSet::Ldr,
++                lightmap_styles: policy,
++                ..ExportOptions::default()
++            },
++        )
++        .unwrap()
++    };
++
++    let first = export(LightmapStylePolicy::First);
++    let artifacts = first.lightmaps.as_ref().unwrap();
++    assert_eq!(&artifacts.flat.pixels[0..4], &sample(10, 2, 3, -1));
++    let manifest = serde_json::to_value(&artifacts.manifest).unwrap();
++    assert_eq!(manifest["faces"][0]["styles"], serde_json::json!([0, 32]));
++    assert!(manifest["faces"][0].get("composedStyles").is_none());
++    assert_eq!(manifest["styles"]["composition"], "first-style");
++
++    let all = export(LightmapStylePolicy::All);
++    let artifacts = all.lightmaps.as_ref().unwrap();
++    let style0 = decode(&sample(10, 2, 3, -1));
++    let style32 = decode(&sample(50, 2, 3, -1));
++    assert_close(
++        decode(&artifacts.flat.pixels[0..4]),
++        [
++            style0[0] + style32[0],
++            style0[1] + style32[1],
++            style0[2] + style32[2],
++        ],
++    );
++    let bump0 = decode(&sample(20, 2, 3, -1));
++    let bump32 = decode(&sample(60, 2, 3, -1));
++    assert_close(
++        decode(&artifacts.directional[0].pixels[0..4]),
++        [
++            bump0[0] + bump32[0],
++            bump0[1] + bump32[1],
++            bump0[2] + bump32[2],
++        ],
++    );
++    let manifest = serde_json::to_value(&artifacts.manifest).unwrap();
++    assert_eq!(
++        manifest["faces"][0]["composedStyles"],
++        serde_json::json!([0, 32])
++    );
++
++    let only_switchable = export(LightmapStylePolicy::enabled_styles(&[32]));
++    let artifacts = only_switchable.lightmaps.as_ref().unwrap();
++    assert_close(decode(&artifacts.flat.pixels[0..4]), style32);
++
++    let dark = export(LightmapStylePolicy::enabled_styles(&[1]));
++    let artifacts = dark.lightmaps.as_ref().unwrap();
++    assert_eq!(&artifacts.flat.pixels[0..4], &[0, 0, 0, 0]);
++}
+diff --git a/tests/materials.rs b/tests/materials.rs
+index 6adcf2b..16086ba 100644
+--- a/tests/materials.rs
++++ b/tests/materials.rs
+@@ -477,3 +477,34 @@ fn manifest_uses_pak_first_then_reports_external_and_unresolved_assets() {
+         ]
+     );
+ }
++
++#[test]
++fn reports_unavailable_patch_includes_as_unresolved_when_allowed() {
++    let resources = vec![bsp_to_glb::PakResource {
++        path: "materials/maps/test/glass_0_0_0.vmt".to_owned(),
++        kind: PakResourceKind::Vmt,
++        data: br#"patch { include "materials/glass/window.vmt" insert { "$envmap" "maps/test/c0_0_0" } }"#
++            .to_vec(),
++    }];
++    let names = ["maps/test/glass_0_0_0".to_owned()];
++
++    let error = build_source_material_manifest(&names, &resources, None).unwrap_err();
++    assert!(error.contains("unavailable dependency"), "{error}");
++
++    let manifest = bsp_to_glb::build_source_material_manifest_with_policy(
++        &names,
++        &resources,
++        None,
++        bsp_to_glb::MaterialBuildPolicy {
++            allow_unresolved_patch_includes: true,
++        },
++    )
++    .unwrap();
++    assert!(manifest.materials[0].metadata.is_none());
++    let value = serde_json::to_value(&manifest).unwrap();
++    assert_eq!(value["unresolvedAssets"][0]["role"], "patchInclude");
++    assert_eq!(
++        value["unresolvedAssets"][0]["lookupPath"],
++        "materials/glass/window.vmt"
++    );
++}
+-- 
+2.56.0
+

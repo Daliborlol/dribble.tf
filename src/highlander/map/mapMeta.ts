@@ -169,7 +169,19 @@ export interface MapMeta {
     cameraOffset: XYZ
     focusSource: Vec3
     method: string
-    occlusion?: { clear: boolean; elevationDeg: number; quarterTurns?: number }
+    /**
+     * The converter's line-of-sight search: clear false means every candidate was blocked and the
+     * camera looks almost straight down. focusShift is the distance in units between the objective
+     * focus and the framed point (the focus slides along the objective when it is enclosed).
+     */
+    occlusion?: {
+      clear: boolean
+      elevationDeg: number
+      quarterTurns?: number
+      azimuthDeg?: number
+      distance?: number
+      focusShift?: number
+    }
   } | null
   spawns: MapMetaSpawn[]
   controlPoints: MapMetaControlPoint[]

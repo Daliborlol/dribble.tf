@@ -1,16 +1,51 @@
-import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react'
+import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react'
 
 import * as THREE from 'three'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Sphere, Trail, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
 import { CachedProjectile } from '@components/Analyse/Data/ProjectileCache'
+import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useStore, useInstance, getState } from '@zus/store'
 
 import { TEAM_MAP } from '@constants/mappings'
 import { objCoordsToVector3, eulerizeVector, createStaleFrameGuard, guardedLerpProgress } from '@utils/geometry'
 import { getAsset } from '@utils/misc'
+
+import { NEUTRAL, TEAM_FX, teamKey } from '@highlander/constants'
+import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
+import type { HighlanderExtras } from '@highlander/extras/types'
+import { CRIT_GLOW_RADIUS, CRIT_GLOW_SOFTNESS, critGlowOpacity, DEFLECT_RING_RADIUS } from '@highlander/combat/combatData'
+import { FxInstances, makeFxMaterial, pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
+import { baseRecord, pointList, recordingEnabled, resetRecord } from '@highlander/combat/frameRecord'
+import {
+  deflectIndexAt,
+  directionAt,
+  matchEntity,
+  positionAt,
+  projectilesDrawnAt,
+  projectilesDrawnIn,
+  projectileTeamAt,
+  quatLookBack,
+  type EntityMatch,
+} from '@highlander/combat/projectileData'
+import { getProjectileSource } from '@highlander/combat/projectileSource'
+import { frameTime } from '@highlander/combat/time'
+import {
+  DESPAWN_EXPLOSION_COLOR,
+  despawnExplosionsAt,
+  forEachSmokePuff,
+  ROCKET_TRAIL_SAMPLES,
+  SMOKE_COLOR,
+  SMOKE_TICKS,
+  TRAIL_HEAD_ALPHA,
+  TRAIL_MIN_PIXELS,
+  TRAIL_SAMPLES,
+  trailPoints,
+  trailStyle,
+} from '@highlander/combat/trails'
+import '@highlander/combat/probes'
 
 //
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────────
@@ -509,8 +544,29 @@ export interface ProjectilesProps {
 
 let nextEffectId = 0
 
+/**
+ * Draws the base cache projectiles. Once the Highlander extras are ready (and Highlander is on), positions,
+ * orientation, trails, smoke, crit glows and deflect rings come from the extras samples, so nothing depends on
+ * wall-clock time (contract D12/D13, section 5 F3 edits 1 to 4). Until then, or with Highlander off, the legacy
+ * smoothed path below runs unchanged.
+ */
 export const Projectiles = (props: ProjectilesProps) => {
-  const { projectiles = [], tick, intervalPerTick } = props
+  const hlEnabled = useHlSetting<boolean>('enabled')
+  const explosionsSetting = useHlSetting<boolean>('projectiles.explosions')
+  const extras = useExtras()
+  const demo = useInstance(state => state.parsedDemo)
+
+  if (hlEnabled && extras && demo && extras.meta.available.projectiles) {
+    return <ExtrasProjectiles {...props} x={extras} demo={demo} />
+  }
+  // Despawn explosions: unchanged with Highlander off; with it on, the projectiles.explosions toggle decides, and
+  // CombatFxLayer's TETFExplosion bursts replace them once the extras have explosions.
+  const explosions = !hlEnabled || (explosionsSetting !== false && !extras?.meta.available.explosions)
+  return <LegacyProjectiles {...props} explosions={explosions} />
+}
+
+const LegacyProjectiles = (props: ProjectilesProps & { explosions: boolean }) => {
+  const { projectiles = [], tick, intervalPerTick, explosions: explosionsEnabled } = props
 
   const prevTick = useRef<number>(tick)
   const prevProjectileData = useRef<Map<number, InterpolatedProjectile>>(new Map())
@@ -597,7 +653,7 @@ export const Projectiles = (props: ProjectilesProps) => {
     })
 
     // Detect explosions
-    if (isForwardStep && prevProjectileData.current.size > 0) {
+    if (explosionsEnabled && isForwardStep && prevProjectileData.current.size > 0) {
       const newExplosions: Explosion[] = []
       prevProjectileData.current.forEach((lastData, entityId) => {
         if (!currentIds.has(entityId)) {
@@ -622,8 +678,8 @@ export const Projectiles = (props: ProjectilesProps) => {
     }
 
     // Clear explosions on scrub
-    if (isScrubbedOrJumped) {
-      setExplosions([])
+    if (isScrubbedOrJumped || !explosionsEnabled) {
+      setExplosions(prev => (prev.length ? [] : prev))
     }
 
     // Update tracking refs only when tick actually changes
@@ -633,7 +689,7 @@ export const Projectiles = (props: ProjectilesProps) => {
       prevProjectileData.current = nextMap
       prevTick.current = tick
     }
-  }, [tick, projectiles])
+  }, [tick, projectiles, explosionsEnabled])
 
   const removeExplosion = useCallback((id: number) => {
     setExplosions(prev => prev.filter(e => e.id !== id))
@@ -735,7 +791,7 @@ export const RocketProjectile = (props: BaseProjectileProps) => {
   })
 
   return (
-    <group name="rocket" ref={ref} position={position}>
+    <group name="rocket" ref={ref} position={position} userData={{ hlProjectile: 'legacy', entityId: props.entityId }}>
       <Suspense fallback={<ProjectileFallback />}>
         <ProjectileModel type="rocket" team="shared" />
       </Suspense>
@@ -800,7 +856,7 @@ export const PipebombProjectile = (props: BaseProjectileProps) => {
   })
 
   return (
-    <group name="pipebomb" ref={ref} position={position} rotation={rotation}>
+    <group name="pipebomb" ref={ref} position={position} rotation={rotation} userData={{ hlProjectile: 'legacy', entityId: props.entityId }}>
       <Suspense fallback={<ProjectileFallback color={teamColor} />}>
         {team && <ProjectileModel type="pipebomb" team={team} />}
       </Suspense>
@@ -865,7 +921,7 @@ export const StickybombProjectile = (props: BaseProjectileProps) => {
   })
 
   return (
-    <group name="stickybomb" ref={ref} position={position} rotation={rotation}>
+    <group name="stickybomb" ref={ref} position={position} rotation={rotation} userData={{ hlProjectile: 'legacy', entityId: props.entityId }}>
       <Suspense fallback={<ProjectileFallback color={teamColor} />}>
         {team && <ProjectileModel type="stickybomb" team={team} />}
       </Suspense>
@@ -907,10 +963,283 @@ export const HealingBoltProjectile = (props: BaseProjectileProps) => {
   })
 
   return (
-    <group name="healingBolt" ref={ref} position={position}>
+    <group name="healingBolt" ref={ref} position={position} userData={{ hlProjectile: 'legacy', entityId: props.entityId }}>
       <Sphere args={[5]}>
         <meshLambertMaterial attach="material" color="yellow" />
       </Sphere>
     </group>
   )
 }
+
+//
+// ─── EXTRAS-DRIVEN PROJECTILES (contract 5 F3 edits 1 to 4) ──────────────────────
+//
+// Once the extras are ready every base projectile takes its position from the samples of its extras instance at
+// tickF and its orientation from the sample delta, so mesh, crit glow, deflect ring and trail share one position
+// and a seek reproduces the frame exactly. Instances that the source split gives to ProjectilesExtraLayer, and
+// instances that are hidden (detonated pipes, landed bolts) but not deleted yet, are not drawn here. A base
+// projectile without any extras instance keeps the legacy smoothed component (no trail).
+//
+
+
+const teamGlowColor = (team: number) => {
+  const key = teamKey(team)
+  return key ? TEAM_FX[key] : NEUTRAL
+}
+
+// One material per team colour, shared by every base projectile (opacity is the same for all at a tickF).
+const critGlowMaterials = new Map<string, THREE.ShaderMaterial>()
+const deflectRingMaterials = new Map<string, THREE.MeshBasicMaterial>()
+const critGlowGeometry = new THREE.SphereGeometry(CRIT_GLOW_RADIUS, 16, 12)
+const deflectRingGeometry = new THREE.TorusGeometry(DEFLECT_RING_RADIUS, 1, 8, 28)
+
+function critGlowMaterial(color: string): THREE.ShaderMaterial {
+  let material = critGlowMaterials.get(color)
+  if (!material) critGlowMaterials.set(color, (material = makeFxMaterial({ color, softness: CRIT_GLOW_SOFTNESS, opacity: 0.4 })))
+  return material
+}
+
+function deflectRingMaterial(color: string): THREE.MeshBasicMaterial {
+  let material = deflectRingMaterials.get(color)
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+    deflectRingMaterials.set(color, material)
+  }
+  return material
+}
+
+const ExtrasProjectiles = (props: ProjectilesProps & { x: HighlanderExtras; demo: AsyncParser }) => {
+  const { projectiles = [], tick, intervalPerTick, x, demo } = props
+  const source = getProjectileSource(x, demo)
+  const match = useRef<EntityMatch>({ drawn: -1, hidden: false }).current
+
+  return (
+    <group name="projectiles">
+      {projectiles.map(projectile => {
+        matchEntity(x, projectile.entityId, tick, match)
+        if (match.drawn >= 0) {
+          // the source split decides: instances without a typed base slot belong to ProjectilesExtraLayer
+          if (!source.servedByBase[match.drawn]) return null
+          if (!['rocket', 'pipebomb', 'stickybomb', 'healingBolt'].includes(projectile.type)) return null
+          return (
+            <ExtrasBaseProjectile
+              key={`x-${projectile.entityId}`}
+              x={x}
+              entityId={projectile.entityId}
+              type={projectile.type}
+              teamNumber={projectile.teamNumber}
+            />
+          )
+        }
+        if (match.hidden) return null
+
+        // no extras instance for this entity at this tick: the legacy smoothed path, without a trail
+        let Projectile
+        if (projectile.type === 'rocket') Projectile = RocketProjectile
+        if (projectile.type === 'pipebomb') Projectile = PipebombProjectile
+        if (projectile.type === 'stickybomb') Projectile = StickybombProjectile
+        if (projectile.type === 'healingBolt') Projectile = HealingBoltProjectile
+        if (!Projectile) return null
+        return (
+          <Projectile
+            key={`projectile-${projectile.entityId}`}
+            {...projectile}
+            renderTick={tick}
+            intervalPerTick={intervalPerTick}
+          />
+        )
+      })}
+
+      <ExtrasProjectileTrails x={x} demo={demo} />
+      <DespawnExplosions x={x} demo={demo} />
+    </group>
+  )
+}
+
+interface ExtrasBaseProjectileProps {
+  x: HighlanderExtras
+  entityId: number
+  type: string
+  teamNumber: number
+}
+
+const ExtrasBaseProjectile = React.memo(({ x, entityId, type, teamNumber }: ExtrasBaseProjectileProps) => {
+  const ref = useRef<THREE.Group>(null)
+  const glowRef = useRef<THREE.Mesh>(null)
+  const ringRef = useRef<THREE.Mesh>(null)
+  const s = useMemo(
+    () => ({ time: { tick: 0, tickF: 0 }, match: { drawn: -1, hidden: false } as EntityMatch, pos: new THREE.Vector3(), dir: new THREE.Vector3(), quat: new THREE.Quaternion() }),
+    []
+  )
+  const team = TEAM_MAP[teamNumber]
+  const teamColor = TEAM_COLORS[team] ?? TRAIL_FALLBACK_COLOR
+
+  useFrame(() => {
+    const group = ref.current
+    if (!group) return
+    const { tick, tickF } = frameTime(s.time)
+    // the store tick can run one frame ahead of the mounted list: hide when the instance is not drawn there
+    const j = matchEntity(x, entityId, tick, s.match).drawn
+    if (j < 0 || !positionAt(x, j, tickF, s.pos)) {
+      group.visible = false
+      return
+    }
+    group.visible = true
+    group.position.copy(s.pos)
+    if (type !== 'healingBolt') group.quaternion.copy(quatLookBack(directionAt(x, j, tickF, s.dir), s.quat))
+    group.userData.hlInstance = j
+
+    const projectileTeam = projectileTeamAt(x, j, tick)
+    const glow = glowRef.current
+    if (glow) {
+      glow.visible = x.projectiles.crit[j] !== 0 && getHlSetting<boolean>('projectiles.critGlow') !== false
+      if (glow.visible) {
+        const material = critGlowMaterial(teamGlowColor(projectileTeam))
+        material.uniforms.uOpacity.value = critGlowOpacity(tickF)
+        glow.material = material
+      }
+    }
+    const ring = ringRef.current
+    if (ring) {
+      ring.visible = deflectIndexAt(x, j, tick) >= 0 && getHlSetting<boolean>('projectiles.airblast') !== false
+      if (ring.visible) ring.material = deflectRingMaterial(teamGlowColor(projectileTeam))
+    }
+  })
+
+  return (
+    <group name={type} ref={ref} visible={false} userData={{ hlProjectile: 'base', entityId, hlInstance: -1 }}>
+      {type === 'healingBolt' ? (
+        <Sphere args={[5]}>
+          <meshLambertMaterial attach="material" color="yellow" />
+        </Sphere>
+      ) : (
+        <Suspense fallback={<ProjectileFallback color={type === 'rocket' ? TRAIL_FALLBACK_COLOR : teamColor} />}>
+          {type === 'rocket' && <ProjectileModel type="rocket" team="shared" />}
+          {type === 'pipebomb' && team && <ProjectileModel type="pipebomb" team={team} />}
+          {type === 'stickybomb' && team && <ProjectileModel type="stickybomb" team={team} />}
+        </Suspense>
+      )}
+      <mesh name="hl-crit-glow" ref={glowRef} visible={false} geometry={critGlowGeometry} material={critGlowMaterial(teamGlowColor(teamNumber))} />
+      <mesh name="hl-deflect-ring" ref={ringRef} visible={false} geometry={deflectRingGeometry} material={deflectRingMaterial(teamGlowColor(teamNumber))} />
+    </group>
+  )
+})
+
+/**
+ * Trails of the base-drawn instances (edit 3): a ribbon through the last 6 samples (12 for rockets) and, for
+ * rockets, one smoke puff per sample of the last 48 ticks. One ribbon batch and one InstancedMesh for all.
+ */
+const ExtrasProjectileTrails = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncParser }) => {
+  const ribbonMaterial = useMemo(
+    () => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+    []
+  )
+  const ribbons = useMemo(() => new RibbonBatch(ribbonMaterial, 4096, 'hl-base-trails'), [ribbonMaterial])
+  const smokeGeometry = useMemo(() => new THREE.SphereGeometry(1, 8, 6), [])
+  const smokeMaterial = useMemo(() => makeFxMaterial({ blending: 'normal', color: SMOKE_COLOR, softness: 0.6, instanceOpacity: true }), [])
+  const smoke = useMemo(() => new FxInstances(smokeGeometry, smokeMaterial, 2048, { opacity: true, name: 'hl-rocket-smoke' }), [smokeGeometry, smokeMaterial])
+  const size = useThree(state => state.size)
+
+  useEffect(
+    () => () => {
+      ribbons.dispose()
+      ribbonMaterial.dispose()
+      smoke.dispose()
+      smokeGeometry.dispose()
+      smokeMaterial.dispose()
+    },
+    [ribbons, ribbonMaterial, smoke, smokeGeometry, smokeMaterial]
+  )
+
+  const s = useMemo(
+    () => ({
+      time: { tick: 0, tickF: 0 },
+      list: [] as number[],
+      camera: new THREE.Vector3(),
+      color: new THREE.Color(),
+      matrix: new THREE.Matrix4(),
+      pos: new THREE.Vector3(),
+      scale: new THREE.Vector3(),
+      quat: new THREE.Quaternion(),
+      points: new Float32Array((ROCKET_TRAIL_SAMPLES + 2) * 3),
+      style: { width: 0, color: '', crit: false, team: 0 },
+    }),
+    []
+  )
+
+  useFrame(({ camera }) => {
+    const { tick, tickF } = frameTime(s.time)
+    const source = getProjectileSource(x, demo)
+    const record = recordingEnabled()
+    if (record) resetRecord(baseRecord, tickF)
+
+    camera.getWorldPosition(s.camera)
+    ribbons.begin(s.camera, pixelScaleOf(camera, size.height))
+    for (const j of projectilesDrawnAt(x, tick, s.list)) {
+      if (!source.servedByBase[j]) continue
+      const samples = source.baseType[j] === 1 ? ROCKET_TRAIL_SAMPLES : TRAIL_SAMPLES
+      const count = trailPoints(x, j, tickF, samples, s.points)
+      if (count < 2) continue
+      const style = trailStyle(x, j, tick, s.style)
+      ribbons.strip(s.points, count, s.color.set(style.color), style.width, style.width, TRAIL_HEAD_ALPHA, 0, TRAIL_MIN_PIXELS)
+      if (record) baseRecord.trails.push({ key: `base:${j}`, instance: j, source: 'base', width: style.width, color: style.color, points: pointList(s.points, count) })
+    }
+    ribbons.end()
+
+    smoke.begin()
+    for (const j of projectilesDrawnIn(x, tick - SMOKE_TICKS + 1, tick, s.list)) {
+      if (!source.servedByBase[j] || source.baseType[j] !== 1) continue
+      forEachSmokePuff(x, j, tickF, (px, py, pz, puffSize, opacity) => {
+        s.matrix.compose(s.pos.set(px, py, pz), s.quat, s.scale.setScalar(puffSize))
+        smoke.push(s.matrix, undefined, opacity)
+      })
+    }
+    smoke.end()
+    if (record) baseRecord.smoke = smoke.count
+  })
+
+  return (
+    <group name="hl-base-trails">
+      <primitive object={ribbons.mesh} />
+      <primitive object={smoke.mesh} />
+    </group>
+  )
+})
+
+/**
+ * Edit 4 fallback: while the extras carry no TETFExplosion rows (the memory plan dropped tempents), base rockets,
+ * pipes and stickies burst where they hid, as the legacy despawn explosions did, but from the hide tick.
+ */
+const DespawnExplosions = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncParser }) => {
+  const explosionsSetting = useHlSetting<boolean>('projectiles.explosions')
+  const active = explosionsSetting !== false && !x.meta.available.explosions
+  const geometry = useMemo(() => new THREE.SphereGeometry(1, 12, 8), [])
+  const material = useMemo(() => makeFxMaterial({ color: DESPAWN_EXPLOSION_COLOR, instanceOpacity: true }), [])
+  const bursts = useMemo(() => new FxInstances(geometry, material, 64, { opacity: true, name: 'hl-despawn-explosions' }), [geometry, material])
+  const s = useMemo(() => ({ time: { tick: 0, tickF: 0 }, matrix: new THREE.Matrix4(), pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: new THREE.Vector3() }), [])
+
+  useEffect(
+    () => () => {
+      bursts.dispose()
+      geometry.dispose()
+      material.dispose()
+    },
+    [bursts, geometry, material]
+  )
+
+  useFrame(() => {
+    bursts.begin()
+    if (active) {
+      const { tickF } = frameTime(s.time)
+      for (const e of despawnExplosionsAt(x, getProjectileSource(x, demo), tickF)) {
+        if (!(e.radius > 0)) continue
+        s.matrix.compose(s.pos.set(e.x, e.y, e.z), s.quat, s.scale.setScalar(e.radius))
+        bursts.push(s.matrix, undefined, e.opacity)
+      }
+    }
+    bursts.end()
+  })
+
+  return <primitive object={bursts.mesh} />
+})
+

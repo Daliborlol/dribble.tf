@@ -1,4 +1,118 @@
-import React from 'react'
+// Projectiles the base parser drops (contract D13 and 5 F3): every extras projectile instance without a typed base
+// slot (servedByBase 0) that is drawn at the tick, whatever its kind: flares, arrows, repair bolts, cannonballs,
+// jars, cleavers, balls, ornaments, Bison and Pomson rings, Cow Mangler balls, Dragon's Fury fireballs, orbs, and
+// any rocket, pipe or bolt the base missed. One InstancedMesh per placeholder part, plus one ribbon batch for their
+// trails. Positions and trails come from the extras samples at tickF, so a seek reproduces them exactly (D12).
 
-// Scaffold stub (contract section 6.1). The owning feature task replaces the body.
-export const ProjectilesExtraLayer = React.memo((_props: { renderTick: number }) => null)
+import React, { useEffect, useMemo } from 'react'
+
+import * as THREE from 'three'
+import { useFrame, useThree } from '@react-three/fiber'
+
+import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
+import { useInstance } from '@zus/store'
+import { useExtras, useHlSetting } from '@highlander/extras/hooks'
+import type { HighlanderExtras } from '@highlander/extras/types'
+import { pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
+import { extrasRecord, pointList, recordingEnabled, resetRecord, roundVec } from '@highlander/combat/frameRecord'
+import { directionAt, positionAt, projectilesDrawnAt, projectileTeamAt, quatForwardX } from '@highlander/combat/projectileData'
+import { createProjectileParts, disposeProjectileParts, partColor, partsForKind } from '@highlander/combat/projectileMeshes'
+import { getProjectileSource } from '@highlander/combat/projectileSource'
+import { frameTime } from '@highlander/combat/time'
+import { TRAIL_HEAD_ALPHA, TRAIL_MIN_PIXELS, TRAIL_SAMPLES, trailPoints, trailStyle } from '@highlander/combat/trails'
+import '@highlander/combat/probes'
+
+const ONE = new THREE.Vector3(1, 1, 1)
+
+export const ProjectilesExtraLayer = React.memo((_props: { renderTick: number }) => {
+  const extras = useExtras()
+  const demo = useInstance(s => s.parsedDemo)
+  const enabled = useHlSetting<boolean>('projectiles.extraTypes')
+  if (!extras || !demo || !enabled || !extras.meta.available.projectiles) return null
+  return <ExtrasProjectiles x={extras} demo={demo} />
+})
+
+const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncParser }) => {
+  const { parts, byKind } = useMemo(() => createProjectileParts(), [])
+  const ribbonMaterial = useMemo(
+    () => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+    []
+  )
+  const ribbons = useMemo(() => new RibbonBatch(ribbonMaterial, 2048, 'hl-projectile-trails'), [ribbonMaterial])
+  const size = useThree(state => state.size)
+
+  useEffect(
+    () => () => {
+      disposeProjectileParts(parts)
+      ribbons.dispose()
+      ribbonMaterial.dispose()
+    },
+    [parts, ribbons, ribbonMaterial]
+  )
+
+  const scratch = useMemo(
+    () => ({
+      time: { tick: 0, tickF: 0 },
+      alive: [] as number[],
+      pos: new THREE.Vector3(),
+      dir: new THREE.Vector3(),
+      quat: new THREE.Quaternion(),
+      matrix: new THREE.Matrix4(),
+      camera: new THREE.Vector3(),
+      color: new THREE.Color(),
+      points: new Float32Array((TRAIL_SAMPLES + 2) * 3),
+      style: { width: 0, color: '', crit: false, team: 0 },
+    }),
+    []
+  )
+
+  useFrame(({ camera }) => {
+    const s = scratch
+    const { tick, tickF } = frameTime(s.time)
+    const source = getProjectileSource(x, demo)
+    const pj = x.projectiles
+    const record = recordingEnabled()
+    if (record) resetRecord(extrasRecord, tickF)
+
+    camera.getWorldPosition(s.camera)
+    ribbons.begin(s.camera, pixelScaleOf(camera, size.height))
+    for (const part of parts) part.instances.begin()
+
+    for (const j of projectilesDrawnAt(x, tick, s.alive)) {
+      if (source.servedByBase[j]) continue // Projectiles.tsx draws it
+      if (!positionAt(x, j, tickF, s.pos)) continue
+      directionAt(x, j, tickF, s.dir)
+      quatForwardX(s.dir, s.quat)
+      s.matrix.compose(s.pos, s.quat, ONE)
+      const kind = pj.kind[j]
+      const team = projectileTeamAt(x, j, tick)
+      for (const part of partsForKind(byKind, kind)) part.instances.push(s.matrix, partColor(part, kind, team))
+
+      const count = trailPoints(x, j, tickF, TRAIL_SAMPLES, s.points)
+      const style = trailStyle(x, j, tick, s.style)
+      if (count >= 2) ribbons.strip(s.points, count, s.color.set(style.color), style.width, style.width, TRAIL_HEAD_ALPHA, 0, TRAIL_MIN_PIXELS)
+
+      if (record) {
+        extrasRecord.meshes.set(j, roundVec(s.pos.x, s.pos.y, s.pos.z))
+        if (count >= 2) {
+          extrasRecord.trails.push({ key: `extras:${j}`, instance: j, source: 'extras', width: style.width, color: style.color, points: pointList(s.points, count) })
+        }
+      }
+    }
+
+    for (const part of parts) part.instances.end()
+    ribbons.end()
+    if (record) {
+      for (const part of parts) if (part.instances.count) extrasRecord.counts[part.def.name] = part.instances.count
+    }
+  })
+
+  return (
+    <group name="hl-projectiles">
+      {parts.map(part => (
+        <primitive key={part.def.name} object={part.instances.mesh} />
+      ))}
+      <primitive object={ribbons.mesh} />
+    </group>
+  )
+})

@@ -98,6 +98,24 @@ export const parseDemoAction = async (fileBuffer: ArrayBuffer) => {
 // ─── SCENE ──────────────────────────────────────────────────────────────────────
 //
 
+// RTS camera offset for maps with neither a hand-tuned override nor a converter camera.
+const FALLBACK_CAMERA_OFFSET = { x: 0, y: 700, z: 1400 }
+
+/** Median position of the alive RED and BLU players at `fraction` of the demo (scene coordinates). */
+const medianAlivePlayerPosition = (demo: AsyncParser, fraction: number) => {
+  const tick = Math.max(1, Math.round((demo.ticks - 1) * fraction))
+  const alive = demo
+    .getPlayersAtTick(tick)
+    .filter(player => player.health > 0 && (player.teamId === 2 || player.teamId === 3))
+  if (alive.length === 0) return undefined
+  const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]
+  return {
+    x: median(alive.map(player => player.position.x)),
+    y: median(alive.map(player => player.position.y)),
+    z: median(alive.map(player => player.position.z)),
+  }
+}
+
 export const loadSceneFromDemoAction = async (parsedDemo: AsyncParser) => {
   try {
     toggleUIPanelAction('About', false)
@@ -107,14 +125,21 @@ export const loadSceneFromDemoAction = async (parsedDemo: AsyncParser) => {
     const modelWorldBounds = await fetchMapWorldBounds(parsedDemo.header.map)
     const sceneBoundaries = { ...boundaryOverrides, ...parsedDemo.world }
     const referenceBoundaryMin = modelWorldBounds?.boundaryMin ?? sceneBoundaries.boundaryMin
-    const rtsCenter = savedRtsCenter ?? boundaryOverrides.rtsCenter
+    // Camera: saved centre, then the hand-tuned override, then the converter's automatic camera
+    // (conversion.json camera, relative to its worldBounds.boundaryMin like the other two).
+    const rtsCenter =
+      savedRtsCenter ?? boundaryOverrides.rtsCenter ?? modelWorldBounds?.camera?.rtsCenter
+    const cameraOffset =
+      boundaryOverrides.cameraOffset ??
+      modelWorldBounds?.camera?.cameraOffset ??
+      FALLBACK_CAMERA_OFFSET
     const sceneRtsCenter = rtsCenter
       ? translatePointBetweenBoundaryMins(
           rtsCenter,
           referenceBoundaryMin,
           sceneBoundaries.boundaryMin
         )
-      : undefined
+      : medianAlivePlayerPosition(parsedDemo, 0.1) // unsupported map: centre on the players
 
     // Remember to update the non-redux instances!
     useInstance.getState().setParsedDemo(parsedDemo)
@@ -134,6 +159,7 @@ export const loadSceneFromDemoAction = async (parsedDemo: AsyncParser) => {
           map: parsedDemo.header.map,
           bounds: parseMapBoundaries({
             ...sceneBoundaries,
+            cameraOffset,
             ...(sceneRtsCenter ? { rtsCenter: sceneRtsCenter } : {}),
           }),
           controls: {
@@ -161,14 +187,19 @@ export const loadEmptySceneMapAction = async (mapName: string) => {
     const worldBounds = await fetchMapWorldBounds(mapName)
     const overrides = getMapBoundaries(mapName)
 
-    const boundaries = worldBounds
-      ? { ...overrides, ...worldBounds }
+    const boundaries: MapBoundaries | null = worldBounds
+      ? {
+          ...overrides,
+          boundaryMin: worldBounds.boundaryMin,
+          boundaryMax: worldBounds.boundaryMax,
+          cameraOffset:
+            overrides?.cameraOffset ?? worldBounds.camera?.cameraOffset ?? FALLBACK_CAMERA_OFFSET,
+        }
       : overrides
     const mapKey = getMapBoundariesKey(mapName) ?? mapName
     const savedRtsCenter = getState().settings.scene.rtsCenters[mapKey]
-    const boundariesWithCenter = savedRtsCenter && boundaries
-      ? { ...boundaries, rtsCenter: savedRtsCenter }
-      : boundaries
+    const rtsCenter = savedRtsCenter ?? overrides?.rtsCenter ?? worldBounds?.camera?.rtsCenter
+    const boundariesWithCenter = rtsCenter && boundaries ? { ...boundaries, rtsCenter } : boundaries
 
     if (!boundariesWithCenter?.boundaryMin || !boundariesWithCenter?.boundaryMax) {
       alert('Unable to load map. Could not determine map boundaries.')

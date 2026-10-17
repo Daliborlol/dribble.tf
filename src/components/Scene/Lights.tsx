@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import '@react-three/fiber'
 
-import { getMapConversionUrl } from '@utils/game'
+import { fetchMapConversion } from '@utils/mapAssets'
 
 type LightingProfile = {
   ambientColor: string
@@ -23,6 +23,8 @@ type VmfLightEnvironment = {
     color?: number[]
     brightness?: number | null
   } | null
+  // Direction the sunlight travels (VRAD SetupLightNormalFromProps), Source axes; bsp-to-glb maps only.
+  direction?: number[] | null
 }
 
 const DEFAULT_LIGHTING: LightingProfile = {
@@ -57,6 +59,15 @@ const toCssColor = (color: number[] | undefined, fallback: string): string => {
   return `rgb(${r}, ${g}, ${b})`
 }
 
+const sunPosition = (
+  direction: number[] | null | undefined
+): [number, number, number] | undefined => {
+  if (!Array.isArray(direction) || direction.length < 3) return undefined
+  const [x, y, z] = direction.map(Number)
+  if (![x, y, z].every(Number.isFinite) || Math.hypot(x, y, z) < 1e-6) return undefined
+  return [-x * 1000, -y * 1000, -z * 1000]
+}
+
 const deriveLightingProfile = (
   environment: VmfLightEnvironment | null | undefined
 ): LightingProfile => {
@@ -86,7 +97,8 @@ const deriveLightingProfile = (
       DEFAULT_LIGHTING.keyColor
     ),
     keyIntensity,
-    keyDirection: DEFAULT_LIGHTING.keyDirection,
+    // Scene axes are Source axes, so the key light sits opposite the travel direction of the sun.
+    keyDirection: sunPosition(environment.direction) ?? DEFAULT_LIGHTING.keyDirection,
     fillColor: toCssColor(
       blendWithWhite(environment.ambient?.color, 0.35),
       DEFAULT_LIGHTING.fillColor
@@ -102,19 +114,16 @@ export const Lights = ({ map }: { map?: string }) => {
   useEffect(() => {
     setProfile(DEFAULT_LIGHTING)
 
-    const conversionUrl = getMapConversionUrl(map || '')
-    if (!conversionUrl) return
-
     let cancelled = false
 
-    fetch(conversionUrl)
-      .then(response => {
-        if (!response.ok) throw new Error(`${response.status}`)
-        return response.json()
-      })
-      .then(meta => {
+    fetchMapConversion(map || '')
+      .then(conversion => {
         if (!cancelled) {
-          setProfile(deriveLightingProfile(meta?.lightEnvironment))
+          setProfile(
+            deriveLightingProfile(
+              conversion?.lightEnvironment as VmfLightEnvironment | null | undefined
+            )
+          )
         }
       })
       .catch(() => {

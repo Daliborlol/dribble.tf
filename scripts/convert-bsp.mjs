@@ -21,6 +21,11 @@
  *   node scripts/convert-bsp.mjs --bsp <map.bsp> [--map <name>] [--out-dir <dir>]
  *        [--bsp-to-glb <binary>] [--chunk-grid 4] [--lightmap-format webp|png]
  *        [--meshopt true|false] [--skybox-dir public/models/skybox] [--keep-temp true]
+ *        [--only-meta true]
+ *
+ *   --only-meta true runs both bsp-to-glb passes into the temp dir (the brush-model bounds and the
+ *   camera occlusion test need the render export) but writes only map-meta.json. Used for maps that
+ *   keep an older textured GLB and conversion.json, such as koth_product_final.
  *
  * Dependencies: patched bsp-to-glb (see scripts/setup-bsp-to-glb.mjs), Node 18+,
  * @gltf-transform/{core,extensions,functions}, meshoptimizer, sharp.
@@ -65,6 +70,7 @@ const chunkGrid = Math.max(1, Number(flag('chunk-grid', '4')))
 const lightmapFormat = flag('lightmap-format', 'webp')
 const useMeshopt = bool('meshopt', 'true')
 const keepTemp = bool('keep-temp', 'false')
+const onlyMeta = bool('only-meta', 'false')
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
 
 // Lightmap encoding: stored = sRGB(clamp(linear * exposure / LIGHTMAP_RANGE)). At runtime
@@ -123,6 +129,11 @@ const run = (binary, argv, label) => {
 }
 
 const versionInfo = JSON.parse(run(bspToGlb, ['--version-json'], 'bsp-to-glb --version-json').stdout)
+// The binary reports no source commit; record the checkout it was built from (target/release/..).
+const checkoutCommit = (() => {
+  const result = spawnSync('git', ['-C', path.resolve(path.dirname(bspToGlb), '..', '..'), 'rev-parse', 'HEAD'], { encoding: 'utf8' })
+  return result.status === 0 ? result.stdout.trim() : null
+})()
 console.log(`Converting ${mapName} with ${versionInfo.name} ${versionInfo.version} (${bspToGlb})`)
 
 // Pass 1: entity graph + embedded PAK resources (fast, no geometry).
@@ -269,8 +280,13 @@ for (const node of rawRoot.listNodes()) {
   const m = node.getMatrix() // column-major; brush-entity vertices are model-local
   const xf = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]]
   const xn = (x, y, z) => [m[0] * x + m[4] * y + m[8] * z, m[1] * x + m[5] * y + m[9] * z, m[2] * x + m[6] * y + m[10] * z]
-  const entityHidden = !isWorld && (!extras.initiallyRendered || HIDDEN_BRUSH_CLASSES.test(classname))
-  brushNodes.push({ node, extras, hidden: entityHidden })
+  const hiddenClass = !isWorld && HIDDEN_BRUSH_CLASSES.test(classname)
+  // Addressable brush entities that start hidden (func_brush StartDisabled, rendermode 10 doors and
+  // trains) keep their geometry, so a gate that appears mid-round has a mesh; their node gets
+  // extras.dribble.initiallyVisible = false and runtime code shows it when the demo says so.
+  const startsHidden = !isWorld && !hiddenClass && !extras.initiallyRendered && ADDRESSABLE.test(classname)
+  const entityHidden = hiddenClass || (!isWorld && !extras.initiallyRendered && !startsHidden)
+  brushNodes.push({ node, extras, hidden: entityHidden, startsHidden })
   if (entityHidden) {
     counters.hiddenEntityNodes++
     continue
@@ -467,7 +483,7 @@ if (skyGroup) {
 }
 
 const entityNodes = []
-for (const { node, extras: e } of brushNodes) {
+for (const { node, extras: e, startsHidden } of brushNodes) {
   if (e.bspModelIndex === 0) continue
   const name = node.getName()
   const group = groups.get(name)
@@ -490,35 +506,42 @@ for (const { node, extras: e } of brushNodes) {
         localMins: e.sourceMins, // Source units, model-local (placeholder boxes for prop-only doors)
         localMaxs: e.sourceMaxs,
         hasGeometry: Boolean(mesh),
+        // false: the entity starts hidden (func_brush StartDisabled, rendermode 6/10); World.tsx hides
+        // the node until runtime code shows it.
+        initiallyVisible: !startsHidden,
+        renderMode: Number(e.rendermode) || 0, // 10 = never drawn in game (collision brush of a prop door)
+        startDisabled: e.startDisabled === '1',
       },
     })
   if (mesh) out.addChild(meshChild(name, mesh))
   scene.addChild(out)
-  entityNodes.push({ name, classname: e.classname, targetname: e.targetname ?? null, hasGeometry: Boolean(mesh) })
+  entityNodes.push({ name, classname: e.classname, targetname: e.targetname ?? null, hasGeometry: Boolean(mesh), initiallyVisible: !startsHidden })
 }
 
-// keepAttributes: lightmap UVs have no texture reference; keepLeaves: mesh-less entity anchors.
-await doc.transform(prune({ keepAttributes: true, keepLeaves: true }))
-const quantizeOptions = {
-  quantizationVolume: 'scene', // one grid for all chunks → shared edges stay crack-free
-  quantizePosition: 16,
-  quantizeNormal: 8,
-  quantizeTexcoord: 16, // 1/65535 of a 4096 px atlas ≈ 0.06 px
-  quantizeColor: 12,
-}
 const glbOutPath = path.join(outDir, 'world.glb')
 fs.mkdirSync(outDir, { recursive: true })
-if (useMeshopt) {
-  await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'high', ...quantizeOptions }))
-} else {
-  await doc.transform(quantize(quantizeOptions))
+if (!onlyMeta) {
+  // keepAttributes: lightmap UVs have no texture reference; keepLeaves: mesh-less entity anchors.
+  await doc.transform(prune({ keepAttributes: true, keepLeaves: true }))
+  const quantizeOptions = {
+    quantizationVolume: 'scene', // one grid for all chunks → shared edges stay crack-free
+    quantizePosition: 16,
+    quantizeNormal: 8,
+    quantizeTexcoord: 16, // 1/65535 of a 4096 px atlas ≈ 0.06 px
+    quantizeColor: 12,
+  }
+  if (useMeshopt) {
+    await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'high', ...quantizeOptions }))
+  } else {
+    await doc.transform(quantize(quantizeOptions))
+  }
+  await io.write(glbOutPath, doc)
 }
-await io.write(glbOutPath, doc)
 
 // ─── lightmap atlas ──────────────────────────────────────────────────────────
 
 let lightmapInfo = null
-if (fs.existsSync(rawAtlasPath)) {
+if (!onlyMeta && fs.existsSync(rawAtlasPath)) {
   const { data, info } = await sharp(rawAtlasPath).raw().toBuffer({ resolveWithObject: true })
   if (info.channels !== 4) throw new Error(`unexpected lightmap channels ${info.channels}`)
   // Exposure: TF2 auto-exposure clamps roughly to [0.5, 2]; aim the 90th percentile luminance at 1.25.
@@ -580,7 +603,7 @@ if (fs.existsSync(rawAtlasPath)) {
 // ─── visibility (dribble MapVisibilityMetadata v2, exact) ────────────────────
 
 let visibilityInfo = null
-{
+if (!onlyMeta) {
   const W = visibility.clusterWordCount
   const faceSlot = new Map(visibility.worldFaceIndices.map((face, n) => [face, n]))
   const chunkWords = chunkFaceLists.map(faces => {
@@ -624,15 +647,15 @@ let visibilityInfo = null
 
 const skyname = worldspawn.kv.skyname || null
 let skyboxInfo = { name: skyname, source: null }
-if (skyname) {
+if (skyname && !onlyMeta) {
   const existing = fs.existsSync(path.join(skyboxRoot, skyname))
   const pakSkyDir = path.join(pakDir, 'materials', 'skybox')
   const pakFiles = fs.existsSync(pakSkyDir) ? fs.readdirSync(pakSkyDir) : []
   const findFace = side => pakFiles.find(file => file.toLowerCase() === `${skyname}${side}.vtf`.toLowerCase())
   const sides = ['bk', 'dn', 'ft', 'lf', 'rt', 'up']
-  if (existing) {
-    skyboxInfo = { name: skyname, source: 'existing' }
-  } else if (vtfToPng && sides.every(findFace)) {
+  // The map's own PAK faces win over an existing folder, so the output does not depend on whether an
+  // earlier run already wrote them (and records where the sky came from).
+  if (vtfToPng && sides.every(findFace)) {
     const dir = path.join(skyboxRoot, skyname)
     fs.mkdirSync(dir, { recursive: true })
     for (const side of sides) {
@@ -660,6 +683,8 @@ if (skyname) {
       }
     }
     skyboxInfo = { name: skyname, source: 'bsp-pak' }
+  } else if (existing) {
+    skyboxInfo = { name: skyname, source: 'existing' }
   } else {
     // Stock skies we cannot ship: point at the closest look-alike already in public/models/skybox.
     const SKY_FALLBACKS = { sky_badlands_01: 'sky_dustbowl_01', sky_upward: 'sky_tf2_04', sky_goldrush_01: 'sky_dustbowl_01', sky_alpinestorm_01: 'sky_morningsnow_01', sky_harvest_01: 'sky_granary_01', sky_night_01: 'sky_night_01' }
@@ -684,66 +709,143 @@ for (const [name, stat] of materialStats) {
 }
 const meta = buildMapMeta({ mapName, entities, modelBounds, worldMins, worldMaxs, waterSurfaces, bspVersion: lightmapManifest.source.bspVersion })
 
-// Occlusion-aware RTS camera: keep the default offset unless world geometry blocks the line of
-// sight to the focus; then try steeper elevations and the other three sides.
+// Occlusion-aware RTS camera. map-meta.mjs picks the focus (the objective named by camera.method) and a
+// default offset; keep them unless opaque world geometry blocks the line of sight from the camera to
+// the focus (64 units above it). Search order: the original focus first, at the default distance and
+// then a shorter one, elevations 58/66/74/82 degrees and 8 azimuths (the base side and its quarter
+// turns first). If the focus is enclosed (an indoor point, a tunnel), slide it along the objective:
+// along the payload path for payload / tug of war, on rings around the point otherwise. Only when
+// every candidate is blocked does it fall back to a near top-down view over the roofs.
 {
-  const tris = []
+  const triangles = []
   for (const group of groups.values()) {
     if (group.kind !== 'worldChunk') continue
     for (const bucket of group.buckets.values()) {
       if (bucket.kind !== 'opaque') continue
       const P = bucket.positions
       for (let t = 0; t < bucket.indices.length; t += 3) {
-        const [a, b, c] = [bucket.indices[t], bucket.indices[t + 1], bucket.indices[t + 2]].map(i => toSource(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]))
-        tris.push(a, b, c)
+        for (let k = 0; k < 3; k++) {
+          const i = bucket.indices[t + k]
+          triangles.push(...toSource(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]))
+        }
       }
     }
   }
-  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+  const T = Float64Array.from(triangles)
+  const triCount = T.length / 9
+  const B = new Float64Array(triCount * 6) // per-triangle AABB for a cheap reject
+  for (let n = 0; n < triCount; n++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const a = T[n * 9 + axis], b = T[n * 9 + 3 + axis], c = T[n * 9 + 6 + axis]
+      B[n * 6 + axis] = Math.min(a, b, c)
+      B[n * 6 + 3 + axis] = Math.max(a, b, c)
+    }
+  }
   const blocked = (from, to) => {
-    const dir = sub(to, from)
-    for (let i = 0; i < tris.length; i += 3) {
-      const e1 = sub(tris[i + 1], tris[i]), e2 = sub(tris[i + 2], tris[i])
-      const pv = cross(dir, e2), det = dot(e1, pv)
+    const lo = [0, 1, 2].map(axis => Math.min(from[axis], to[axis]))
+    const hi = [0, 1, 2].map(axis => Math.max(from[axis], to[axis]))
+    const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2]
+    for (let n = 0; n < triCount; n++) {
+      const b = n * 6
+      if (B[b] > hi[0] || B[b + 3] < lo[0] || B[b + 1] > hi[1] || B[b + 4] < lo[1] || B[b + 2] > hi[2] || B[b + 5] < lo[2]) continue
+      const o = n * 9
+      const e1x = T[o + 3] - T[o], e1y = T[o + 4] - T[o + 1], e1z = T[o + 5] - T[o + 2]
+      const e2x = T[o + 6] - T[o], e2y = T[o + 7] - T[o + 1], e2z = T[o + 8] - T[o + 2]
+      const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x
+      const det = e1x * px + e1y * py + e1z * pz
       if (Math.abs(det) < 1e-9) continue
-      const tv = sub(from, tris[i]), u = dot(tv, pv) / det
+      const tx = from[0] - T[o], ty = from[1] - T[o + 1], tz = from[2] - T[o + 2]
+      const u = (tx * px + ty * py + tz * pz) / det
       if (u < 0 || u > 1) continue
-      const qv = cross(tv, e1), v = dot(dir, qv) / det
+      const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x
+      const v = (dx * qx + dy * qy + dz * qz) / det
       if (v < 0 || u + v > 1) continue
-      const t = dot(e2, qv) / det
+      const t = (e2x * qx + e2y * qy + e2z * qz) / det
       if (t > 0.02 && t < 1) return true
     }
     return false
   }
+
   const c = meta.camera
-  const focus = c.focusSource.map((v, i) => (i === 2 ? v + 64 : v))
+  const original = c.focusSource
   const base = [c.cameraOffset.x, c.cameraOffset.y, c.cameraOffset.z]
   const distance = Math.hypot(...base)
   const baseAzimuth = Math.atan2(base[1], base[0])
+
+  // Focus candidates, nearest the original first.
+  const focusCandidates = [original]
+  const pathPoint = (path, at) => {
+    const i = path.findIndex(node => node.distance >= at)
+    if (i <= 0) return path[Math.max(0, i)].origin
+    const [a, b] = [path[i - 1], path[i]]
+    const f = b.distance > a.distance ? (at - a.distance) / (b.distance - a.distance) : 0
+    return a.origin.map((value, k) => value + (b.origin[k] - value) * f)
+  }
+  const route = meta.payload[0]
+  if (route?.path?.length > 1 && (c.method === 'payload-first-push' || c.method === 'tug-of-war-centre')) {
+    const firstCheckpoint = route.linked.map(l => l.distance).filter(d => d !== null && d > 0).sort((a, b) => a - b)[0] ?? route.length
+    const centre = c.method === 'payload-first-push' ? firstCheckpoint / 2 : route.length / 2
+    const span = c.method === 'payload-first-push' ? 0.4 * firstCheckpoint : 0.25 * route.length
+    for (let shift = 128; shift <= span; shift += 128) {
+      for (const at of [centre + shift, centre - shift]) {
+        if (at >= 0 && at <= route.length) focusCandidates.push(pathPoint(route.path, at))
+      }
+    }
+  } else {
+    for (const radius of [192, 384, 576]) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4
+        focusCandidates.push([original[0] + radius * Math.cos(a), original[1] + radius * Math.sin(a), original[2]])
+      }
+    }
+  }
+  const azimuthSteps = [0, 2, 6, 4, 1, 7, 3, 5] // quarter turns first, then the diagonals
   let chosen = null
-  outer: for (const elevationDeg of [58, 66, 74, 82]) {
-    for (const turn of [0, 1, 2, 3]) {
-      const az = baseAzimuth + (turn * Math.PI) / 2, el = (elevationDeg * Math.PI) / 180
-      const offset = [distance * Math.cos(el) * Math.cos(az), distance * Math.cos(el) * Math.sin(az), distance * Math.sin(el)]
-      if (!blocked(focus, focus.map((v, i) => v + offset[i]))) {
-        chosen = { offset, elevationDeg, turn }
-        break outer
+  search: for (const focusPoint of focusCandidates) {
+    const eye = [focusPoint[0], focusPoint[1], focusPoint[2] + 64]
+    for (const reach of [distance, Math.max(1100, 0.7 * distance)]) {
+      for (const elevationDeg of [58, 66, 74, 82]) {
+        for (const step of azimuthSteps) {
+          const az = baseAzimuth + (step * Math.PI) / 4, el = (elevationDeg * Math.PI) / 180
+          const offset = [reach * Math.cos(el) * Math.cos(az), reach * Math.cos(el) * Math.sin(az), reach * Math.sin(el)]
+          if (!blocked(eye, eye.map((v, i) => v + offset[i]))) {
+            chosen = { focusPoint, offset, elevationDeg, step, reach }
+            break search
+          }
+        }
       }
     }
   }
   if (chosen) {
+    const focus = chosen.focusPoint.map(v => +v.toFixed(1))
+    const shift = Math.round(Math.hypot(focus[0] - original[0], focus[1] - original[1], focus[2] - original[2]))
+    c.focusSource = focus
+    c.rtsCenter = { x: Math.round(focus[0] - worldMins[0]), y: Math.round(focus[1] - worldMins[1]), z: Math.round(focus[2] - worldMins[2]) }
     c.cameraOffset = { x: Math.round(chosen.offset[0]), y: Math.round(chosen.offset[1]), z: Math.round(chosen.offset[2]) }
-    c.occlusion = { clear: true, elevationDeg: chosen.elevationDeg, quarterTurns: chosen.turn }
+    c.occlusion = {
+      clear: true,
+      elevationDeg: chosen.elevationDeg,
+      ...(chosen.step % 2 === 0 ? { quarterTurns: chosen.step / 2 } : {}),
+      azimuthDeg: chosen.step * 45, // relative to the default side
+      distance: Math.round(chosen.reach),
+      focusShift: shift, // units between the objective focus and the framed point
+    }
   } else {
-    // Enclosed focus (indoor point/tunnel): fall back to a near top-down view over the roofs.
+    // Enclosed everywhere: fall back to a near top-down view over the roofs.
     const el = (82 * Math.PI) / 180
     c.cameraOffset = { x: Math.round(distance * Math.cos(el) * Math.cos(baseAzimuth)), y: Math.round(distance * Math.cos(el) * Math.sin(baseAzimuth)), z: Math.round(distance * Math.sin(el)) }
     c.occlusion = { clear: false, elevationDeg: 82 }
   }
 }
 fs.writeFileSync(path.join(outDir, 'map-meta.json'), JSON.stringify(meta, null, 1))
+
+if (onlyMeta) {
+  console.log(`  map-meta.json only (${meta.gameMode}, camera ${meta.camera.method}); world.glb, lightmap, visibility and conversion.json untouched`)
+  console.log(`Done → ${outDir}`)
+  if (!keepTemp) fs.rmSync(tempDir, { recursive: true, force: true })
+  else console.log(`Temp kept: ${tempDir}`)
+  process.exit(0)
+}
 
 // ─── conversion.json ─────────────────────────────────────────────────────────
 
@@ -752,7 +854,7 @@ const conversion = {
   mapName,
   timestamp: new Date().toISOString(),
   pipeline: 'bsp-to-glb',
-  converter: { name: versionInfo.name, version: versionInfo.version, target: versionInfo.target, sourceCommit: versionInfo.sourceCommit, patches: 'scripts/bsp-to-glb/*.patch' },
+  converter: { name: versionInfo.name, version: versionInfo.version, target: versionInfo.target, sourceCommit: versionInfo.sourceCommit ?? checkoutCommit, patches: 'scripts/bsp-to-glb/*.patch' },
   worldBounds: {
     boundaryMin: { x: worldMins[0], y: worldMins[1], z: worldMins[2] },
     boundaryMax: { x: worldMaxs[0], y: worldMaxs[1], z: worldMaxs[2] },
@@ -786,6 +888,7 @@ const conversion = {
     skyboxFaces: counters.skyboxFaces,
     brushEntityNodes: entityNodes.length,
     brushEntityNodesWithGeometry: entityNodes.filter(n => n.hasGeometry).length,
+    brushEntityNodesInitiallyHidden: entityNodes.filter(n => !n.initiallyVisible).length,
     hiddenBrushEntities: counters.hiddenEntityNodes,
     displacementFaces: exportStats.displacementFaces,
     staticProps: exportStats.staticProps,

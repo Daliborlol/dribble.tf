@@ -1,6 +1,8 @@
 import { getAsset } from './misc'
+import { fetchMapConversion } from './mapAssets'
 import { MAP_NAME_SEARCH_MAP, MAP_SKYBOX_MAP } from '@constants/mappings'
 import { MapBoundaries } from '@components/Analyse/Data/PositionCache'
+import type { Vector } from '@components/Analyse/Data/Types'
 
 // Handle demos that have different versioned maps. We need a function that
 // can parse a given {mapName}, then determine which gltf model to use
@@ -60,22 +62,25 @@ interface MapSkyboxTypes {
   side: string
 }
 
+/** World bounds from the map's conversion.json, plus its automatic RTS camera when it has one. */
 export const fetchMapWorldBounds = async (
   loadedMapName: string
-): Promise<Pick<MapBoundaries, 'boundaryMin' | 'boundaryMax'> | null> => {
-  const conversionUrl = getMapConversionUrl(loadedMapName)
-  if (!conversionUrl) return null
-
-  try {
-    const response = await fetch(conversionUrl)
-    if (!response.ok) return null
-    const meta = await response.json()
-    if (meta?.worldBounds?.boundaryMin && meta?.worldBounds?.boundaryMax) {
-      return meta.worldBounds
-    }
-    return null
-  } catch {
-    return null
+): Promise<
+  | (Pick<MapBoundaries, 'boundaryMin' | 'boundaryMax'> & {
+      camera?: { rtsCenter: Vector; cameraOffset: Vector }
+    })
+  | null
+> => {
+  const conversion = await fetchMapConversion(loadedMapName)
+  const bounds = conversion?.worldBounds
+  if (!bounds?.boundaryMin || !bounds?.boundaryMax) return null
+  const camera = conversion?.camera
+  return {
+    boundaryMin: bounds.boundaryMin,
+    boundaryMax: bounds.boundaryMax,
+    ...(camera?.rtsCenter && camera?.cameraOffset
+      ? { camera: { rtsCenter: camera.rtsCenter, cameraOffset: camera.cameraOffset } }
+      : {}),
   }
 }
 

@@ -20,6 +20,13 @@ import {
   getMapModelUrl,
 } from '@utils/mapAssets'
 import { useHlSetting } from '@highlander/extras/hooks'
+import {
+  BspMaterialInfo,
+  BspMaterials,
+  MAP_WIREFRAME_MATERIAL,
+  applyBspMaterials,
+  isSharedMapMaterial,
+} from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
 
@@ -54,36 +61,13 @@ function isInvisibleEntityNode(nodeName: string): boolean {
   return INVISIBLE_NODE_PREFIXES.some(prefix => name.startsWith(prefix))
 }
 
-const MAP_WIREFRAME_MATERIAL = new THREE.MeshStandardMaterial({
-  color: '#333333',
-  opacity: 0.1,
-  transparent: true,
-  wireframe: true,
-})
-
 const MAP_UNTEXTURED_MATERIAL = new THREE.MeshStandardMaterial({
   color: 'white',
-})
-
-// bsp-to-glb maps in untextured mode: vertex colours (the compile-time average albedo) lit by Lights.tsx.
-const BSP_UNTEXTURED_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true })
-const BSP_UNTEXTURED_TRANSLUCENT_MATERIAL = new THREE.MeshLambertMaterial({
-  vertexColors: true,
-  transparent: true,
-  depthWrite: false,
-  side: THREE.DoubleSide,
 })
 
 const MAP_CHUNKING_ENABLED = mapChunkingConfig.enabled
 
 type MapPipeline = 'bsp-to-glb' | 'textured'
-
-/** `material.userData.dribble` of a bsp-to-glb material (scripts/convert-bsp.mjs). */
-interface BspMaterialInfo {
-  kind: 'opaque' | 'translucent' | 'water' | 'unlit' | 'visualizer' | string
-  lightmap: boolean
-  hiddenByDefault?: boolean
-}
 
 interface LoadedMap {
   root: THREE.Group
@@ -106,7 +90,7 @@ export const World = (props: WorldProps) => {
   const currentClusterRef = useRef<number | null>(null)
   const mapLoadRequestIdRef = useRef(0)
   const visibilityRequestIdRef = useRef(0)
-  const bspMaterialsRef = useRef<THREE.MeshBasicMaterial[]>([])
+  const bspMaterialsRef = useRef<BspMaterials | null>(null)
   const [loadedMap, setLoadedMap] = useState<LoadedMap | null>(null)
   const [mapOverlay, setMapOverlay] = useState<THREE.Group | null>()
   const [mapVisibility, setMapVisibility] = useState<MapVisibilityMetadata | null>(null)
@@ -391,62 +375,20 @@ export const World = (props: WorldProps) => {
     const mapModel = loadedMap.root
 
     if (loadedMap.pipeline === 'bsp-to-glb') {
-      // One shared material per kind. Vertex colours are the albedo (texdata reflectivity) and the
-      // lightmap lights them, so none of the textured-GLB fixes below apply.
-      const lightmapRange = loadedMap.conversion?.lightmap?.range ?? 1
-      const materials = new Map<string, THREE.Material>()
-      const original = new Set<THREE.Material>()
-      const basic: THREE.MeshBasicMaterial[] = []
-      const materialFor = (info: BspMaterialInfo): THREE.Material => {
-        if (mode === 'wireframe') return MAP_WIREFRAME_MATERIAL
-        const transparent = info.kind !== 'opaque' && info.kind !== 'unlit'
-        if (mode === 'untextured') {
-          return transparent ? BSP_UNTEXTURED_TRANSLUCENT_MATERIAL : BSP_UNTEXTURED_MATERIAL
-        }
-        const lit = info.lightmap && !!loadedMap.lightmap
-        const key = `${info.kind}:${lit}`
-        let material = materials.get(key)
-        if (!material) {
-          const created = new THREE.MeshBasicMaterial({
-            vertexColors: true,
-            lightMap: lit ? loadedMap.lightmap : null,
-            // three divides lightmaps by PI; the atlas stores linear light / range
-            lightMapIntensity: lightmapRange * Math.PI * brightnessRef.current,
-            transparent,
-            depthWrite: !transparent,
-            side:
-              info.kind === 'water' || info.kind === 'visualizer'
-                ? THREE.DoubleSide
-                : THREE.FrontSide,
-          })
-          created.name = `dribble_${info.kind}${lit ? '_lit' : ''}`
-          created.userData.dribbleLit = lit
-          basic.push(created)
-          materials.set(key, created)
-          material = created
-        }
-        return material
-      }
-
-      mapModel.traverse(node => {
-        const mesh = node as THREE.Mesh
-        if (!mesh.isMesh) return
-        if (!mesh.userData.dribbleMaterial) {
-          const current = mesh.material as THREE.Material
-          mesh.userData.dribbleMaterial = (current?.userData?.dribble as BspMaterialInfo) ?? {
-            kind: 'opaque',
-            lightmap: false,
-          }
-          if (current) original.add(current)
-        }
-        mesh.material = materialFor(mesh.userData.dribbleMaterial as BspMaterialInfo)
+      // One shared material per kind (src/highlander/map/bspMaterials.ts). Vertex colours are the
+      // albedo (texdata reflectivity) and the lightmap lights them, so none of the textured-GLB fixes
+      // below apply.
+      const materials = applyBspMaterials(mapModel, {
+        mode: mode ?? 'textured',
+        lightmap: loadedMap.lightmap,
+        lightmapRange: loadedMap.conversion?.lightmap?.range ?? 1,
+        brightness: brightnessRef.current,
       })
-      original.forEach(material => material.dispose())
-      bspMaterialsRef.current = basic
+      bspMaterialsRef.current = materials
 
       return () => {
-        if (bspMaterialsRef.current === basic) bspMaterialsRef.current = []
-        basic.forEach(material => material.dispose())
+        if (bspMaterialsRef.current === materials) bspMaterialsRef.current = null
+        materials.dispose()
       }
     }
 
@@ -483,10 +425,7 @@ export const World = (props: WorldProps) => {
 
   // Map brightness (settings.highlander.map.brightness) scales the lightmap without a reload.
   useEffect(() => {
-    const range = loadedMap?.conversion?.lightmap?.range ?? 1
-    bspMaterialsRef.current.forEach(material => {
-      material.lightMapIntensity = range * Math.PI * brightness
-    })
+    bspMaterialsRef.current?.setBrightness(brightness)
   }, [brightness, loadedMap, mode])
 
   // Respawn-room visualizer meshes (material hiddenByDefault) follow map.respawnVisualizers.
@@ -615,12 +554,7 @@ function freezeStaticMapSubtree(root: THREE.Object3D) {
   root.updateMatrixWorld(true)
 }
 
-const SHARED_MATERIALS = new Set<THREE.Material>([
-  MAP_WIREFRAME_MATERIAL,
-  MAP_UNTEXTURED_MATERIAL,
-  BSP_UNTEXTURED_MATERIAL,
-  BSP_UNTEXTURED_TRANSLUCENT_MATERIAL,
-])
+const SHARED_MATERIALS = new Set<THREE.Material>([MAP_UNTEXTURED_MATERIAL])
 
 function disposeLoadedMap(loaded: LoadedMap) {
   const textures = new Set<THREE.Texture>()
@@ -630,7 +564,7 @@ function disposeLoadedMap(loaded: LoadedMap) {
     mesh.geometry?.dispose()
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     materials.forEach(material => {
-      if (!material || SHARED_MATERIALS.has(material)) return
+      if (!material || SHARED_MATERIALS.has(material) || isSharedMapMaterial(material)) return
       Object.values(material).forEach(value => {
         if (value instanceof THREE.Texture) textures.add(value)
       })

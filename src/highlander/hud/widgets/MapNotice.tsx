@@ -15,18 +15,32 @@ import { useInstance, useStore } from '@zus/store'
 const MESSAGE_MS = 8000
 const FADE = 'opacity 400ms ease'
 
+// A number per loaded demo (0 without one), so the store selector returns a primitive (contract rule
+// 1.6.4) that still changes when another demo loads: the notice shows again even when its text repeats.
+const demoIds = new WeakMap<object, number>()
+let nextDemoId = 1
+const demoLoadId = (demo: object | undefined): number => {
+  if (!demo) return 0
+  let id = demoIds.get(demo)
+  if (id === undefined) {
+    id = nextDemoId++
+    demoIds.set(demo, id)
+  }
+  return id
+}
+
 export const MapNotice = React.memo((_props: { renderTick: number }) => {
   const map = useStore(s => s.scene.map)
   const state = useInstance(s => s.mapStatus.state)
   const folder = useInstance(s => s.mapStatus.folder)
-  const demo = useInstance(s => s.parsedDemo)
+  const demoId = useInstance(s => demoLoadId(s.parsedDemo))
 
   const message =
     state === 'missing'
       ? `Map geometry for ${map} is not available; players and objectives still play.`
       : state === 'error'
         ? `Map geometry for ${map} failed to load; players and objectives still play.`
-        : state === 'ready' && demo && folder && folder.toLowerCase() !== map.toLowerCase()
+        : state === 'ready' && demoId > 0 && folder && folder.toLowerCase() !== map.toLowerCase()
           ? `Using ${folder} geometry for ${map}`
           : null
 
@@ -40,7 +54,7 @@ export const MapNotice = React.memo((_props: { renderTick: number }) => {
     setVisible(true)
     const timer = setTimeout(() => setVisible(false), MESSAGE_MS)
     return () => clearTimeout(timer)
-  }, [message, demo])
+  }, [message, demoId])
 
   if (!message) return null
 

@@ -37,7 +37,27 @@ export function allActors(): IterableIterator<ActorHandles> {
 
 export const useActorRegistryVersion = () => useInstance(s => s.actorRegistryVersion)
 
-// Probe: which actors are registered, with their scene node ids and world positions.
+/**
+ * Whether the player model is drawn: true when some mesh under `body` has every node from itself up to the actor
+ * `group` visible. The model's own visibility sits on PlayerModel's inner group, not on `body`. Null while no
+ * model mesh is mounted (GLB still loading, the class-change remount, no class or team).
+ */
+function modelVisibility(body: THREE.Object3D, group: THREE.Object3D): boolean | null {
+  let meshes = 0
+  let visible = false
+  body.traverse(node => {
+    if (visible || !(node as THREE.Mesh).isMesh) return
+    meshes++
+    for (let n: THREE.Object3D | null = node; n; n = n.parent) {
+      if (!n.visible) return
+      if (n === group) break
+    }
+    visible = true
+  })
+  return meshes > 0 ? visible : null
+}
+
+// Probe: which actors are registered, with their scene node ids, model visibility and world positions.
 registerHlProbe('actors.registry', () =>
   Array.from(actors.values())
     .map(({ entityId, group, body, aim }) => {
@@ -46,7 +66,7 @@ registerHlProbe('actors.registry', () =>
         entityId,
         groupId: group.id,
         userDataEntityId: group.userData?.entityId ?? null,
-        bodyVisible: body.visible,
+        modelVisible: modelVisibility(body, group),
         aimZ: Math.round(aim.position.z * 100) / 100,
         position: [position.x, position.y, position.z].map(v => Math.round(v * 10) / 10),
       }

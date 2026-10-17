@@ -206,6 +206,9 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
 
   const { classId, health, team, user, healTarget, renderTick } = props
   const fx = useActorFx(user.entityId, renderTick, classId, team)
+  // DEFAULT_ACTOR_FX leaves the model class and team at 0 and '', which mean the actor's base class and team
+  const modelClassId = fx.modelClassId || classId
+  const modelTeam = fx.modelTeam || team
 
   // True when Controls renders from this actor's own povCamera: in POV mode the focused actor, or, while
   // a POV camera override is set, the actor that owns the override (a chase or death camera owns none).
@@ -365,7 +368,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     setChanging(true)
     const timer = setTimeout(() => setChanging(false), 10)
     return () => clearTimeout(timer)
-  }, [fx.modelTeam, fx.modelClassId])
+  }, [modelTeam, modelClassId])
 
   return (
     <group name="actor" ref={actorRef} userData={user}>
@@ -373,11 +376,11 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
 
       <group name="playerBody" ref={bodyRef} scale={[1, 1, fx.scaleZ]}>
         <Suspense fallback={null}>
-          {fx.modelTeam && fx.modelClassId && !changing ? (
+          {modelTeam && modelClassId && !changing ? (
             <PlayerModel
               visible={alive && !isFocusedPOV && !fx.hidden}
-              team={fx.modelTeam}
-              classId={fx.modelClassId}
+              team={modelTeam}
+              classId={modelClassId}
               opacity={fx.opacity}
               tint={fx.tint}
               emissive={fx.emissive}

@@ -3,7 +3,7 @@
 
 import * as THREE from 'three'
 
-import type { ByPlayer, EventList, F32, Track, U32, XformTrack } from './types'
+import type { ByPlayer, EventList, Track, U32, XformTrack } from './types'
 
 const _quat = new THREE.Quaternion()
 
@@ -86,8 +86,12 @@ export function sinceTick(t: Track, key: number, tick: number, test: (i: number)
   return t.ticks[j]
 }
 
-/** Linear interpolation of a Float32 field between the entry in effect at tickF and the next one, only when the next entry is at most maxGap ticks later. */
-export function lerpField(t: Track, field: F32, key: number, tickF: number, maxGap = 1): number {
+/**
+ * Linear interpolation of a Float32 field between the entry in effect at tickF and the next one, only when the next entry is at most maxGap ticks later.
+ * `field` also takes the fixed-point integer fields that 3.7.2 interpolates, such as the U16 `objectives.cp.progress.p`
+ * (capProgressAt); the result is then in raw units (0..65535 there) and the caller scales it.
+ */
+export function lerpField(t: Track, field: ArrayLike<number>, key: number, tickF: number, maxGap = 1): number {
   const i = trackIndexAt(t, key, Math.floor(tickF))
   if (i < 0) return NaN
   const value = field[i]

@@ -33,23 +33,26 @@ const TAU = Math.PI * 2
 // ─── SHARED GEOMETRY AND MATERIALS ──────────────────────────────────────────────
 //
 
+/** Height of a flame tongue before the flicker scale (0.7 to 1.2). */
+const FLAME_HEIGHT = 24
+
 const flameGeometry = () => {
-  // cone along +Z with its base at z 0 and the tip at z 20
-  const g = new THREE.ConeGeometry(6, 20, 10, 4)
+  // cone along +Z with its base at z 0 and the tip at z FLAME_HEIGHT
+  const g = new THREE.ConeGeometry(5, FLAME_HEIGHT, 10, 4)
   g.rotateX(Math.PI / 2)
-  g.translate(0, 0, 10)
+  g.translate(0, 0, FLAME_HEIGHT / 2)
   // A flame tongue: warm yellow at the base, the contract orange (#ff7a1a) halfway up, a transparent red tip.
   // Plain additive cones turn into flat pale-yellow shapes over the bright sand most maps have.
   const stops: [number, THREE.Color, number][] = [
-    [0, new THREE.Color('#ffc85a'), 1],
-    [0.5, new THREE.Color('#ff7a1a'), 0.8],
-    [1, new THREE.Color('#e02800'), 0],
+    [0, new THREE.Color('#ffd27a'), 1],
+    [0.5, new THREE.Color('#ff7a1a'), 0.85],
+    [1, new THREE.Color('#d42400'), 0],
   ]
   const position = g.getAttribute('position')
   const colors = new Float32Array(position.count * 4)
   const color = new THREE.Color()
   for (let i = 0; i < position.count; i++) {
-    const f = Math.min(1, Math.max(0, position.getZ(i) / 20))
+    const f = Math.min(1, Math.max(0, position.getZ(i) / FLAME_HEIGHT))
     const [f0, c0, a0] = stops[f < 0.5 ? 0 : 1]
     const [f1, c1, a1] = stops[f < 0.5 ? 1 : 2]
     const s = (f - f0) / (f1 - f0)
@@ -168,10 +171,16 @@ type PartName =
   | 'bleeding' | 'jarate' | 'milk' | 'gas' | 'marked' | 'stun' | 'overheal' | 'teleport' | 'disguiseSmoke' | 'decloak'
 
 /**
- * Flame cones sit 13 units from the body axis instead of the contract's 10: at 10 the 6-unit cones stay inside
- * most player models and only show as a faint glow.
+ * Flame tongues sit 13 units from the body axis instead of the contract's 10: at 10 they stay inside most player
+ * models and only show as a faint glow. They are a little slimmer and taller than the contract's cones (r 5, h 24
+ * instead of r 6, h 20) and lean outwards, so from the RTS camera they read as tongues of fire, not orange blobs.
  */
 const FLAME_RADIUS = 13
+const FLAME_LEAN = 0.24
+const _flameAxis = new THREE.Vector3()
+
+/** Stun stars: the contract's circle above the head (z 92, radius 10), or just under the nameplate, which covers it. */
+const STUN = { z: 92, radius: 10, zUnderPlate: 64, radiusUnderPlate: 12 }
 
 const DRIP_ANGLE: Record<'bleeding' | 'jarate' | 'milk' | 'gas', number> = { bleeding: 0, jarate: 0.5, milk: 1, gas: 1.5 }
 
@@ -296,8 +305,12 @@ export class OverlayRig {
       const step = Math.floor(tickF / 3)
       burning.children.forEach((cone, i) => {
         const angle = (i * TAU) / 3
-        cone.position.set(FLAME_RADIUS * Math.cos(angle), FLAME_RADIUS * Math.sin(angle), 30 + 5 * i)
-        cone.scale.set(1, 1, 0.7 + 0.5 * hash(step + i))
+        const c = Math.cos(angle), s = Math.sin(angle)
+        cone.position.set(FLAME_RADIUS * c, FLAME_RADIUS * s, 28 + 5 * i)
+        // lean the tip away from the body: rotate about the horizontal tangent of the circle
+        cone.quaternion.setFromAxisAngle(_flameAxis.set(-s, c, 0), FLAME_LEAN)
+        const width = 0.85 + 0.3 * hash(step + i + 17.3)
+        cone.scale.set(width, width, 0.7 + 0.5 * hash(step + i))
       })
     }
 
@@ -320,9 +333,11 @@ export class OverlayRig {
       return g
     })
     if (stun) {
+      const z = o.plates ? STUN.zUnderPlate : STUN.z
+      const radius = o.plates ? STUN.radiusUnderPlate : STUN.radius
       stun.children.forEach((star, i) => {
         const angle = tickF * 0.12 + (i * TAU) / 3
-        star.position.set(10 * Math.cos(angle), 10 * Math.sin(angle), 92)
+        star.position.set(radius * Math.cos(angle), radius * Math.sin(angle), z)
         star.rotation.z = angle
       })
     }

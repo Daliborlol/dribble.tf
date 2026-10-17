@@ -412,6 +412,8 @@ export interface OverlayState {
   smokeTick: number | null
   /** CLOAKED falling-edge tick while the decloak ring lasts, else null */
   decloakTick: number | null
+  /** nameplates are shown: they cover the space above the head, so the stun stars circle below them */
+  plates: boolean
 }
 
 /** Overlay effects of an actor at `tick` (section 5 F1 overlay table); null when nothing would be drawn. */
@@ -474,6 +476,7 @@ export function computeOverlays(input: FxInput, state: FxState): OverlayState | 
     teleport: overheal && !unseen && on(HL.TELEPORTED),
     smokeTick,
     decloakTick,
+    plates: s.nameplates,
   }
   return o
 }

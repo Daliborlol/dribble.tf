@@ -147,7 +147,8 @@ interface PlateBodyProps {
 const PlateBody = React.memo((p: PlateBodyProps) => {
   const weaponIconUrl = useWeaponIconUrl(p.weaponIcon || undefined)
   const hasBadge = p.disguiseCls >= 0
-  const disguiseLabel = p.disguiseCls > 0 ? `as ${className(p.disguiseCls)}` : 'disguising'
+  // class 0: disguising without the desired class (no local tables), or a disguise whose class is unknown
+  const disguiseLabel = p.disguiseCls > 0 ? `as ${className(p.disguiseCls)}` : p.disguising ? 'disguising' : 'disguised'
 
   return (
     <div

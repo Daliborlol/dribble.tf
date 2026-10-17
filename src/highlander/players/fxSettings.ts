@@ -4,7 +4,7 @@
 
 import { useMemo } from 'react'
 
-import { getState } from '@zus/store'
+import { getState, useStore } from '@zus/store'
 import { useHlSetting } from '@highlander/extras/hooks'
 import { DEFAULT_HIGHLANDER_SETTINGS, type HighlanderSettings } from '@highlander/settings'
 
@@ -24,6 +24,8 @@ export interface FxSettings {
   disguiseView: DisguiseViewSetting
   nameplateExtras: boolean
   nameplateWeapon: boolean
+  /** settings.ui.nameplate.enabled: the plates cover the space above the heads, so overhead effects move below them */
+  nameplates: boolean
 }
 
 const D = DEFAULT_HIGHLANDER_SETTINGS.players
@@ -35,7 +37,8 @@ const view = (v: unknown): DisguiseViewSetting =>
 
 function build(
   enabled: unknown, conditions: unknown, fxUber: unknown, fxCrit: unknown, fxDebuffs: unknown, fxOverheal: unknown,
-  cloak: unknown, cloakFloor: unknown, disguiseView: unknown, nameplateExtras: unknown, nameplateWeapon: unknown
+  cloak: unknown, cloakFloor: unknown, disguiseView: unknown, nameplateExtras: unknown, nameplateWeapon: unknown,
+  nameplates: unknown
 ): FxSettings {
   return {
     enabled: bool(enabled, DEFAULT_HIGHLANDER_SETTINGS.enabled),
@@ -49,16 +52,19 @@ function build(
     disguiseView: view(disguiseView),
     nameplateExtras: bool(nameplateExtras, D.nameplateExtras),
     nameplateWeapon: bool(nameplateWeapon, D.nameplateWeapon),
+    nameplates: bool(nameplates, true),
   }
 }
 
 /** The current settings, for non-React code (useFrame callbacks, probes). */
 export function readFxSettings(): FxSettings {
-  const hl = getState().settings.highlander
+  const settings = getState().settings
+  const hl = settings.highlander
   const pl = hl?.players
   return build(
     hl?.enabled, pl?.conditions, pl?.fxUber, pl?.fxCrit, pl?.fxDebuffs, pl?.fxOverheal,
-    pl?.cloak, pl?.cloakFloor, pl?.disguiseView, pl?.nameplateExtras, pl?.nameplateWeapon
+    pl?.cloak, pl?.cloakFloor, pl?.disguiseView, pl?.nameplateExtras, pl?.nameplateWeapon,
+    settings.ui?.nameplate?.enabled
   )
 }
 
@@ -75,10 +81,11 @@ export function useFxSettings(): FxSettings {
   const disguiseView = useHlSetting<DisguiseViewSetting>('players.disguiseView')
   const nameplateExtras = useHlSetting<boolean>('players.nameplateExtras')
   const nameplateWeapon = useHlSetting<boolean>('players.nameplateWeapon')
+  const nameplates = useStore(s => s.settings.ui?.nameplate?.enabled)
 
   return useMemo(
     () =>
-      build(enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon),
-    [enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon]
+      build(enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon, nameplates),
+    [enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon, nameplates]
   )
 }

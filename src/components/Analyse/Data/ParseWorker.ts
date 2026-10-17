@@ -143,7 +143,14 @@ onmessage = async (event: MessageEvent) => {
     await (fallback ? ensureFallbackWasm() : ensureWasm())
 
     const parseStart = performance.now()
+    // parser2 reaches 100 at the end of its parse (and reports nothing before that when its cache never starts). Hold
+    // that 100 back until the result has a timeline, so a demo that falls back does not show 100 % and start again.
+    let parser2Done = false
     const onProgress = (progress: number) => {
+      if (!fallback && progress >= 100) {
+        parser2Done = true
+        return
+      }
       postMessage({ progress })
     }
 
@@ -169,6 +176,12 @@ onmessage = async (event: MessageEvent) => {
       }
       postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
       return
+    }
+    if (parser2Done) postMessage({ progress: 100 })
+    if (fallback && !hasTimeline(result as WasmResult)) {
+      // Fewer than 100 packets with players: neither parser can start this demo, so it loads empty as before
+      const empty = result as WasmResult
+      console.warn(`fallback parser: ${empty.ticks} tick(s) and ${empty.players?.length ?? 0} players as well`)
     }
 
     const hydrateStart = performance.now()

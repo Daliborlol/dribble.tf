@@ -214,7 +214,11 @@ export class AsyncParser {
               console.warn(
                 `[parser] ${request.reason} on ${request.map || 'this demo'}: parsing again with the fallback cache builder (${where.boundsSource} bounds)`
               )
-              run({ buffer, fallback: { ...request, ...where } })
+              try {
+                run({ buffer, fallback: { ...request, ...where } })
+              } catch (error) {
+                reject(error instanceof Error ? error.message : String(error))
+              }
             })
             return
           }

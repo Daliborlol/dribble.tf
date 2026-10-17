@@ -1,4 +1,4 @@
-import { useStore } from '@zus/store'
+import { useInstance, useStore } from '@zus/store'
 import { CrosshairStyle } from '@constants/types'
 
 const CrosshairSVG = ({ style, size, color }: { style: CrosshairStyle; size: number; color: string }) => {
@@ -63,8 +63,9 @@ const CrosshairSVG = ({ style, size, color }: { style: CrosshairStyle; size: num
 export const Crosshair = () => {
   const crosshair = useStore(state => state.settings.ui.crosshair)
   const controlsMode = useStore(state => state.scene.controls.mode)
+  const scopeActive = useInstance(state => state.scopeActive) // F4 ScopeOverlay draws its own crosshair
 
-  if (controlsMode !== 'pov' || crosshair.style === 'none') return null
+  if (controlsMode !== 'pov' || crosshair.style === 'none' || scopeActive) return null
 
   return (
     <div

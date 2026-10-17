@@ -17,6 +17,7 @@ type WasmPlayerCache = {
   connected: Uint8Array[]
   uber: Uint16Array[]
   healTarget: Uint16Array[]
+  duck?: Uint8Array[]
 }
 
 type WasmProjectileCache = {
@@ -39,6 +40,11 @@ type WasmPlayer = {
 type WasmResult = {
   header: CachedDemo['header']
   ticks: number
+  startTick: number
+  startDemoTick: number
+  tickBase: number
+  endTick?: number
+  endDemoTick?: number
   intervalPerTick: number
   positionScale?: number
   angleScale?: number
@@ -83,7 +89,8 @@ const shiftVectorCache = (
 
 const pushBuffers = (target: ArrayBufferLike[], arrays: ArrayBufferView[]) => {
   for (const arr of arrays) {
-    target.push(arr.buffer)
+    // A buffer listed twice makes postMessage throw (DataCloneError)
+    if (!target.includes(arr.buffer)) target.push(arr.buffer)
   }
 }
 
@@ -123,6 +130,9 @@ onmessage = async (event: MessageEvent) => {
     const {
       header,
       ticks,
+      startTick = 0,
+      startDemoTick = 0,
+      tickBase = 0,
       positionScale = POSITION_FIXED_SCALE,
       angleScale = 1,
       intervalPerTick,
@@ -149,6 +159,7 @@ onmessage = async (event: MessageEvent) => {
     playerCache.connectedCache.data = wasmPlayerCache.connected as any
     playerCache.uberCache.data = wasmPlayerCache.uber as any
     playerCache.healTargetCache.data = wasmPlayerCache.healTarget as any
+    if (wasmPlayerCache.duck) playerCache.duckCache.data = wasmPlayerCache.duck as any
 
     // Empty building cache (WASM parser does not output building data)
     const buildingCache = new BuildingCache(ticks, world.boundaryMin)
@@ -224,7 +235,8 @@ onmessage = async (event: MessageEvent) => {
       sumBytes(playerCache.metaCache.data) +
       sumBytes(playerCache.connectedCache.data) +
       sumBytes(playerCache.uberCache.data) +
-      sumBytes(playerCache.healTargetCache.data)
+      sumBytes(playerCache.healTargetCache.data) +
+      sumBytes(playerCache.duckCache.data)
     const projectileCacheBytes =
       sumBytes(projectileCache.positionCache.data) +
       sumBytes(projectileCache.rotationCache.data) +
@@ -252,6 +264,10 @@ onmessage = async (event: MessageEvent) => {
 
     const cachedDemo: CachedDemo = {
       ticks,
+      startTick,
+      startDemoTick,
+      tickBase,
+      positionScale: playerCache.positionCache.scale,
       header,
       playerCache,
       buildingCache,
@@ -265,6 +281,8 @@ onmessage = async (event: MessageEvent) => {
       entityPlayerMap,
       now: performance.now(),
       perf,
+      // wasm-bindgen copied the file into the wasm heap, so hand the buffer back (no copy on the main thread)
+      fileBuffer: buffer,
     }
 
     // Collect typed array buffers for zero-copy transfer
@@ -276,10 +294,12 @@ onmessage = async (event: MessageEvent) => {
     pushBuffers(transfers, playerCache.connectedCache.data)
     pushBuffers(transfers, playerCache.uberCache.data)
     pushBuffers(transfers, playerCache.healTargetCache.data)
+    pushBuffers(transfers, playerCache.duckCache.data)
     pushBuffers(transfers, projectileCache.positionCache.data)
     pushBuffers(transfers, projectileCache.rotationCache.data)
     pushBuffers(transfers, projectileCache.teamNumberCache.data)
     pushBuffers(transfers, projectileCache.typeCache.data)
+    if (!transfers.includes(buffer)) transfers.push(buffer)
 
     postMessage(cachedDemo, transfers)
   } catch (error) {

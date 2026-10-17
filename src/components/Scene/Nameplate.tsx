@@ -1,6 +1,7 @@
 import { clamp } from 'lodash'
 
 import { ClassIcon } from '@components/UI/ClassIcon'
+import type { NameplateExtra } from '@highlander/scene/actorFx'
 
 import { parseClassHealth } from '@utils/players'
 import { cn } from '@utils/styling'
@@ -11,6 +12,7 @@ export interface NameplateProps {
   name: string
   team: string
   settings: Object | any
+  extra?: NameplateExtra // Highlander nameplate items (F1); unused until then
 }
 
 export const Nameplate = (props: NameplateProps) => {

@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
-import { clamp } from 'lodash'
-
 import { TogglePanel, TogglePanelButton } from '@components/UI/Shared/TogglePanel'
+import { Option, SliderOption, ToggleOption } from '@components/UI/Shared/SettingsOptions'
 import {
   IoMdSettingsIcon,
   CrosshairStyleIcon,
@@ -16,140 +14,7 @@ import { useStore } from '@zus/store'
 import { toggleUIPanelAction, updateSettingsOptionAction } from '@zus/actions'
 import { cn } from '@utils/styling'
 import { useIsMobile } from '@utils/hooks'
-
-//
-// ─── BASE OPTION WRAPPER ────────────────────────────────────────────────────────
-//
-
-type OptionProps = {
-  label: string
-  keyCode?: string
-  children?: React.ReactNode
-  leftClass?: string
-  rightClass?: string
-  onClickLabel?: () => void
-}
-
-const Option = ({
-  label,
-  keyCode,
-  children,
-  leftClass = '',
-  rightClass = '',
-  onClickLabel,
-}: OptionProps) => (
-  <div className="mb-4 flex items-center justify-between">
-    <div className={cn('flex items-center', leftClass)}>
-      <div
-        className={cn('select-none text-base font-semibold', !!onClickLabel && 'cursor-default')}
-        onClick={onClickLabel}
-      >
-        {label}
-      </div>
-      {!!keyCode && <kbd className="ml-2 text-[66%]">{keyCode}</kbd>}
-    </div>
-
-    <div className={cn('flex items-center', rightClass)}>{children}</div>
-  </div>
-)
-
-//
-// ─── SLIDER OPTION ──────────────────────────────────────────────────────────────
-//
-
-type SliderOptionProps = {
-  label: string
-  keyCode?: string
-  value: number
-  onChange: (value: number) => void
-  min?: number
-  max?: number
-  step?: number
-  inputClassName?: string
-}
-
-const SliderOption = ({
-  label,
-  keyCode,
-  value,
-  onChange,
-  min = 1,
-  max = 10,
-  step = 0.1,
-  inputClassName = 'w-10',
-}: SliderOptionProps) => {
-  // Track value internally so that input[type=number] will only trigger
-  // callback when appropriate (i.e. enter / up / down / blurred)
-  const [val, setVal] = useState(value)
-  const inputFields = { min: min, max: max, step: step }
-
-  useEffect(() => {
-    setVal(value)
-  }, [value])
-
-  const callback = (newValue: number) => {
-    setVal(clamp(newValue, min, max))
-    onChange(clamp(newValue, min, max))
-  }
-
-  return (
-    <Option label={label} keyCode={keyCode} leftClass="w-5/12" rightClass="w-7/12">
-      <input
-        type="range"
-        className="slider h-[2px] flex-1 cursor-pointer rounded-md bg-white/30 outline-offset-4 [-webkit-appearance:none]"
-        value={val}
-        onChange={({ target }) => callback(Number(target.value))}
-        {...inputFields}
-      />
-      <input
-        type="number"
-        className={cn(
-          'ml-4 rounded-md border border-white/40 bg-transparent px-1 text-right text-base',
-          inputClassName
-        )}
-        value={val}
-        onChange={({ target }) => setVal(Number(target.value))}
-        onBlur={() => callback(val)}
-        onKeyDown={({ key }) => {
-          if (key === 'Enter') callback(val)
-          if (key === 'ArrowUp') callback(val)
-          if (key === 'ArrowDown') callback(val)
-        }}
-        {...inputFields}
-      />
-    </Option>
-  )
-}
-
-//
-// ─── TOGGLE OPTION ──────────────────────────────────────────────────────────────
-//
-
-type ToggleOptionProps = {
-  label: string
-  keyCode?: string
-  checked: boolean
-  disabled?: boolean
-  onChange: (checked: boolean) => void
-}
-
-const ToggleOption = ({ label, keyCode, checked, disabled, onChange }: ToggleOptionProps) => {
-  const callback = () => {
-    onChange(!checked)
-  }
-
-  return (
-    <Option label={label} keyCode={keyCode} onClickLabel={callback}>
-      <input
-        type="checkbox"
-        className="h-4 w-4"
-        checked={checked}
-        disabled={disabled}
-        onChange={callback}
-      />
-    </Option>
-  )
-}
+import { HighlanderSettingsSection } from '@highlander/settings/HighlanderSettingsSection'
 
 //
 // ─── SETTINGS PANEL ─────────────────────────────────────────────────────────────
@@ -449,6 +314,10 @@ export const SettingsPanel = () => {
             checked={settings.drawing.autoClear}
             onChange={checked => updateSettingsOption('drawing.autoClear', checked)}
           />
+
+          {/* ************************************************************* */}
+
+          <HighlanderSettingsSection />
 
           {/* ************************************************************* */}
 

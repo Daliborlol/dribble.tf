@@ -1,10 +1,11 @@
 import { useRef, useCallback } from 'react'
 import keycode from 'keycode'
+import { get } from 'lodash'
 import { isMobile } from 'react-device-detect'
 
 import { useThree } from '@react-three/fiber'
 
-import { useStore } from '@zus/store'
+import { getState, useInstance, useStore } from '@zus/store'
 import {
   togglePlaybackAction,
   playbackJumpAction,
@@ -13,9 +14,37 @@ import {
   changeSceneModeAction,
   toggleSettingsOptionAction,
   toggleBookmarkAction,
+  updateSettingsOptionAction,
+  addEventHistoryAction,
 } from '@zus/actions'
 
 import { useEventListener } from '@utils/hooks'
+import { jumpToTimelineMarker } from '@highlander/hud/timeline'
+import type { HighlanderSettings } from '@highlander/settings'
+
+type DisguiseView = HighlanderSettings['players']['disguiseView']
+
+const DISGUISE_VIEWS: DisguiseView[] = ['auto', 'true', 'enemy', 'pov']
+const DISGUISE_VIEW_LABELS: Record<DisguiseView, string> = {
+  auto: 'Auto',
+  true: 'Spectator view',
+  enemy: 'Enemy view',
+  pov: "POV player's view",
+}
+
+/** Toggle a boolean Highlander setting and show the new state in the playback panel. */
+const toggleHighlanderSetting = (path: string, label: string) => {
+  const enabled = !get(getState().settings.highlander, path)
+  toggleSettingsOptionAction(`highlander.${path}`)
+  addEventHistoryAction('highlanderSetting', `${label}: ${enabled ? 'on' : 'off'}`)
+}
+
+const cycleDisguiseView = () => {
+  const current = getState().settings.highlander?.players.disguiseView ?? 'auto'
+  const next = DISGUISE_VIEWS[(DISGUISE_VIEWS.indexOf(current) + 1) % DISGUISE_VIEWS.length]
+  updateSettingsOptionAction('highlander.players.disguiseView', next)
+  addEventHistoryAction('highlanderSetting', `Disguise view: ${DISGUISE_VIEW_LABELS[next]}`)
+}
 
 /**
  * This is just a null object added to Scene to make it easier for us to handle
@@ -93,6 +122,36 @@ export const CanvasKeyHandler = () => {
             keysHeld.current.set('3', true)
             changeControlsModeAction('rts')
             break
+
+          // ─── Highlander (contract section 6.2 item 10) ───
+
+          case 'v':
+            if (event.repeat) break
+            toggleHighlanderSetting('pov.viewmodel', 'Viewmodel')
+            break
+
+          case 'i':
+            if (event.repeat) break
+            cycleDisguiseView()
+            break
+
+          case '4':
+            if (event.repeat) break
+            toggleHighlanderSetting('pov.chase', 'Chase camera')
+            break
+
+          case '[':
+            jumpToTimelineMarker(-1)
+            break
+
+          case ']':
+            jumpToTimelineMarker(1)
+            break
+
+          case 'tab':
+            event.preventDefault() // Tab would move the focus away from the canvas
+            useInstance.getState().setScoreboardOpen(true)
+            break
         }
       } catch (error) {
         console.error(error)
@@ -117,8 +176,16 @@ export const CanvasKeyHandler = () => {
     }
   }, [])
 
+  // The scoreboard closes on Tab keyup wherever the focus went, and when the window loses focus
+  const closeScoreboardOnTabUp = useCallback((event: KeyboardEvent) => {
+    if (keycode(event) === 'tab') useInstance.getState().setScoreboardOpen(false)
+  }, [])
+  const closeScoreboard = useCallback(() => useInstance.getState().setScoreboardOpen(false), [])
+
   useEventListener('keydown', canvasKeyDown, gl.domElement)
   useEventListener('keyup', canvasKeyUp, gl.domElement)
+  useEventListener('keyup', closeScoreboardOnTabUp, window)
+  useEventListener('blur', closeScoreboard, window)
 
   return null
 }

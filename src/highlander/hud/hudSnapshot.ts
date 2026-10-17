@@ -218,7 +218,7 @@ function badgesOf(x: HighlanderExtras, p: number, classId: number, alive: boolea
       if (info.kind === 'jar') jar = true
       if (info.kind === 'melee_blunt' && info.weaponMode === 1 && BALL_BATS.has(info.itemClass)) ball = true
     }
-    if (rage && misc && local) badges.rage = misc.rage
+    if (rage && misc && local && misc.rage > 0) badges.rage = misc.rage
     if (shield && misc) badges.shield = misc.charge
     if ((jar || ball) && a.itemCharge && local) {
       const charge = itemChargeAt(x, p, tick)

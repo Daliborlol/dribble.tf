@@ -239,6 +239,8 @@ const CartObject = ({ renderTick, mode, meta }: { renderTick: number; mode: Obje
 // ─── track ─────────────────────────────────────────────────────────────────────
 
 interface TrackModel {
+  /** resampled path points (scene space) */
+  points: THREE.Vector3[]
   pushed: THREE.BufferGeometry
   rest: THREE.BufferGeometry
   /** cumulative distance at each sample */
@@ -308,7 +310,7 @@ function buildTrack(x: HighlanderExtras, meta: MapMeta, origin: { x: number; y: 
     pos.z += 4
     posts.push({ pos, pointIndex })
   }
-  return { pushed: make(), rest: make(), cum, total, samples: pts.length, posts }
+  return { points: pts, pushed: make(), rest: make(), cum, total, samples: pts.length, posts }
 }
 
 function pointAtDistance(pts: THREE.Vector3[], cum: Float32Array, d: number): THREE.Vector3 {
@@ -512,9 +514,23 @@ registerHlProbe('objectives.scene', (tickArg?: number) => {
   const j = aliveInstanceAt(w, tick)
   const k = j >= 0 ? trackIndexAt(w.state, j, tick) : -1
   const node = s.threeScene?.getObjectByName('hl-cart')
+  // where the track ribbon puts the watcher progress, to compare with the cart
+  const meta = getLoadedMapMeta(demo.header?.map ?? '') ?? null
+  let onTrack: { pos: number[]; xyDistance: number } | null = null
+  if (meta?.payload?.length && pose.found && k >= 0) {
+    const track = buildTrack(x, meta, demo.world.boundaryMin)
+    if (track) {
+      const d = (w.state.progress[k] / 65535) * track.total
+      const p = pointAtDistance(track.points, track.cum, d)
+      onTrack = { pos: [p.x, p.y, p.z].map(v => Math.round(v * 10) / 10), xyDistance: Math.round(Math.hypot(p.x - pos.x, p.y - pos.y) * 10) / 10 }
+      track.pushed.dispose()
+      track.rest.dispose()
+    }
+  }
   return {
     tick,
-    mode: objectiveModeOf(x, null),
+    mode: objectiveModeOf(x, meta),
+    trackPointAtProgress: onTrack,
     carts: x.meta.available.carts,
     cart: pose.found
       ? {

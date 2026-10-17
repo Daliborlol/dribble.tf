@@ -202,8 +202,9 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   const bannerShown = !!bannerOn && !!banner && bannerOpacity(banner.eventTick, renderTick) > 0
   const top = bannerShown ? HUD_LAYOUT.killfeedBelowBanner : narrow ? HUD_LAYOUT.killfeedNarrowTop : HUD_LAYOUT.killfeedTop
 
+  // mobile: below the toolbar row and the reduced objective HUD
   const style: React.CSSProperties = isMobile
-    ? { right: 12, top: 12, maxWidth: 'calc(100vw - 24px)' }
+    ? { right: 8, top: 104, maxWidth: 'calc(100vw - 16px)' }
     : narrow
       ? { top, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100vw - ${2 * (HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8)}px)` }
       : { top, right: HUD_LAYOUT.killfeedRight, maxWidth: `calc(100vw - ${HUD_LAYOUT.killfeedRight + HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8}px)` }

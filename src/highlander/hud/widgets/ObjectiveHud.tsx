@@ -75,10 +75,35 @@ const ObjectiveHudView = React.memo(({ view, mobile }: { view: ObjectiveView; mo
     ) : null
 
   if (mobile) {
+    // below the mobile toolbar row: the timer and the progress only, at 0.75 scale
+    const progress =
+      view.mode === 'koth' && view.koth ? (
+        <KothRow koth={view.koth} />
+      ) : view.mode === 'payload' && view.payload ? (
+        <div className="flex w-[300px] items-center gap-[8px]">
+          <span className="shrink-0">{timer}</span>
+          <PayloadBar payload={view.payload} />
+        </div>
+      ) : view.mode === 'cp' && view.points ? (
+        <div className="flex items-center gap-[10px]">
+          {timer}
+          <PointsRow points={view.points} />
+        </div>
+      ) : view.mode === 'tow' && view.tow ? (
+        <div className="flex flex-col items-center">
+          {timer}
+          <TowRow tow={view.tow} />
+        </div>
+      ) : (
+        timer
+      )
     return (
-      <div data-hl-layout="objective" className="mt-1 flex origin-top scale-75 flex-col items-center gap-[2px] rounded-lg bg-black/55 px-2 py-1">
-        <div className="flex items-center gap-2">{view.mode === 'koth' ? null : timer}</div>
-        {modeRow}
+      <div
+        data-hl-layout="objective"
+        className="flex origin-top scale-75 flex-col items-center rounded-lg px-2 py-1"
+        style={{ marginTop: 60, background: 'rgb(18 18 18 / 0.86)' }}
+      >
+        {progress}
       </div>
     )
   }

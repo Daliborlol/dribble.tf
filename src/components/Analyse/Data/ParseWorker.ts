@@ -1,5 +1,13 @@
 import init, { parse_demo_cache_with_progress } from '../../../libs/parser2/parser2.js'
-import { CachedDemo, ParserPerformanceStats } from './AsyncParser'
+// The fork's cache builder (same crate as the Highlander extras). Only the fallback below loads its wasm.
+import initFallback, { parse_demo_cache_fallback } from '../../../libs/hlextras/hlextras.js'
+import type {
+  CachedDemo,
+  ParserFallbackInfo,
+  ParserFallbackRequest,
+  ParserFallbackWork,
+  ParserPerformanceStats,
+} from './AsyncParser'
 import { PlayerCache } from './PlayerCache'
 import { BuildingCache } from './BuildingCache'
 import { ProjectileCache } from './ProjectileCache'
@@ -8,6 +16,11 @@ import { ChatEntry, PlayerRef } from './Types'
 import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
 declare function postMessage(message: any, transfer?: any[]): void
+
+// Messages in: { buffer } parses with parser2; { buffer, fallback: ParserFallbackWork } parses with the fork's
+// fallback export. Messages out: { progress }, { error }, the CachedDemo, or, when parser2 produced no timeline,
+// { fallbackRequest: ParserFallbackRequest, fileBuffer }: AsyncParser then ends this worker (its parser2 heap
+// cannot shrink) and posts the file to a fresh one with the map's bounds.
 
 type WasmPlayerCache = {
   position: Uint32Array[]
@@ -37,6 +50,8 @@ type WasmPlayer = {
   team: string
 }
 
+// parser2 and the fork's fallback export share this shape. Only parser2 writes endTick, endDemoTick, shots and
+// playerCache.activeWeaponDef (nothing reads them); only the fallback writes startedWithoutWorld.
 type WasmResult = {
   header: CachedDemo['header']
   ticks: number
@@ -55,6 +70,7 @@ type WasmResult = {
   chat: ChatEntry[]
   deaths: CachedDemo['deaths']
   rounds: CachedDemo['rounds']
+  startedWithoutWorld?: boolean
 }
 
 let wasmReady: Promise<unknown> | null = null
@@ -65,6 +81,22 @@ const ensureWasm = () => {
   }
   return wasmReady
 }
+
+let fallbackWasmReady: Promise<unknown> | null = null
+
+const ensureFallbackWasm = () => {
+  if (!fallbackWasmReady) {
+    fallbackWasmReady = initFallback()
+  }
+  return fallbackWasmReady
+}
+
+/**
+ * parser2 starts its cache only after 100 warmup packets with non-zero world bounds. tow_tetsudo's plhud.nut writes
+ * HUD values into m_WorldMins/m_WorldMaxs, and on some demos (1429417) they stay zero, so parser2 returns one tick
+ * and no players. Such a result has no timeline to play.
+ */
+const hasTimeline = (result: WasmResult) => result.ticks > 1 && (result.players?.length ?? 0) > 0
 
 const shiftVectorCache = (
   arrays: Uint32Array[],
@@ -106,22 +138,36 @@ const sumBytes = (arrays: ArrayBufferView[]) => {
  */
 onmessage = async (event: MessageEvent) => {
   try {
-    await ensureWasm()
-
     const buffer = event.data.buffer as ArrayBuffer
-    const parseStart = performance.now()
+    const fallback = event.data.fallback as ParserFallbackWork | undefined
+    await (fallback ? ensureFallbackWasm() : ensureWasm())
 
-    const result = parse_demo_cache_with_progress(
-      new Uint8Array(buffer),
-      (progress: number) => {
-        postMessage({ progress })
-      }
-    )
+    const parseStart = performance.now()
+    const onProgress = (progress: number) => {
+      postMessage({ progress })
+    }
+
+    // Both copy the file into their wasm heap, so `buffer` stays intact for the hand-back below
+    const result = fallback
+      ? parse_demo_cache_fallback(new Uint8Array(buffer), { ...fallback.bounds }, onProgress)
+      : parse_demo_cache_with_progress(new Uint8Array(buffer), onProgress)
 
     const parseMs = performance.now() - parseStart
 
     if (typeof result === 'string' || !result) {
       postMessage({ error: result || 'Failed to parse demo.' })
+      return
+    }
+
+    if (!fallback && !hasTimeline(result as WasmResult)) {
+      const empty = result as WasmResult
+      const players = empty.players?.length ?? 0
+      const request: ParserFallbackRequest = {
+        map: empty.header?.map ?? '',
+        reason: `parser2 produced ${empty.ticks} tick${empty.ticks === 1 ? '' : 's'} and ${players} players`,
+        parser2: { ticks: empty.ticks, players, parseMs: Math.round(parseMs) },
+      }
+      postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
       return
     }
 
@@ -143,6 +189,7 @@ onmessage = async (event: MessageEvent) => {
       chat = [],
       deaths,
       rounds,
+      startedWithoutWorld = false,
     } = result as WasmResult
 
     // Hydrate player cache with WASM typed arrays
@@ -259,8 +306,12 @@ onmessage = async (event: MessageEvent) => {
     }
 
     console.log(
-      `parser2: parse=${parseMs.toFixed(1)}ms hydrate=${hydrateMs.toFixed(1)}ms total=${workerTotalMs.toFixed(1)}ms`
+      `${fallback ? 'fallback parser' : 'parser2'}: parse=${parseMs.toFixed(1)}ms hydrate=${hydrateMs.toFixed(1)}ms total=${workerTotalMs.toFixed(1)}ms`
     )
+
+    const parserFallback: ParserFallbackInfo | undefined = fallback
+      ? { ...fallback, startedWithoutWorld, parseMs: Math.round(parseMs) }
+      : undefined
 
     const cachedDemo: CachedDemo = {
       ticks,
@@ -283,6 +334,7 @@ onmessage = async (event: MessageEvent) => {
       perf,
       // wasm-bindgen copied the file into the wasm heap, so hand the buffer back (no copy on the main thread)
       fileBuffer: buffer,
+      ...(parserFallback ? { parserFallback } : {}),
     }
 
     // Collect typed array buffers for zero-copy transfer

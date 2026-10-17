@@ -5,6 +5,7 @@ export const analyze_demo: (a: number) => number;
 export const free_string: (a: number) => void;
 export const parse_demo_cache: (a: number, b: number) => any;
 export const parse_demo_cache_with_progress: (a: number, b: number, c: any) => any;
+export const parse_demo_cache_fallback: (a: number, b: number, c: any, d: any) => any;
 export const parse_demo_extras: (a: number, b: number, c: any, d: any) => any;
 export const __wbg_extrasinput_free: (a: number, b: number) => void;
 export const extrasinput_new: (a: number) => number;

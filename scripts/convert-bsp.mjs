@@ -21,11 +21,15 @@
  *   node scripts/convert-bsp.mjs --bsp <map.bsp> [--map <name>] [--out-dir <dir>]
  *        [--bsp-to-glb <binary>] [--chunk-grid 4] [--lightmap-format webp|png]
  *        [--meshopt true|false] [--skybox-dir public/models/skybox] [--keep-temp true]
- *        [--only-meta true]
+ *        [--only-meta true] [--overwrite-sky true]
  *
  *   --only-meta true runs both bsp-to-glb passes into the temp dir (the brush-model bounds and the
  *   camera occlusion test need the render export) but writes only map-meta.json. Used for maps that
  *   keep an older textured GLB and conversion.json, such as koth_product_final.
+ *
+ *   PAK skies: when public/models/skybox/<skyname>/ already exists with different pixels (another map
+ *   ships or uses the same sky name), it is left alone and this map's faces go to <skyname>_<map>/;
+ *   point MAP_SKYBOX_MAP at that folder. --overwrite-sky true replaces the shared folder instead.
  *
  * Dependencies: patched bsp-to-glb (see scripts/setup-bsp-to-glb.mjs), Node 18+,
  * @gltf-transform/{core,extensions,functions}, meshoptimizer, sharp.
@@ -71,6 +75,7 @@ const lightmapFormat = flag('lightmap-format', 'webp')
 const useMeshopt = bool('meshopt', 'true')
 const keepTemp = bool('keep-temp', 'false')
 const onlyMeta = bool('only-meta', 'false')
+const overwriteSky = bool('overwrite-sky', 'false')
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
 
 // Lightmap encoding: stored = sRGB(clamp(linear * exposure / LIGHTMAP_RANGE)). At runtime
@@ -653,13 +658,16 @@ if (skyname && !onlyMeta) {
   const pakFiles = fs.existsSync(pakSkyDir) ? fs.readdirSync(pakSkyDir) : []
   const findFace = side => pakFiles.find(file => file.toLowerCase() === `${skyname}${side}.vtf`.toLowerCase())
   const sides = ['bk', 'dn', 'ft', 'lf', 'rt', 'up']
-  // The map's own PAK faces win over an existing folder, so the output does not depend on whether an
-  // earlier run already wrote them (and records where the sky came from).
+  // The map's own PAK faces are used whenever the BSP ships all six, so the result does not depend on
+  // whether an earlier run already wrote them. They are rendered into the temp dir first, because
+  // another map may use the same sky name: an existing folder whose pixels differ is never replaced
+  // silently (--overwrite-sky true replaces it); this map's faces go to <skyname>_<map> instead.
   if (vtfToPng && sides.every(findFace)) {
-    const dir = path.join(skyboxRoot, skyname)
-    fs.mkdirSync(dir, { recursive: true })
+    const staged = path.join(tempDir, 'sky')
+    fs.mkdirSync(staged, { recursive: true })
     for (const side of sides) {
       const decoded = path.join(tempDir, `sky_${side}.png`)
+      const face = path.join(staged, `${side}.png`)
       run(vtfToPng, [path.join(pakSkyDir, findFace(side)), decoded], `sky ${side}`)
       const image = sharp(decoded)
       const meta = await image.metadata()
@@ -677,12 +685,41 @@ if (skyname && !onlyMeta) {
         await sharp(decoded)
           .extend({ bottom: meta.height, background: { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n), alpha: 1 } })
           .png()
-          .toFile(path.join(dir, `${skyname}_${side}.png`))
+          .toFile(face)
       } else {
-        await sharp(decoded).png().toFile(path.join(dir, `${skyname}_${side}.png`))
+        await sharp(decoded).png().toFile(face)
       }
     }
-    skyboxInfo = { name: skyname, source: 'bsp-pak' }
+
+    const pixels = async file => {
+      const { data, info } = await sharp(file).raw().toBuffer({ resolveWithObject: true })
+      return { data, key: `${info.width}x${info.height}x${info.channels}` }
+    }
+    const sameFaces = async folder => {
+      for (const side of sides) {
+        const file = path.join(skyboxRoot, folder, `${folder}_${side}.png`)
+        if (!fs.existsSync(file)) return false
+        const [a, b] = await Promise.all([pixels(file), pixels(path.join(staged, `${side}.png`))])
+        if (a.key !== b.key || !a.data.equals(b.data)) return false
+      }
+      return true
+    }
+    const unchanged = existing && (await sameFaces(skyname))
+    const folder = existing && !unchanged && !overwriteSky ? `${skyname}_${mapName}` : skyname
+    if (!unchanged) {
+      fs.mkdirSync(path.join(skyboxRoot, folder), { recursive: true })
+      for (const side of sides) {
+        fs.copyFileSync(path.join(staged, `${side}.png`), path.join(skyboxRoot, folder, `${folder}_${side}.png`))
+      }
+    }
+    skyboxInfo = { name: skyname, source: 'bsp-pak', ...(folder !== skyname ? { folder } : {}) }
+    if (folder !== skyname) {
+      console.warn(`  sky ${skyname}: ${path.join(skyboxRoot, skyname)} holds different faces (another map's sky), ` +
+        `so this map's PAK faces went to ${folder}. Point MAP_SKYBOX_MAP (src/constants/mappings.ts) at '${folder}', ` +
+        'or rerun with --overwrite-sky true to replace the shared folder.')
+    } else {
+      console.log(`  sky ${skyname}: PAK faces ${unchanged ? 'match the existing folder (unchanged)' : existing ? 'replaced the existing folder (--overwrite-sky)' : 'written'}`)
+    }
   } else if (existing) {
     skyboxInfo = { name: skyname, source: 'existing' }
   } else {

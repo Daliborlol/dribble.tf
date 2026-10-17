@@ -172,8 +172,9 @@ registerHlProbe('combat.fx', (tick?: number) => {
  * (world positions of both), extras-drawn glows come from the two layers' frame records.
  */
 registerHlProbe('combat.critGlow', () => {
-  const rows: { source: 'base' | 'extras'; entityId: number; instance: number; glow: Vec3; mesh: Vec3; dist: number }[] = []
+  const rows: { source: 'base' | 'extras'; entityId: number; instance: number; glow: Vec3; mesh: Vec3; dist: number; sampleDist?: number }[] = []
   const scene = useInstance.getState().threeScene
+  const x = readyExtras()
   const gw = new THREE.Vector3()
   const mw = new THREE.Vector3()
   scene?.traverse(node => {
@@ -184,7 +185,13 @@ registerHlProbe('combat.critGlow', () => {
     node.getWorldPosition(gw)
     node.parent.getWorldPosition(mw)
     const data = node.parent.userData as { entityId?: number; hlInstance?: number }
-    rows.push({ source: 'base', entityId: data.entityId ?? -1, instance: data.hlInstance ?? -1, glow: roundVec(gw.x, gw.y, gw.z), mesh: roundVec(mw.x, mw.y, mw.z), dist: Math.round(gw.distanceTo(mw) * 1000) / 1000 })
+    const instance = data.hlInstance ?? -1
+    // the mesh against the extras sample of the frame it was drawn in (Projectiles.tsx positions it from there)
+    let sampleDist: number | undefined
+    if (x && instance >= 0 && Number.isFinite(baseRecord.tickF) && positionAt(x, instance, baseRecord.tickF, _p)) {
+      sampleDist = Math.round(_p.distanceTo(mw) * 1000) / 1000
+    }
+    rows.push({ source: 'base', entityId: data.entityId ?? -1, instance, glow: roundVec(gw.x, gw.y, gw.z), mesh: roundVec(mw.x, mw.y, mw.z), dist: Math.round(gw.distanceTo(mw) * 1000) / 1000, sampleDist })
   })
   const c = context()
   if (c && combatRecord.tickF === extrasRecord.tickF) {
@@ -195,5 +202,10 @@ registerHlProbe('combat.critGlow', () => {
       rows.push({ source: 'extras', entityId: c.x.projectiles.entityId[j], instance: j, glow, mesh, dist: Math.round(dist * 1000) / 1000 })
     }
   }
-  return { tickF: frameTime().tickF, rows, maxDist: rows.reduce((m, r) => Math.max(m, r.dist), 0) }
+  return {
+    tickF: frameTime().tickF,
+    rows,
+    maxDist: rows.reduce((m, r) => Math.max(m, r.dist), 0),
+    maxSampleDist: rows.reduce((m, r) => Math.max(m, r.sampleDist ?? 0), 0),
+  }
 })

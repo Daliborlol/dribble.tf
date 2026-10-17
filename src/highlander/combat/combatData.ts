@@ -570,8 +570,9 @@ export interface CombatEffects {
 
 /**
  * The effects of one frame, gated by the F3 settings: explosions (TETFExplosion, building explosions, scorch marks,
- * or the despawn stand-ins), crit glows (critGlow), deflect rings and flashes and airblasts (airblast), hitscan and
- * sentry tracers and muzzle flashes (tracers), flames (flames) and syringes (extraTypes).
+ * or the despawn stand-ins), crit glows (critGlow; with extraTypes, as their projectiles), deflect rings (airblast
+ * and extraTypes), deflect flashes and airblasts (airblast), hitscan and sentry tracers and muzzle flashes
+ * (tracers), flames (flames) and syringes (extraTypes).
  */
 export function combatEffectsAt(
   x: HighlanderExtras,
@@ -594,7 +595,8 @@ export function combatEffectsAt(
       fx.despawn = despawnExplosionsAt(x, source, tickF)
     }
   }
-  if (settings.critGlow || settings.airblast) {
+  // glows and rings of the instances ProjectilesExtraLayer draws exist only while that layer draws them
+  if (settings.extraTypes && (settings.critGlow || settings.airblast)) {
     const marks = extrasMarksAt(x, source, tickF)
     if (settings.critGlow) fx.glows = marks.glows
     if (settings.airblast) fx.rings = marks.rings

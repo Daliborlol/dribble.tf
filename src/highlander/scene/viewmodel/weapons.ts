@@ -266,7 +266,7 @@ const minigun: Builder = ({ rig, team }) => {
   rig.setMuzzle([33.5, 0, 2.0])
   rig.hand([-8, 0, -3.2], 'right', undefined, { thick: 1.1, elbowEye: [8, 22, -24] })
   rig.hand([0, 6.4, 1.6], 'left', undefined, { thick: 1.1, elbowEye: [14, -4, -26] })
-  return { ...LONG, anchor: [27, 6.5, -14.5], aim: [0, 1, 3], pivot: [-16, -2, -10], kick: [0.15, 0.2], reloads: false }
+  return { ...LONG, anchor: [27, 10, -12.5], aim: [0, 1, 4], pivot: [-16, -2, -10], kick: [0.15, 0.2], reloads: false }
 }
 
 const flamethrower: Builder = ({ rig, team }) => {

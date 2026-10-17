@@ -162,9 +162,11 @@ export function computePose(input: ViewmodelInput, kind: string, opts: { kick: [
   if (opts.reloads && RELOAD_KINDS.has(kind)) {
     const k = reloadWeight(input, t)
     pose.reload = k
-    pose.up += -5 * k + reloadBump(input, t)
+    // The contract's dip of 5 takes the low-held guns off the bottom of the screen at viewmodel FOV 70, so the dip is
+    // 3 and the muzzle lifts while the weapon rolls: the reload stays readable
+    pose.up += -3 * k + reloadBump(input, t)
     pose.roll += -18 * k
-    pose.pitch -= 4 * k // lift the muzzle a little so the dipped weapon stays in view
+    pose.pitch -= 7 * k
   }
 
   const ws = input.wstate

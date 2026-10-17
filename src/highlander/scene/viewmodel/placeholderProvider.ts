@@ -118,7 +118,7 @@ export function createPlaceholder(input: ViewmodelInput): PlaceholderInstance {
 
       if (parts.barrels) {
         if (kind === 'minigun') parts.barrels.rotation.x = p.spin * DEG
-        else if (kind === 'scattergun') parts.barrels.rotation.y = 28 * p.reload * DEG // break open
+        else if (kind === 'scattergun') parts.barrels.rotation.y = 18 * p.reload * DEG // break open
       }
       if (parts.bolt) parts.bolt.position.x = 1.5 - 3 * p.cycle
       if (parts.pump) parts.pump.position.x = -3 * p.cycle

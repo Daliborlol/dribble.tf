@@ -16,10 +16,10 @@ export interface VmLive {
   tick: number
 }
 
-export const vmShared: { live: VmLive | null; debug: { flip: boolean | null; def: number | null; noDepthClear: boolean }; beamOrigin: THREE.Vector3 } = {
+export const vmShared: { live: VmLive | null; debug: { flip: boolean | null; def: number | null; noDepthClear: boolean; push: number }; beamOrigin: THREE.Vector3 } = {
   live: null,
-  /** Debug overrides (probe viewmodel.debug): left-handed mirror, another weapon def, depth clear off. */
-  debug: { flip: null, def: null, noDepthClear: false },
+  /** Debug overrides (probe viewmodel.debug): left-handed mirror, another weapon def, depth clear off, push. */
+  debug: { flip: null, def: null, noDepthClear: false, push: 0 },
   /** POV medic beam origin (HealBeam adds 41.5): PovLayer writes the eye fallback, ViewmodelLayer the muzzle. */
   beamOrigin: new THREE.Vector3(),
 }

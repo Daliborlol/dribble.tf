@@ -154,7 +154,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
     // tf_use_min_viewmodels: the item's offset (forward, right, up), in camera axes
     const offset = offsetRef.current
     const o = minimal ? itemInfo(weapon.def)?.minViewmodelOffset : undefined
-    if (offset) offset.position.set(o ? o[1] : 0, o ? o[2] : 0, o ? -o[0] : 0)
+    if (offset) offset.position.set(o ? o[1] : 0, o ? o[2] : 0, (o ? -o[0] : 0) - vmShared.debug.push)
 
     const muzzle = entry.instance.muzzle
     muzzle.updateWorldMatrix(true, false)
@@ -234,6 +234,12 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
     pull: r(pose.pull),
     spin: r(pose.spin),
     watch: r(pose.watch),
+    bladeUp: pose.bladeUp,
+    flame: r(pose.flame),
+    puff: r(pose.puff),
+    heal: pose.heal,
+    cycle: r(pose.cycle),
+    loaded: pose.loaded,
     flip: input.flip,
     fireTicks: input.fireTicks.slice(-4),
     scale: live ? r(live.scale) : null,
@@ -242,9 +248,10 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
 })
 
 // Debug: force the left-handed mirror ({ flip: true | false | null }) on demos without left-handed players, show
-// another weapon def ({ def: 18 | null }) to review every placeholder model at one spot, or skip the depth clear
-// ({ noDepthClear: true }) to compare the clipping it prevents.
-registerHlProbe('viewmodel.debug', (opts?: { flip?: boolean | null; def?: number | null; noDepthClear?: boolean }) => {
+// another weapon def ({ def: 18 | null }) to review every placeholder model at one spot, push the viewmodel forward
+// into a wall ({ push: 120 }) and skip the depth clear ({ noDepthClear: true }) to compare the clipping it prevents.
+registerHlProbe('viewmodel.debug', (opts?: { flip?: boolean | null; def?: number | null; noDepthClear?: boolean; push?: number }) => {
+  if (opts && 'push' in opts) vmShared.debug.push = Number(opts.push) || 0
   if (opts && 'flip' in opts) vmShared.debug.flip = opts.flip ?? null
   if (opts && 'def' in opts) vmShared.debug.def = opts.def ?? null
   if (opts && 'noDepthClear' in opts) vmShared.debug.noDepthClear = !!opts.noDepthClear

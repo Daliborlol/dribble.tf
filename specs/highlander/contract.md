@@ -1,6 +1,6 @@
 # Highlander implementation contract
 
-Version 2, 2026-10-17. This file is the binding contract for the Highlander (9v9) work in dribble.tf and
+Version 2.1, 2026-10-17 (section 11 lists the amendments after the foundation merge). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
 `../dribble-parser`. It was written from the four research documents in this folder, all of which were present:
 `parser-probe.md`, `maps.md`, `tf2-reference.md` and `frontend.md`. It also reflects a read of the current code
 (`dribble-parser/src/lib.rs`, the Analyse/Data layer, `store.ts`, `actions.ts`, `DemoViewer.tsx`, `Actors.tsx`,
@@ -2987,6 +2987,81 @@ Open questions that a task answers by measurement and records in its report:
 | Whether a nameplate fade default helps | X1 | RTS and POV shots |
 
 ---
+
+## 11. Amendments after the foundation merge (version 2.1)
+
+S0, P1 and M1 are merged on `highlander`. These amendments are binding for every later task and override the text
+above where they differ.
+
+### 11.1 Accepted deviations
+
+| # | from | amendment |
+|---|---|---|
+| A1 | S0 | `lerpField(t, field: ArrayLike<number>, key, tickF, maxGap)`: `field` accepts any numeric array (a strict superset of `F32`), so `capProgressAt` passes the U16 `cp.progress.p` without a cast. |
+| A2 | S0 | `DEFAULT_ACTOR_FX` uses `modelClassId` 0 and `modelTeam` `''` as "the actor's base class and team". `Actors.tsx` resolves `fx.modelClassId \|\| classId` and `fx.modelTeam \|\| team`. F1 may return the frozen `DEFAULT_ACTOR_FX` while extras are not ready or Highlander is off, and must never mutate it. To draw no model, set `hidden: true`. |
+| A3 | S0 | The `actors.registry` probe reports `modelVisible` (true drawn, false hidden, null not mounted) instead of `bodyVisible`. |
+| A4 | S0 | `isFocusedPOV` with an override counts only a camera named `povCamera` under an `actor` group. F4's chase and death cameras must use other names and must not sit under actor groups. |
+| A5 | P1 | `eyeZAt` returns null while `misc.obsMode != 0`, when the player has no local tables, and for `z < 20`. Callers fall back to `EYE_HEIGHT[class]` and the base duck bit. |
+| A6 | P1 | `findTicks('capping')` returns crossings of capture progress 0.5. `findTicks('uber')` means a stock or unknown Medi Gun uber (Kritzkrieg, Quick-Fix and Vaccinator have their own kinds). |
+| A7 | P1 | `available.carts` = train watchers exist AND (`cart.movers` or `cart.trains`). KOTH maps with static `func_tracktrain` brushes report false. Excluding `movers` in the memory plan also turns `carts` off. |
+| A8 | P1 | Local-only tables. A player's local tables count as live once a delta changes one of his local props (or a local prop of one of his weapons). For players never marked live, the extras drop `view`, `ammo`, `scoring`, `itemCharge` and sniper entries (clip -1, chargeTick NaN, rage 0, stickies 0, desired disguise 0, fov rate 0, builder type 255). New getter `hasLocalTables(x, p)`: gate any displayed rage, sticky count, clip, ammo, scoring or charge-begin value on it. On old demos (the bundled 6v6) `available.view/ammo/scoring/itemCharge/sniper/builder` are false. All 133 local HL demos are live for every player who played a class. |
+| A9 | P1 | Checker memory limit: `max(2.6 x file + 100, 140)` MB. The 6v6 sample measures 117 to 127 MB, which is fixed Node/V8 overhead, not extras data. |
+| A10 | M1 | `scripts/convert-bsp.mjs --only-meta` also runs the render-export pass (brush bounds and the camera occlusion test need it); it still writes only `map-meta.json`. |
+| A11 | M1 | Shared skies: the converter never silently replaces an existing sky folder whose pixels differ; a map's own faces go to `<sky>_<map>/` with `conversion.json skybox.folder`. |
+
+### 11.2 Facts later tasks must use
+
+- Extras access: `useExtras()` (React) or `useInstance.getState().extras` after checking `extrasStatus === 'ready'`
+  (inside `useFrame`). Every position is already scene space. `p` is the base player id; use `playerIndexOf(x, entityId)`
+  or `parsedDemo.playerIndexOfEntity`. Check `x.meta.available[key]` before drawing.
+- Old demos (the 6v6 sample) have no `uberDeployed`, `capStart`, `medicDeath`, `deflect` or `hurts` events and no
+  `fire`, `flames`, sniper charge or `itemCharge`. F5 falls back to `HL.UBER` edges for uber timing there.
+- `RULES.MATCH_ENDED` is always set on serveme servers: never use it. `misc.obsTarget` stays stale after respawn: check
+  `misc.obsMode`. `scoring.element` is 0 on every measured demo.
+- `medigunAt` charge comes from the non-local table and is valid on old demos. `cloakMeterAt` is a shared prop and
+  valid on old demos.
+- `findTicks` kinds are not memoised; cache results per extras object.
+- Map meta: `useMapMeta(map)` starts the fetch; `getLoadedMapMeta(map)` is the synchronous read for `useFrame` code
+  (MapMeta, null when absent, undefined while unresolved). Never fetch per frame. Positions are raw Source: use
+  `sourceToScene(p, parsedDemo.world.boundaryMin)`. On vigil, `payload[0].cart.brush.bspModelIndex` is 1.
+- `useInstance().mapNodes` maps `bspModelIndex` to the brush-entity parent node. World replaces the nodes on every GLB
+  reload, map change and `settings.scene.mode` change: subscribe to `mapNodes` and re-apply transforms.
+  `userData.dribble` has `classname, targetname, parentname, team, bspModelIndex, entityIndex, origin, angles,
+  localMins, localMaxs, hasGeometry, initiallyVisible, renderMode, startDisabled`.
+- Map materials for M2: `applyBspMaterials(scene, { mode, lightmap, lightmapRange, brightness })` from
+  `src/highlander/map/bspMaterials.ts` returns `setBrightness(b)` and `dispose()`. `isSharedMapMaterial(m)` marks
+  module-level materials that must never be disposed. `MapConversion.files.props` and `props { pak, stock, stockSolid }`
+  are typed in `src/utils/mapAssets.ts`. `convert-bsp.mjs` gates every write behind `!onlyMeta`; add the props pass
+  after the `world.glb` write.
+- Harness: actors move 2 to 5 frames after `goToTick`; `await window.__dribble.frames(5)` before reading scene nodes.
+  The first plan step can run before player GLBs load (`modelVisible` null): poll in evals that check models.
+  Cache tick = demo tick - 94 on 1434434 (probe reports use demo ticks).
+
+### 11.3 F6 rule for render-mode-10 brushes (replaces the F6 "brush movers" visibility wording)
+
+- `renderMode` 10 on any class other than `func_door`, `func_door_rotating`, `func_movelinear`, `func_tracktrain`,
+  `func_train` or `func_rotating` stays hidden whatever `vis` says (they are invisible in game).
+- Render-mode-10 mover nodes with geometry follow `vis` as the door stand-in.
+- The slab rule applies only to door nodes with `hasGeometry === false`.
+- Counts across the 10 GLBs: render-mode-10 `func_door` with geometry 77, `func_door_rotating` 12; without geometry
+  `func_door` 4 and `func_tracktrain` 2 (tetsudo); render-mode-10 `func_brush` 5 and `func_respawnroomvisualizer` 4;
+  StartDisabled `func_brush` toggles 131 (steel 127).
+
+### 11.4 Demos for rare cases (from the P1 survey, `$S/p1/survey-highlights.json`)
+
+stun: 1435000, 1443070, 1440442. Vaccinator uber: 1440001 (passive resist edges: 1442753). Gas Passer: 1439994.
+Kritzkrieg: 1437285, 1440442, 1432698. Sapped: 1437285. Wrangler: 1433815, 1436154. Teleported: 1428628.
+Syringe: 1441640. Energy ring: 1442739. Energy ball: 1429432. Fireball: 1442381. Cannonball: 1428628. Repair bolt:
+1437285. Gas jar: 1439994. Deflects: 1436892. doorMove: 1434434, 1438891. Overtime: 1438891 at cache tick 52088.
+No local demo has jarate (cond 24, kind 11), Mad Milk (27, kind 12), a Quick-Fix uber (28), Vaccinator blast or fire
+ubers (59, 60), cleavers (14), stun balls (15) or Short Circuit orbs (20): tasks report those as unvalidated.
+
+### 11.5 Orchestrator decisions
+
+- The M1 static-props gate was not put to the user mid-run: the user chose "no game assets" up front, so stock props
+  stay invisible, M2 renders the PAK props, and the final report shows the effect with screenshots.
+- `1428628` and `1429417` are the tug-of-war demos; whether the base viewer loads `1429417` is recorded in the final
+  report (the base parser binary is outside this contract, D2).
 
 ## Appendix A. `src/highlander/extras/enums.ts`
 

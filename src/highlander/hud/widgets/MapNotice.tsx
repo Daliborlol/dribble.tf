@@ -1,5 +1,6 @@
-// Map geometry notices (contract section 4.5 item 6). Bottom left, just above the ExtrasNotice slot.
-// A timer only fades the notice out; D12 covers demo visuals, not notices.
+// Map geometry notices (contract section 4.5 item 6). Top left, beside the toolbar buttons, where it
+// clears the player panels, the killfeed and the objective HUD. A timer only fades the notice out; D12
+// covers demo visuals, not notices.
 //
 //   mapStatus missing   "Map geometry for <map> is not available; players and objectives still play."
 //   mapStatus error     "Map geometry for <map> failed to load; players and objectives still play."
@@ -44,9 +45,9 @@ export const MapNotice = React.memo((_props: { renderTick: number }) => {
   if (!message) return null
 
   return (
-    <div className="ui-layer pointer-events-none items-end justify-start">
+    <div className="ui-layer pointer-events-none items-start justify-start">
       <div
-        className="mb-[264px] ml-4 flex max-w-[28rem] select-none items-start gap-2 rounded bg-pp-panel/80 px-2 py-1 text-xs"
+        className="ml-16 mt-4 flex max-w-[28rem] select-none items-start gap-2 rounded bg-pp-panel/80 px-2 py-1 text-xs"
         style={{
           opacity: visible ? 1 : 0,
           transition: FADE,

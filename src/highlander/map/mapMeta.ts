@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import * as THREE from 'three'
 
-import { fetchMapConversion, getMapFileUrl, getMapFolder } from '@utils/mapAssets'
+import { fetchJsonFile, fetchMapConversion, getMapFileUrl, getMapFolder } from '@utils/mapAssets'
 
 type Vec3 = [number, number, number]
 type XYZ = { x: number; y: number; z: number }
@@ -218,35 +218,44 @@ const isMapMeta = (value: unknown): value is MapMeta =>
   (value as MapMeta).schema === 'dribble.map-meta' &&
   (value as MapMeta).version === 1
 
-/** Cached per folder; null when the map has no folder or no map-meta.json. */
+/**
+ * Cached per folder; null when the map has no folder or no map-meta.json. A missing file, a body that is
+ * not JSON (the dev server and the Netlify rewrite answer a missing file with index.html and 200) and a
+ * schema mismatch are cached as null, like a loaded file. Only a failed request is not cached: it
+ * resolves null, getLoadedMapMeta() stays undefined and the next call retries.
+ */
 export function fetchMapMeta(map: string): Promise<MapMeta | null> {
   const folder = getMapFolder(map)
   if (!folder) return Promise.resolve(null)
 
   let request = pending.get(folder)
   if (!request) {
-    request = fetchMapConversion(map)
+    const created: Promise<MapMeta | null> = fetchMapConversion(map)
       .then(conversion => {
         const url = getMapFileUrl(map, conversion?.files?.meta ?? 'map-meta.json')
-        return url ? fetch(url) : null
+        return url ? fetchJsonFile(url) : null
       })
-      .then(response => (response && response.ok ? response.json() : null))
-      .then(json => (isMapMeta(json) ? json : null))
+      .then(json => {
+        const meta = isMapMeta(json) ? json : null
+        if (pending.get(folder) === created) resolved.set(folder, meta)
+        return meta
+      })
       .catch(error => {
-        pending.delete(folder) // a network failure may be temporary
+        if (pending.get(folder) === created) pending.delete(folder)
         console.warn(`map-meta.json for ${folder} unavailable`, error)
         return null
       })
-      .then(meta => {
-        if (pending.get(folder) === request) resolved.set(folder, meta)
-        return meta
-      })
-    pending.set(folder, request)
+    pending.set(folder, created)
+    request = created
   }
   return request
 }
 
-/** The map-meta once fetchMapMeta has resolved for this map's folder, else undefined (for useFrame code). */
+/**
+ * The map-meta once fetchMapMeta has resolved for this map's folder: MapMeta, or null when the map has
+ * none; undefined before that (not requested yet, in flight, or the request failed). A sync read for
+ * useFrame code; useMapMeta() starts the fetch, so do not call fetchMapMeta() per frame.
+ */
 export function getLoadedMapMeta(map: string): MapMeta | null | undefined {
   const folder = getMapFolder(map)
   return folder ? resolved.get(folder) : null

@@ -9,7 +9,8 @@ import { getAsset } from './misc'
 export interface MapConversion {
   pipeline?: 'bsp-to-glb' | string
   worldBounds?: { boundaryMin: Vector; boundaryMax: Vector }
-  files?: { model?: string; lightmap?: string; visibility?: string; meta?: string }
+  /** props: props.glb of the PAK static props (task M2, contract section 4.8). */
+  files?: { model?: string; lightmap?: string; visibility?: string; meta?: string; props?: string }
   lightmap?: {
     file: string
     width: number
@@ -22,6 +23,8 @@ export interface MapConversion {
   fog?: { enabled: boolean; color: number[]; start: number; end: number } | null
   skyboxName?: string
   camera?: { rtsCenter: Vector; cameraOffset: Vector }
+  /** Static prop instances: rendered from the PAK, stock (not rendered, D7), stock and solid (task M2). */
+  props?: { pak: number; stock: number; stockSolid: number }
 }
 
 const SEARCH_KEYS = Object.keys(MAP_NAME_SEARCH_MAP).sort((a, b) => b.length - a.length)
@@ -44,6 +47,23 @@ export function getMapFileUrl(map: string, file: string): string | undefined {
   return folder ? getAsset(`/models/maps/${folder}/${file}`) : undefined
 }
 
+/**
+ * GET a JSON file. Resolves null when the file is definitely absent: a non-ok status, or a body that is
+ * not JSON (`npm run dev`, `vite preview` and the Netlify rewrite answer a missing file with index.html
+ * and status 200). Rejects only when the request itself fails (a network error), which callers do not
+ * cache, so the next call retries.
+ */
+export async function fetchJsonFile(url: string): Promise<unknown> {
+  const response = await fetch(url)
+  if (!response.ok) return null
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return null
+  }
+}
+
 const conversions = new Map<string, Promise<MapConversion | null>>()
 
 /** conversion.json of the map's folder; null when the map has no folder or the file is absent. */
@@ -53,16 +73,18 @@ export function fetchMapConversion(map: string): Promise<MapConversion | null> {
 
   let pending = conversions.get(folder)
   if (!pending) {
-    pending = fetch(getAsset(`/models/maps/${folder}/conversion.json`))
-      .then(response => (response.ok ? (response.json() as Promise<MapConversion>) : null))
-      .then(conversion => (conversion && typeof conversion === 'object' ? conversion : null))
+    const request: Promise<MapConversion | null> = fetchJsonFile(
+      getAsset(`/models/maps/${folder}/conversion.json`)
+    )
+      .then(json => (json && typeof json === 'object' ? (json as MapConversion) : null))
       .catch(error => {
-        // A network failure may be temporary: do not cache it.
-        conversions.delete(folder)
+        // Only a failed request lands here, and it may be temporary: forget it so the next call retries.
+        if (conversions.get(folder) === request) conversions.delete(folder)
         console.warn(`conversion.json for ${folder} unavailable`, error)
         return null
       })
-    conversions.set(folder, pending)
+    conversions.set(folder, request)
+    pending = request
   }
   return pending
 }

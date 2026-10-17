@@ -3,11 +3,14 @@ import { redux } from 'zustand/middleware'
 import CanvasDraw from 'react-canvas-draw'
 import { isMobile } from 'react-device-detect'
 import * as THREE from 'three'
+import { cloneDeep } from 'lodash'
 
 import { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { getMapBoundaries } from '@components/Analyse/MapBoundaries'
 
 import { parseMapBoundaries } from '@utils/scene'
+import { DEFAULT_HIGHLANDER_SETTINGS, HighlanderSettings } from '@highlander/settings'
+import type { HighlanderExtras } from '@highlander/extras/types'
 
 import {
   ControlsMode,
@@ -75,6 +78,26 @@ export type InstanceState = {
       apply: (camera: SavedSetupCamera) => void
     }
   ) => void
+
+  // ─── Highlander (contract section 3.3) ───
+  extras?: HighlanderExtras
+  extrasStatus: 'idle' | 'disabled' | 'loading' | 'ready' | 'error'
+  extrasProgress: number                    // 0..100
+  extrasError?: string
+  setExtras: (extras?: HighlanderExtras) => void
+  setExtrasStatus: (status: InstanceState['extrasStatus'], progress?: number, error?: string) => void
+  povCameraOverride?: THREE.Camera          // F4 POV subject camera (section 5 F4); Controls uses it only in POV mode with a focused player
+  setPovCameraOverride: (camera?: THREE.Camera) => void
+  scopeActive: boolean                      // F4 ScopeOverlay visible; the base Crosshair hides while true
+  setScopeActive: (active: boolean) => void
+  scoreboardOpen: boolean                   // Tab held (S0 key handler); F5 Scoreboard shows while true
+  setScoreboardOpen: (open: boolean) => void
+  mapNodes?: Map<number, THREE.Object3D>    // M1: brush-entity parent nodes by bspModelIndex
+  setMapNodes: (nodes?: Map<number, THREE.Object3D>) => void
+  mapStatus: { state: 'idle' | 'loading' | 'ready' | 'missing' | 'error'; message?: string; folder?: string; pipeline?: string }
+  setMapStatus: (status: InstanceState['mapStatus']) => void
+  actorRegistryVersion: number              // bumped when an actor mounts or unmounts
+  bumpActorRegistryVersion: () => void
 }
 
 const sameOffsetVector = (
@@ -123,6 +146,33 @@ const useInstance = create<InstanceState>()(set => ({
       },
     })),
   setSetupCameraBridge: setupCameraBridge => set({ setupCameraBridge }),
+
+  // ─── Highlander (contract section 3.3) ───
+  extras: undefined,
+  extrasStatus: 'idle',
+  extrasProgress: 0,
+  extrasError: undefined,
+  setExtras: extras => set({ extras }),
+  setExtrasStatus: (extrasStatus, progress, error) =>
+    set(state => ({
+      extrasStatus,
+      extrasProgress: progress ?? state.extrasProgress,
+      extrasError: error,
+    })),
+  povCameraOverride: undefined,
+  setPovCameraOverride: povCameraOverride =>
+    set(state => (state.povCameraOverride === povCameraOverride ? state : { povCameraOverride })),
+  scopeActive: false,
+  setScopeActive: scopeActive => set(state => (state.scopeActive === scopeActive ? state : { scopeActive })),
+  scoreboardOpen: false,
+  setScoreboardOpen: scoreboardOpen =>
+    set(state => (state.scoreboardOpen === scoreboardOpen ? state : { scoreboardOpen })),
+  mapNodes: undefined,
+  setMapNodes: mapNodes => set({ mapNodes }),
+  mapStatus: { state: 'idle' },
+  setMapStatus: mapStatus => set({ mapStatus }),
+  actorRegistryVersion: 0,
+  bumpActorRegistryVersion: () => set(state => ({ actorRegistryVersion: state.actorRegistryVersion + 1 })),
 }))
 
 // This "Standard Store" is pretty much just a typical Redux store. Note that we are using
@@ -205,6 +255,7 @@ export type StoreState = {
       viewDistance: number
       killfeedSeekBuffer: number
     }
+    highlander: HighlanderSettings
   }
   bookmarks: number[]
   ui: {
@@ -296,6 +347,8 @@ export const initialState: StoreState = {
       viewDistance: 15000,
       killfeedSeekBuffer: 2,
     },
+    // Deep clone: the settings reducer shallow-clones and mutates nested objects in place.
+    highlander: cloneDeep(DEFAULT_HIGHLANDER_SETTINGS),
   },
 
   bookmarks: [],

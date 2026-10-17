@@ -31,6 +31,7 @@ import {
   UIPanelType,
 } from '@constants/types'
 import { StickerDragKind } from './drawing'
+import { cancelHighlanderExtras, startHighlanderExtras } from '@highlander/extras/loadExtras'
 
 import { dispatch, getState, initialState, StoreState, useInstance } from './store'
 import { isMobile } from 'react-device-detect'
@@ -53,6 +54,9 @@ export const onUploadDemoAction = async (files: File[]) => {
 }
 
 export const parseDemoAction = async (fileBuffer: ArrayBuffer) => {
+  cancelHighlanderExtras() // D4: the previous demo's extras must not run beside this base parse
+  const wantExtras = getState().settings.highlander?.enabled !== false
+
   try {
     dispatch({ type: 'PARSE_DEMO_INIT' })
 
@@ -74,6 +78,14 @@ export const parseDemoAction = async (fileBuffer: ArrayBuffer) => {
     dispatch({ type: 'PARSE_DEMO_SUCCESS' })
 
     await loadSceneFromDemoAction(parsedDemo)
+
+    // The base worker hands the file buffer back (contract 3.2). Take it in every case so a disabled
+    // Highlander setting does not keep a copy of the file alive on the parser.
+    const returnedBuffer = parsedDemo.takeFileBuffer()
+    const extrasBuffer = wantExtras ? returnedBuffer : undefined
+    if (!wantExtras) useInstance.getState().setExtrasStatus('disabled')
+    else if (!extrasBuffer) useInstance.getState().setExtrasStatus('error', 100, 'file buffer not returned by the parser')
+    else void startHighlanderExtras(extrasBuffer, parsedDemo)
 
     return parsedDemo
   } catch (error) {
@@ -106,6 +118,10 @@ export const loadSceneFromDemoAction = async (parsedDemo: AsyncParser) => {
 
     // Remember to update the non-redux instances!
     useInstance.getState().setParsedDemo(parsedDemo)
+    cancelHighlanderExtras()
+    useInstance.getState().setExtras(undefined)
+    useInstance.getState().setExtrasStatus('idle', 0)
+    useInstance.getState().setPovCameraOverride(undefined)
     useInstance.getState().setFocusedObject(undefined)
     useInstance.getState().setLastFocusedPOV(undefined)
     useInstance.getState().setMapCenterPickerActive(false)
@@ -161,6 +177,10 @@ export const loadEmptySceneMapAction = async (mapName: string) => {
 
     // Remember to update the non-redux instances!
     useInstance.getState().setParsedDemo(undefined)
+    cancelHighlanderExtras()
+    useInstance.getState().setExtras(undefined)
+    useInstance.getState().setExtrasStatus('idle', 0)
+    useInstance.getState().setPovCameraOverride(undefined)
     useInstance.getState().setFocusedObject(undefined)
     useInstance.getState().setLastFocusedPOV(undefined)
     useInstance.getState().setMapCenterPickerActive(false)
@@ -284,6 +304,7 @@ export const jumpToSpectatorCamera = async () => {
     dispatch({ type: 'CHANGE_CONTROLS_MODE', payload: 'spectator' })
 
     useInstance.getState().setFocusedObject(undefined)
+    useInstance.getState().setPovCameraOverride(undefined)
   } catch (error) {
     console.error(error)
   }
@@ -294,6 +315,7 @@ export const jumpToRtsCamera = async () => {
     dispatch({ type: 'CHANGE_CONTROLS_MODE', payload: 'rts' })
 
     useInstance.getState().setFocusedObject(undefined)
+    useInstance.getState().setPovCameraOverride(undefined)
   } catch (error) {
     console.error(error)
   }

@@ -27,9 +27,7 @@ import { InterpolatedProjectile } from './Scene/Projectiles'
 import { AboutPanel } from '@components/UI/AboutPanel'
 import { SettingsPanel } from '@components/UI/SettingsPanel'
 import { PlaybackPanel } from '@components/UI/PlaybackPanel'
-import { Killfeed } from '@components/UI/Killfeed'
 import { ChatHud } from '@components/UI/ChatHud'
-import { PlayerStatuses } from '@components/UI/PlayerStatuses'
 import { FocusedPlayer } from '@components/UI/FocusedPlayer'
 import { MatchKillfeedPanel } from '@components/UI/MatchKillfeedPanel'
 import { BookmarksPanel } from '@components/UI/BookmarksPanel'
@@ -37,6 +35,11 @@ import { SetupsPanel } from '@components/UI/SetupsPanel'
 import { FpsCounter } from '@components/UI/FpsCounter'
 import { Crosshair } from '@components/UI/Crosshair'
 import { MapOffsetDebugPanel } from '@components/UI/MapOffsetDebugPanel'
+
+// Highlander roots (contract section 6.4)
+import { HighlanderScene } from '@highlander/scene/HighlanderScene'
+import { HighlanderHud } from '@highlander/hud/HighlanderHud'
+import { HudLayout } from '@highlander/hud/HudLayout'
 
 import { motion } from 'framer-motion'
 import { AiFillFastForwardIcon } from '@components/Misc/Icons'
@@ -119,6 +122,7 @@ const Controls = () => {
   const stickerDragActive = useStore(state => state.drawing.stickerDrag.active)
   const focusedObject = useInstance(state => state.focusedObject)
   const lastFocusedPOV = useInstance(state => state.lastFocusedPOV)
+  const povCameraOverride = useInstance(state => state.povCameraOverride)
   const isStickersToolActive = drawingEnabled && drawingTool === DrawingTool.STICKERS
 
   // Keep a reference of our scene in the store's instances for easy access
@@ -126,14 +130,19 @@ const Controls = () => {
     useInstance.getState().setThreeScene(scene)
   }, [scene])
 
-  // Update the default camera when necessary
+  // Update the default camera when necessary. The POV camera override (F4: spectated, chase and death
+  // cameras) only applies in POV mode with a focused player, so it never leaks into RTS or spectator.
   useEffect(() => {
-    let nextCamera = focusedObject?.getObjectByName('povCamera') ?? (scene as any)?.camera
+    const pov =
+      controlsMode === 'pov' && focusedObject
+        ? (povCameraOverride ?? focusedObject.getObjectByName('povCamera'))
+        : undefined
+    const nextCamera = pov ?? (scene as any)?.camera
 
     if (nextCamera) {
       set({ camera: nextCamera as THREE.PerspectiveCamera })
     }
-  }, [focusedObject]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusedObject, povCameraOverride, controlsMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update controls & camera position when necessary
   useEffect(() => {
@@ -825,7 +834,7 @@ class DemoViewer extends Component<DemoViewerProps> {
 
           <Suspense fallback={null}>
             <Selection>
-              <Actors actors={actorsThisTick} />
+              <Actors actors={actorsThisTick} renderTick={renderTick} />
 
               <EffectComposer enabled={settings.ui.playerOutlines} autoClear={false}>
                 <Outline
@@ -845,6 +854,10 @@ class DemoViewer extends Component<DemoViewerProps> {
             tick={renderTick}
             intervalPerTick={demo?.intervalPerTick ?? 0.015}
           />
+
+          {/* Highlander scene layers */}
+
+          <HighlanderScene renderTick={renderTick} />
         </Canvas>
 
         {/* Normal React (non-THREE.js) UI elements */}
@@ -862,12 +875,13 @@ class DemoViewer extends Component<DemoViewerProps> {
             <PlaybackPanel />
           </div>
 
-          <div className="ui-layer m-4 items-start justify-end">
-            <div className="flex flex-col items-end gap-2">
-              {ENABLE_DEBUG_MAP_OFFSET && <MapOffsetDebugPanel />}
-              {demo && <Killfeed parser={demo} tick={playback.tick} />}
+          {ENABLE_DEBUG_MAP_OFFSET && (
+            <div className="ui-layer m-4 items-start justify-end">
+              <div className="flex flex-col items-end gap-2">
+                <MapOffsetDebugPanel />
+              </div>
             </div>
-          </div>
+          )}
 
           {demo && (
             <div className="ui-layer m-4 items-end justify-start">
@@ -875,15 +889,14 @@ class DemoViewer extends Component<DemoViewerProps> {
             </div>
           )}
 
-          {playersThisTick.length > 0 && (
-            <div className="ui-layer items-center justify-stretch">
-              <PlayerStatuses
-                players={playersThisTick}
-                tick={playback.tick}
-                intervalPerTick={demo?.intervalPerTick ?? 0.015}
-              />
-            </div>
-          )}
+          {/* Killfeed and player statuses */}
+          <HudLayout
+            demo={demo}
+            tick={playback.tick}
+            renderTick={renderTick}
+            players={playersThisTick}
+            intervalPerTick={demo?.intervalPerTick ?? 0.015}
+          />
 
           {playersThisTick.length > 0 && (
             <FocusedPlayerLayer
@@ -892,6 +905,8 @@ class DemoViewer extends Component<DemoViewerProps> {
               intervalPerTick={demo?.intervalPerTick ?? 0.015}
             />
           )}
+
+          <HighlanderHud renderTick={renderTick} />
 
           <PanelToolbar hasDemoLoaded={!!demo} />
         </div>

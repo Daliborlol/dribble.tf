@@ -29,6 +29,7 @@ export class PlayerCache {
   uberCache: SparseDataCache
   healTargetCache: SparseDataCache
   connectedCache: SparseDataCache
+  duckCache: SparseDataCache
   respawnTickCache: Map<string, number | null> = new Map()
 
   constructor(tickCount: number, positionOffset: Vector) {
@@ -40,6 +41,12 @@ export class PlayerCache {
     this.uberCache = new SparseDataCache(tickCount, 1, 8, 4)
     this.healTargetCache = new SparseDataCache(tickCount, 1, 8, 4)
     this.connectedCache = new SparseDataCache(tickCount, 1, 8, 4)
+    this.duckCache = new SparseDataCache(tickCount, 1, 8, 0)
+  }
+
+  /** bit0 FL_DUCKING, bit1 FL_ANIMDUCKING; 0 without data. Not part of getPlayer (it runs 38x per tick). */
+  getDuck(playerId: number, tick: number): number {
+    return this.duckCache.get(playerId, tick) || 0
   }
 
   getRespawnTick(playerId: number, tick: number): number | null {
@@ -96,6 +103,7 @@ export class PlayerCache {
     SparseDataCache.rehydrate(data.uberCache)
     SparseDataCache.rehydrate(data.healTargetCache)
     SparseDataCache.rehydrate(data.connectedCache)
+    SparseDataCache.rehydrate(data.duckCache)
 
     data.respawnTickCache = new Map()
     Object.setPrototypeOf(data, PlayerCache.prototype)

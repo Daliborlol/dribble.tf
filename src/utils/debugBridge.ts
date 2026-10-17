@@ -24,6 +24,9 @@ import {
 } from '@zus/actions'
 import { CLASS_MAP } from '@constants/mappings'
 import { ControlsMode, SavedSetupCamera } from '@constants/types'
+import { listHlProbes, runHlProbe } from '@highlander/debug'
+import { findTicks, FindKind } from '@highlander/extras/findTicks'
+import type { InstanceState } from '@zus/store'
 
 const INTERP_DELAY_TICKS = 2
 
@@ -213,6 +216,85 @@ const getBridgeState = (): DebugBridgeState => {
   }
 }
 
+// ─── HIGHLANDER ──────────────────────────────────────────────────────────────────
+
+type ExtrasStatus = InstanceState['extrasStatus']
+const TERMINAL_EXTRAS_STATUSES: ExtrasStatus[] = ['ready', 'error', 'disabled']
+
+const hlStatus = () => {
+  const { extrasStatus, extrasProgress, extrasError, extras } = useInstance.getState()
+  let meta: Record<string, unknown> | null = null
+  if (extras) {
+    // convars can be thousands of entries; hl.probe can still reach them
+    const { convars: _convars, ...rest } = extras.meta
+    meta = rest
+  }
+  return { status: extrasStatus, progress: extrasProgress, error: extrasError ?? null, meta }
+}
+
+/** Resolves with the extras status once it is 'ready', 'error' or 'disabled' (or the current one at the timeout). */
+const hlWaitReady = (timeoutMs = 90000): Promise<ExtrasStatus> =>
+  new Promise(resolve => {
+    const current = useInstance.getState().extrasStatus
+    if (TERMINAL_EXTRAS_STATUSES.includes(current)) {
+      resolve(current)
+      return
+    }
+    let unsubscribe = () => {}
+    const timer = setTimeout(() => {
+      unsubscribe()
+      resolve(useInstance.getState().extrasStatus)
+    }, timeoutMs)
+    unsubscribe = useInstance.subscribe(state => {
+      if (!TERMINAL_EXTRAS_STATUSES.includes(state.extrasStatus)) return
+      clearTimeout(timer)
+      unsubscribe()
+      resolve(state.extrasStatus)
+    })
+  })
+
+/**
+ * An RTS camera spec (for setCamera or a plan step's `camera`) that looks at a player from behind and
+ * above, `distance` units from his chest. `tick` is a cache tick (default: the current renderTick).
+ */
+const hlCameraNear = (entityId: number, tick?: number, distance = 350): SavedSetupCamera | null => {
+  const demo = useInstance.getState().parsedDemo
+  if (!demo) return null
+  const atTick = Math.max(1, Math.floor(tick ?? getRenderTick()))
+  const player = demo.getPlayersAtTick(atTick).find(p => p.user.entityId === Number(entityId))
+  if (!player) return null
+  const { position, viewAngles } = player
+  if (position.x === 0 && position.y === 0 && position.z === 0) return null
+
+  const yaw = (viewAngles.y * Math.PI) / 180
+  const elevation = (35 * Math.PI) / 180
+  const target: [number, number, number] = [position.x, position.y, position.z + 41]
+  const back = distance * Math.cos(elevation)
+  return {
+    mode: 'rts',
+    position: [
+      target[0] - Math.cos(yaw) * back,
+      target[1] - Math.sin(yaw) * back,
+      target[2] + distance * Math.sin(elevation),
+    ],
+    target,
+  }
+}
+
+const hl = {
+  status: hlStatus,
+  /** Per-player extras values at a cache tick (P1 registers the 'players.at' probe). */
+  at: (tick?: number) => runHlProbe('players.at', tick ?? getRenderTick()),
+  findTicks: (kind: string, opts?: Parameters<typeof findTicks>[2]) => {
+    const x = useInstance.getState().extras
+    return x ? findTicks(x, kind as FindKind, opts) : [] // extras may be unset; the bridge takes any string
+  },
+  probe: (name: string, ...args: unknown[]) => runHlProbe(name, ...args),
+  probes: () => listHlProbes(),
+  waitReady: hlWaitReady,
+  cameraNear: hlCameraNear,
+}
+
 /** Jump to a player's POV. Seek first: only players in the scene at this tick resolve. */
 const focusPlayer = async (query: number | string): Promise<DebugBridgePlayer | null> => {
   const player = resolvePlayer(query)
@@ -299,6 +381,9 @@ const bridge = {
 
   /** Raw store access for ad-hoc probes from page.evaluate(). */
   stores: { useStore, useInstance },
+
+  /** Highlander extras: status, probes, interesting ticks (contract section 3.10). */
+  hl,
 }
 
 export type DribbleDebugBridge = typeof bridge

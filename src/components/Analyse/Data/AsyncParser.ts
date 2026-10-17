@@ -2,6 +2,7 @@ import { PlayerCache, CachedPlayer } from './PlayerCache'
 import { BuildingCache, CachedBuilding } from './BuildingCache'
 import { ProjectileCache, CachedProjectile } from './ProjectileCache'
 import { ChatEntry, Header, PlayerRef, Round, World } from './Types'
+import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
 export interface CachedDeath {
   tick: number
@@ -32,6 +33,10 @@ export interface CachedDemo {
   header: Header
   playerCache: PlayerCache
   ticks: number
+  startTick: number // server tick of cache tick 0
+  startDemoTick: number
+  tickBase: number // server tick = demo tick + tickBase
+  positionScale: number
   chat: ChatEntry[]
   deaths: { [tick: string]: CachedDeath[] }
   rounds: Round[]
@@ -43,6 +48,7 @@ export interface CachedDemo {
   entityPlayerMap: Map<number, PlayerRef>
   now: number
   perf?: ParserPerformanceStats
+  fileBuffer?: ArrayBuffer // the input file, handed back by the worker
 }
 
 export class AsyncParser {
@@ -52,6 +58,10 @@ export class AsyncParser {
   nextMappedPlayer = 0
   entityPlayerMap: Map<number, PlayerRef> = new Map()
   ticks!: number
+  startTick = 0
+  startDemoTick = 0
+  tickBase = 0
+  positionScale = POSITION_FIXED_SCALE
   chat: ChatEntry[] = []
   deaths: { [tick: string]: CachedDeath[] } = {}
   rounds!: Round[]
@@ -61,6 +71,8 @@ export class AsyncParser {
   world!: World
   progressCallback: (progress: number) => void
   perf?: ParserPerformanceStats
+  private fileBuffer?: ArrayBuffer
+  private entityIndexMap?: Map<number, number>
 
   constructor(buffer: ArrayBuffer, progressCallback: (progress: number) => void) {
     this.buffer = buffer
@@ -70,6 +82,12 @@ export class AsyncParser {
   cache(): Promise<void> {
     return this.getCachedData().then((cachedData: CachedDemo) => {
       this.ticks = cachedData.ticks
+      this.startTick = cachedData.startTick ?? 0
+      this.startDemoTick = cachedData.startDemoTick ?? 0
+      this.tickBase = cachedData.tickBase ?? 0
+      this.positionScale = cachedData.positionScale ?? POSITION_FIXED_SCALE
+      this.fileBuffer = cachedData.fileBuffer
+      cachedData.fileBuffer = undefined
       this.header = cachedData.header
       this.playerCache = cachedData.playerCache
       this.buildingCache = cachedData.buildingCache
@@ -81,6 +99,7 @@ export class AsyncParser {
       this.world = cachedData.world
       this.nextMappedPlayer = cachedData.nextMappedPlayer
       this.entityPlayerMap = cachedData.entityPlayerMap
+      this.entityIndexMap = undefined
       this.perf = cachedData.perf
 
       if (cachedData.perf) {
@@ -115,9 +134,14 @@ export class AsyncParser {
         },
         [this.buffer]
       )
+      worker.onerror = (event: ErrorEvent) => {
+        reject(event.message || 'Demo parser worker failed.')
+        worker.terminate()
+      }
       worker.onmessage = (event: MessageEvent) => {
         if (event.data.error) {
           reject(event.data.error)
+          worker.terminate()
           return
         }
         if (event.data.progress) {
@@ -135,8 +159,38 @@ export class AsyncParser {
         }
 
         resolve(event.data)
+        // The wasm heap of the base parse is only freed with the worker (D18)
+        worker.terminate()
       }
     })
+  }
+
+  /** The demo file the base worker handed back. Returns it once, then forgets it. */
+  takeFileBuffer(): ArrayBuffer | undefined {
+    const buffer = this.fileBuffer
+    this.fileBuffer = undefined
+    return buffer
+  }
+
+  /** Entity id of every player index p (0 for indices without a player), length nextMappedPlayer. */
+  playerEntityIds(): Uint32Array {
+    const ids = new Uint32Array(this.nextMappedPlayer)
+    for (let p = 0; p < this.nextMappedPlayer; p++) {
+      ids[p] = this.entityPlayerMap.get(p)?.user.entityId ?? 0
+    }
+    return ids
+  }
+
+  /** Player index p of an entity id, -1 when unknown. */
+  playerIndexOfEntity(entityId: number): number {
+    if (!this.entityIndexMap) {
+      this.entityIndexMap = new Map()
+      for (const [p, ref] of this.entityPlayerMap) {
+        const entityId = ref.user.entityId
+        if (!this.entityIndexMap.has(entityId)) this.entityIndexMap.set(entityId, p)
+      }
+    }
+    return this.entityIndexMap.get(entityId) ?? -1
   }
 
   getPlayersAtTick(tick: number) {

@@ -1,0 +1,211 @@
+// map-meta.json v1 (contract section 4.4; owner M1, read by F5 and F6).
+// S0 writes the type (maps.md section 6, checked against the 11 research outputs) and stub bodies.
+// All positions are raw Source units, Z up; scene = Source - boundaryMin of the demo.
+
+import * as THREE from 'three'
+
+type Vec3 = [number, number, number]
+type XYZ = { x: number; y: number; z: number }
+
+export interface MapMetaBrushRef {
+  bspModelIndex: number | null
+  node: string | null
+  mins: Vec3
+  maxs: Vec3
+}
+export interface MapMetaSpawn {
+  team: number
+  origin: Vec3
+  yaw: number
+  name?: string
+  controlPoint?: string
+  disabled?: boolean
+  roundRed?: string
+  roundBlue?: string
+}
+export interface MapMetaControlPoint {
+  name: string
+  index: number
+  printName: string
+  origin: Vec3
+  defaultOwner: number
+  startLocked: boolean
+  group: number
+  hidden: boolean
+  captureAreas: number[]
+}
+export interface MapMetaCaptureArea extends MapMetaBrushRef {
+  name: string | null
+  capPoint: string
+  timeToCap: number
+  canCap: Record<string, boolean>
+  numCappers: Record<string, number> // keyed by team "2" / "3"
+  parent: string | null
+  startDisabled: boolean
+}
+export interface MapMetaKoth {
+  timerLength: number
+  unlockPoint: number
+}
+export interface MapMetaRoundTimer {
+  name: string
+  timerLength: number
+  setupLength: number
+  maxLength: number | null
+  startPaused: boolean
+  showInHud: boolean
+}
+export interface MapMetaPathNode {
+  name: string
+  origin: Vec3
+  distance: number
+  next: string | null
+  alt?: string
+  speed?: number
+  flags?: number
+}
+export interface MapMetaPayload {
+  watcher: string
+  team: number
+  train: string
+  startNode: string
+  goalNode: string
+  canRecede: boolean
+  path: MapMetaPathNode[] // `distance` is cumulative along the path
+  length: number
+  linked: { pathTrack: string; controlPoint: string; pathIndex: number; distance: number }[]
+  cart: {
+    origin: Vec3
+    brush: MapMetaBrushRef | null
+    models: string[]
+    attached: { classname: string; name: string | null }[]
+  } | null
+}
+export interface MapMetaDoor extends MapMetaBrushRef {
+  name: string
+  classname: string
+  origin: Vec3
+  moveDir: Vec3
+  lip: number
+  speed: number
+  spawnflags: number
+  props: string[]
+}
+export interface MapMetaRespawnRoom extends MapMetaBrushRef {
+  name: string
+  team: number
+}
+export interface MapMetaRespawnVisualizer extends MapMetaBrushRef {
+  room: string
+  team: number
+  solidToEnemies: boolean
+}
+export interface MapMetaResupply extends MapMetaBrushRef {
+  team: number
+  locker: string
+}
+export interface MapMetaItem {
+  kind: 'health' | 'ammo'
+  size: 'small' | 'medium' | 'full'
+  origin: Vec3
+  team?: number
+  disabled?: boolean
+}
+export interface MapMetaTeleport extends MapMetaBrushRef {
+  name: string | null
+  team?: number
+  destination: Vec3
+}
+export interface MapMetaGameplayProp {
+  model: string
+  name?: string
+  parent?: string
+  origin: Vec3
+  angles: Vec3
+  skin?: number
+}
+export interface MapMetaLightColor {
+  color: number[]
+  brightness: number
+}
+export interface MapMetaLight {
+  environment: {
+    sun: MapMetaLightColor
+    sunHDR: MapMetaLightColor
+    ambient: MapMetaLightColor
+    ambientHDR: MapMetaLightColor
+    pitch: number
+    yaw: number
+    sunSpreadAngle: number
+    direction: Vec3 // sunlight travel direction
+  } | null
+  shadow: { direction: Vec3; color: number[]; distance: number } | null
+  sunSprite: { direction: Vec3; color: number[]; size: number } | null
+}
+
+export interface MapMeta {
+  schema: 'dribble.map-meta'
+  version: 1
+  map: string
+  gameMode:
+    | 'koth'
+    | 'payload'
+    | 'payload-race'
+    | 'tug-of-war'
+    | 'attack-defend'
+    | 'control-points'
+    | 'unknown'
+  bspVersion: number
+  coordinateSpace: 'source'
+  sceneTransform: string
+  worldBounds: { boundaryMin: XYZ; boundaryMax: XYZ }
+  camera: {
+    rtsCenter: XYZ
+    cameraOffset: XYZ
+    focusSource: Vec3
+    method: string
+    occlusion?: { clear: boolean; elevationDeg: number; quarterTurns?: number }
+  } | null
+  spawns: MapMetaSpawn[]
+  controlPoints: MapMetaControlPoint[]
+  captureAreas: MapMetaCaptureArea[]
+  koth: MapMetaKoth | null
+  roundTimers: MapMetaRoundTimer[]
+  payload: MapMetaPayload[]
+  doors: MapMetaDoor[]
+  respawnRooms: MapMetaRespawnRoom[]
+  respawnVisualizers: MapMetaRespawnVisualizer[]
+  resupply: MapMetaResupply[]
+  items: MapMetaItem[]
+  teleports: MapMetaTeleport[]
+  gameplayProps: MapMetaGameplayProp[]
+  light: MapMetaLight | null
+  sky: { name: string; camera: { origin: Vec3; scale: number } | null } | null
+  fog: {
+    enabled: boolean
+    color: number[]
+    start: number
+    end: number
+    maxDensity: number
+    farZ: number
+  } | null
+  water: { material: string; triangles: number; mins: Vec3; maxs: Vec3; surfaceZ: number }[]
+}
+
+/** Cached per folder; null when absent. S0 stub: always null (M1 writes the loader). */
+export function fetchMapMeta(_map: string): Promise<MapMeta | null> {
+  return Promise.resolve(null)
+}
+
+/** Hook; null while loading. S0 stub: always null. */
+export function useMapMeta(_map: string): MapMeta | null {
+  return null
+}
+
+/** Raw Source position to scene space (scene = Source - sceneOrigin). */
+export function sourceToScene(
+  p: [number, number, number],
+  sceneOrigin: { x: number; y: number; z: number }
+): THREE.Vector3 {
+  return new THREE.Vector3(p[0] - sceneOrigin.x, p[1] - sceneOrigin.y, p[2] - sceneOrigin.z)
+}

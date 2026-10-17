@@ -1,0 +1,5 @@
+{
+  "demo": "1437285.dem",
+  "about": "koth_warmtic_f10, 2041 s, 120 MB (the longest local demo). Memory run with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "checks": []
+}

@@ -1,0 +1,20 @@
+{
+  "demo": "public/samples/i52_snakewater_gc.dem",
+  "about": "The bundled 6v6 sample (cp_snakewater_final1, 33 Hz snapshots). Contract section 2.7 acceptance table.",
+  "checks": [
+    {
+      "stat": "meta.snapshotInterval",
+      "eq": 2
+    },
+    {
+      "stat": "alignment.offGrid",
+      "eq": 0,
+      "name": "every alignment.ticks[k] lies on the packet grid"
+    },
+    {
+      "stat": "alignment.ok",
+      "eq": true,
+      "needsBase": true
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "demo": "1432698.dem",
+  "about": "pl_vigil_rc10, 1557 s, 101 MB. Memory run with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "checks": []
+}

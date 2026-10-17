@@ -2,19 +2,20 @@
 //
 // The extras parse runs after the base parse, in its own worker (D4). Its peak is the demo file in wasm memory,
 // the parser state, the output builders and the JS copy of the output (D18). P1 measured that peak in the Node
-// checker (scripts/hl/check-extras.mjs, VmHWM of the whole process) and fitted peakMB = a * fileMB + b.
-// The Node runtime is inside b, so the fit overestimates the browser worker slightly, which is the safe side.
+// checker (scripts/hl/check-extras.mjs: the process VmHWM after hydration, the steps ExtrasWorker.ts runs) and
+// fitted peakMB = a * fileMB + b. The Node runtime (about 50 MB) is inside b, so the fit overestimates the browser
+// worker, which is the safe side.
 //
 // planExtrasGroups predicts the peak for a file. While the prediction exceeds the budget it drops the largest
 // optional output group (by the measured size per demo minute) and subtracts what that saves. It never drops
 // players, objectives, buildings or projectiles. When even the smallest plan is too big it skips the extras.
 
 /**
- * peakMB = a * fileMB + b (fileMB = bytes / 1e6, peak in MiB). P1 fitted it over 10 checker runs (5.5 to 123 MB,
- * 3.8 to 34 demo minutes): least squares a = 1.616, b = 107.8, residuals -10.8 to +15.6 MB. b here is the
- * least-squares b plus the largest residual, so the line lies above every measured peak.
+ * peakMB = a * fileMB + b (fileMB = bytes / 1e6, peak in MiB). P1 fitted it over 20 checker runs (two rounds over
+ * 10 demos of 5.5 to 123 MB and 3.8 to 34 demo minutes): least squares a = 1.603, b = 108.4, residuals -17.6 to
+ * +16.4 MB. With a = 1.6, b is raised to 126 so the line lies above every measured peak.
  */
-export const EXTRAS_PEAK = { a: 1.62, b: 124 }
+export const EXTRAS_PEAK = { a: 1.6, b: 126 }
 
 /**
  * Output typed-array MB per demo minute per group: the median over the same 10 runs (hl_extras and the checker

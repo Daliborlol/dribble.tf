@@ -28,6 +28,16 @@ let lastPlan: (ExtrasPlan & { fileBytes: number }) | null = null
 let lastAlignment: AlignmentResult | null = null
 let lastTiming: { workerMs?: number; parseMs?: number; wasmMemoryBytes?: number; typedArrayBytes?: number } | null = null
 
+/** `?hlExtrasBudget=<MB>` replaces EXTRAS_BUDGET_MB, so the harness can exercise the group exclusion and skip paths. */
+function budgetOverrideMB(): number | undefined {
+  try {
+    const value = Number(new URLSearchParams(window.location.search).get('hlExtrasBudget'))
+    return Number.isFinite(value) && value > 0 ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function stopWorker(): void {
   if (!running) return
   clearTimeout(running.timer)
@@ -58,7 +68,7 @@ export async function startHighlanderExtras(buffer: ArrayBuffer, parsedDemo: Asy
     lastTiming = null
 
     const seconds = parsedDemo.ticks * parsedDemo.intervalPerTick
-    const plan = planExtrasGroups(buffer.byteLength, { seconds })
+    const plan = planExtrasGroups(buffer.byteLength, { seconds, budgetMB: budgetOverrideMB() })
     lastPlan = { ...plan, fileBytes: buffer.byteLength }
     if (plan.skip) {
       instance().setExtrasStatus('disabled', 0, plan.reason)

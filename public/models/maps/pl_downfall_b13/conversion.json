@@ -1,6 +1,6 @@
 {
  "mapName": "pl_downfall_b13",
- "timestamp": "2026-10-17T20:20:28.186Z",
+ "timestamp": "2026-10-17T23:47:00.993Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 10628
  },
  "stats": {
-  "exportMs": 2900,
+  "exportMs": 2835,
   "sourceFaces": 21928,
   "sourceTriangles": 295417,
   "keptTriangles": 291954,
@@ -151,8 +151,8 @@
   "metaBytes": 65308,
   "visibilityBytes": 1115749,
   "props": {
-   "ms": 313,
-   "bytes": 622876,
+   "ms": 536,
+   "bytes": 626020,
    "skybox": 0,
    "dynamicSkipped": {},
    "unconvertible": 0,
@@ -161,7 +161,7 @@
    "nodes": 15,
    "instancedNodes": 0,
    "bakedInstances": 29,
-   "primitives": 16,
+   "primitives": 15,
    "vertices": 54877,
    "triangles": 67823,
    "renderedTriangles": 67823,
@@ -226,11 +226,13 @@
      {
       "name": "tree_pine_skinny_skin0",
       "source": "pak",
-      "kind": "translucent",
+      "kind": "opaque",
+      "coverage": 0.884,
+      "alpha": 1,
       "albedo": [
-       0.065,
-       0.05,
-       0.026
+       0.069,
+       0.055,
+       0.031
       ]
      }
     ]

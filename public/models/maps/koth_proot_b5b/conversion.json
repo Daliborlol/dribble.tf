@@ -1,6 +1,6 @@
 {
  "mapName": "koth_proot_b5b",
- "timestamp": "2026-10-17T20:15:58.021Z",
+ "timestamp": "2026-10-17T23:46:32.005Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 3246
  },
  "stats": {
-  "exportMs": 1547,
+  "exportMs": 1466,
   "sourceFaces": 7601,
   "sourceTriangles": 37597,
   "keptTriangles": 36521,
@@ -151,8 +151,8 @@
   "metaBytes": 14456,
   "visibilityBytes": 243119,
   "props": {
-   "ms": 383,
-   "bytes": 1140280,
+   "ms": 812,
+   "bytes": 1140912,
    "skybox": 139,
    "dynamicSkipped": {},
    "unconvertible": 0,
@@ -200,20 +200,24 @@
       "name": "oak_leaf_sheet_fall_01",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 0.259,
+      "alpha": 0.55,
       "albedo": [
-       0.429,
-       0.082,
-       0.015
+       0.474,
+       0.102,
+       0.021
       ]
      },
      {
       "name": "oak_leaf_sheet_fall_03",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 0.259,
+      "alpha": 0.55,
       "albedo": [
-       0.386,
-       0.018,
-       0.004
+       0.426,
+       0.027,
+       0.008
       ]
      },
      {
@@ -230,10 +234,12 @@
       "name": "oak_leaf_sheet_fall_02",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 0.259,
+      "alpha": 0.55,
       "albedo": [
-       0.304,
-       0.039,
-       0.007
+       0.348,
+       0.052,
+       0.012
       ]
      },
      {
@@ -249,21 +255,25 @@
      {
       "name": "crate_tarp_2",
       "source": "pak",
-      "kind": "translucent",
+      "kind": "opaque",
+      "coverage": 1,
+      "alpha": 1,
       "albedo": [
+       0.048,
        0.044,
-       0.041,
-       0.026
+       0.029
       ]
      },
      {
       "name": "birch_leaves_2",
       "source": "pak",
-      "kind": "translucent",
+      "kind": "opaque",
+      "coverage": 0.909,
+      "alpha": 1,
       "albedo": [
-       0.132,
-       0.071,
-       0.031
+       0.092,
+       0.051,
+       0.022
       ]
      },
      {

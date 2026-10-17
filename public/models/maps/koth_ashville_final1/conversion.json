@@ -1,6 +1,6 @@
 {
  "mapName": "koth_ashville_final1",
- "timestamp": "2026-10-17T20:14:49.888Z",
+ "timestamp": "2026-10-17T23:46:25.240Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -134,7 +134,7 @@
   "leaves": 4770
  },
  "stats": {
-  "exportMs": 2600,
+  "exportMs": 2498,
   "sourceFaces": 6457,
   "sourceTriangles": 24500,
   "keptTriangles": 23347,
@@ -156,8 +156,8 @@
   "metaBytes": 12801,
   "visibilityBytes": 229932,
   "props": {
-   "ms": 712,
-   "bytes": 2728380,
+   "ms": 765,
+   "bytes": 2729012,
    "skybox": 0,
    "dynamicSkipped": {
     "named": 4,
@@ -169,7 +169,7 @@
    "nodes": 50,
    "instancedNodes": 23,
    "bakedInstances": 96,
-   "primitives": 51,
+   "primitives": 50,
    "vertices": 304160,
    "triangles": 236752,
    "renderedTriangles": 268100,
@@ -284,11 +284,13 @@
      {
       "name": "crate_tarp_2",
       "source": "pak",
-      "kind": "translucent",
+      "kind": "opaque",
+      "coverage": 1,
+      "alpha": 1,
       "albedo": [
+       0.048,
        0.044,
-       0.041,
-       0.026
+       0.029
       ]
      },
      {

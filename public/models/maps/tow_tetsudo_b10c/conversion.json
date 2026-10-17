@@ -1,6 +1,6 @@
 {
  "mapName": "tow_tetsudo_b10c",
- "timestamp": "2026-10-17T20:29:41.035Z",
+ "timestamp": "2026-10-17T23:47:43.451Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -130,7 +130,7 @@
   "leaves": 6965
  },
  "stats": {
-  "exportMs": 2123,
+  "exportMs": 2075,
   "sourceFaces": 12274,
   "sourceTriangles": 51764,
   "keptTriangles": 49903,
@@ -152,8 +152,8 @@
   "metaBytes": 42992,
   "visibilityBytes": 417470,
   "props": {
-   "ms": 886,
-   "bytes": 3503136,
+   "ms": 1546,
+   "bytes": 3490920,
    "skybox": 0,
    "dynamicSkipped": {
     "parented": 4,
@@ -263,20 +263,24 @@
       "name": "tf_bamboo_leaf01",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 0.17,
+      "alpha": 0.55,
       "albedo": [
-       0.123,
-       0.225,
-       0.05
+       0.166,
+       0.331,
+       0.057
       ]
      },
      {
       "name": "tf_bamboo_card01",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 0.142,
+      "alpha": 0.55,
       "albedo": [
-       0.041,
-       0.117,
-       0.011
+       0.069,
+       0.131,
+       0.028
       ]
      },
      {
@@ -293,20 +297,24 @@
       "name": "asian_screen01b",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 1,
+      "alpha": 0.749,
       "albedo": [
-       0.747,
-       0.563,
-       0.437
+       0.737,
+       0.555,
+       0.426
       ]
      },
      {
       "name": "asian_screen02b",
       "source": "pak",
       "kind": "translucent",
+      "coverage": 1,
+      "alpha": 0.749,
       "albedo": [
-       0.541,
-       0.514,
-       0.453
+       0.532,
+       0.506,
+       0.441
       ]
      },
      {

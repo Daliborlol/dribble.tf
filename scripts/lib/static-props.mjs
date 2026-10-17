@@ -20,6 +20,10 @@
  * Colour. Vertex colour = flat albedo x lighting, as on world.glb (albedo vertex colours x lightmap):
  *   albedo    the PAK texture's average linear colour (VTF reflectivity, the value VBSP uses for brush
  *             texdata), else NEUTRAL (#8a8a8a) when the material or texture is not in the PAK.
+ *             $alphatest and $translucent materials decode the texture instead: a cutout takes the mean
+ *             colour of the texels that pass the alpha test and draws opaque when at least
+ *             OPAQUE_COVERAGE of them pass (tarps, dense pine cards), else at ALPHA_CUTOUT; a blend
+ *             takes the alpha-weighted colour and the texture's mean alpha.
  *   lighting  the PAK's per-vertex lighting (VRAD's sp[_hdr]_<prop>.vhv, one file per instance), in the
  *             world lightmap's scale: linear * exposure + floor (conversion.json lightmap).
  * Instances of one model share the vertex data, so lighting is factored as instanceLight x shading:
@@ -58,6 +62,16 @@ const BAKE_VERTEX_BUDGET = 200_000
 /** Alpha of see-through prop surfaces (same values as the world converter's cutouts and blends). */
 const ALPHA_CUTOUT = 0.55
 const ALPHA_BLEND = 0.5
+/**
+ * $alphatest materials whose PAK texture passes the test on at least this share of its texels draw
+ * opaque: a tarp (DXT1, no alpha at all) or a dense pine card is a solid surface in game, while sparse
+ * leaf cards (bamboo 15 to 17 %, oak 27 %) keep ALPHA_CUTOUT.
+ */
+const OPAQUE_COVERAGE = 0.85
+/** Alpha-test reference when the VMT sets none (the shader API's default GEQUAL reference). */
+const DEFAULT_ALPHA_REF = 0.7
+/** Alpha range of $translucent prop surfaces whose opacity comes from the texture's mean alpha. */
+const BLEND_ALPHA_RANGE = [0.15, 0.9]
 /** sprp flags (public/gamebspfile.h). */
 const STATIC_PROP_NO_PER_VERTEX_LIGHTING = 0x40
 /** VTX layout of TF2-era models (studio v44-v48), the sizes bsp-to-glb's own VTX reader uses. */
@@ -447,6 +461,21 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
     return result
   }
 
+  // Top mip of a PAK texture decoded to PNG by the vtf-to-png helper (once per texture), or null.
+  const decodeCache = new Map()
+  const decodeTexture = key => {
+    if (decodeCache.has(key)) return decodeCache.get(key)
+    let png = null
+    const file = pak.get(key)
+    if (file && vtfToPng) {
+      const out = path.join(workDir, `tex_${decodeOrdinal++}.png`)
+      const result = spawnSync(vtfToPng, [file, out], { encoding: 'utf8' })
+      if (result.status === 0 && fs.existsSync(out)) png = out
+    }
+    decodeCache.set(key, png)
+    return png
+  }
+
   // Average linear colour of a PAK texture: the VTF's own reflectivity (what VBSP uses for brush
   // texdata), else the decoded top mip (alpha-weighted), else null.
   const textureColor = key => {
@@ -456,14 +485,52 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
     if (file) {
       color = vtfReflectivity(fs.readFileSync(file))
       if (!color && vtfToPng) {
-        const png = path.join(workDir, `tex_${decodeOrdinal++}.png`)
-        const result = spawnSync(vtfToPng, [file, png], { encoding: 'utf8' })
-        if (result.status === 0 && fs.existsSync(png)) color = { png }
+        const png = decodeTexture(key)
+        if (png) color = { png }
         else warn(`texture ${key}: no reflectivity and vtf-to-png failed`)
       }
     }
     textureCache.set(key, color)
     return color
+  }
+
+  // Alpha statistics of a see-through PAK texture's top mip: the share of texels that pass an alpha
+  // test at `ref`, the mean alpha, the mean linear colour of the passing texels (what an alpha-tested
+  // surface shows) and the alpha-weighted mean colour (what a blended surface shows). The VTF
+  // reflectivity averages the colour under transparent texels too, which is wrong for sparse cards.
+  const alphaCache = new Map()
+  const alphaStats = async (key, ref) => {
+    const cacheKey = `${key}@${ref}`
+    if (alphaCache.has(cacheKey)) return alphaCache.get(cacheKey)
+    let stats = null
+    const png = decodeTexture(key)
+    if (png) {
+      const sharp = (await import('sharp')).default
+      const { data, info: meta } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      const threshold = ref * 255
+      const covered = [0, 0, 0], weighted = [0, 0, 0]
+      let passing = 0, alphaSum = 0, texels = 0
+      for (let i = 0; i < data.length; i += meta.channels, texels++) {
+        const a = data[i + 3] / 255
+        alphaSum += a
+        const rgb = [srgbToLinear(data[i] / 255), srgbToLinear(data[i + 1] / 255), srgbToLinear(data[i + 2] / 255)]
+        for (let c = 0; c < 3; c++) weighted[c] += rgb[c] * a
+        if (data[i + 3] >= threshold) {
+          passing++
+          for (let c = 0; c < 3; c++) covered[c] += rgb[c]
+        }
+      }
+      if (texels > 0) {
+        stats = {
+          coverage: passing / texels,
+          meanAlpha: alphaSum / texels,
+          coveredColor: passing > 0 ? covered.map(v => v / passing) : null,
+          weightedColor: alphaSum > 0 ? weighted.map(v => v / alphaSum) : null,
+        }
+      }
+    }
+    alphaCache.set(cacheKey, stats)
+    return stats
   }
 
   /** Material info for a model material: { name, source, albedo, kind, alpha, unlit, skip, doubleSided }. */
@@ -490,7 +557,25 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
     else if (p.$alpha !== undefined && Number(p.$alpha) < 1) Object.assign(info, { kind: 'translucent', alpha: clamp01(Number(p.$alpha)) })
     if (typeof p.$basetexture === 'string') {
       const texture = normalizePath(`materials/${p.$basetexture.replace(/^materials[\\/]/i, '').replace(/\.vtf$/i, '')}.vtf`)
-      let color = textureColor(texture)
+      // See-through materials take their opacity and colour from the texture's alpha when it is in
+      // the PAK: dense cutouts draw opaque, blends use the mean alpha.
+      const alphaTest = truthy(p.$alphatest)
+      if (alphaTest || truthy(p.$translucent)) {
+        const ref = Number(p.$alphatestreference) > 0 ? Number(p.$alphatestreference) : DEFAULT_ALPHA_REF
+        const stats = await alphaStats(texture, ref)
+        if (stats) {
+          info.coverage = round(stats.coverage, 3)
+          if (alphaTest) {
+            if (stats.coverage >= OPAQUE_COVERAGE) Object.assign(info, { kind: 'opaque', alpha: 1 })
+            if (stats.coveredColor) Object.assign(info, { source: 'pak', albedo: stats.coveredColor })
+          } else {
+            const scale = p.$alpha !== undefined && Number.isFinite(Number(p.$alpha)) ? clamp01(Number(p.$alpha)) : 1
+            info.alpha = round(Math.min(BLEND_ALPHA_RANGE[1], Math.max(BLEND_ALPHA_RANGE[0], stats.meanAlpha * scale)), 3)
+            if (stats.weightedColor) Object.assign(info, { source: 'pak', albedo: stats.weightedColor })
+          }
+        }
+      }
+      let color = info.source === 'pak' ? null : textureColor(texture)
       if (color?.png) {
         const sharp = (await import('sharp')).default
         const { data, info: meta } = await sharp(color.png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
@@ -522,7 +607,8 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
  *
  * @param {object} o
  * @param {string} o.bspToGlb      bsp-to-glb binary
- * @param {string|null} o.vtfToPng vtf-to-png helper (only for textures without reflectivity)
+ * @param {string|null} o.vtfToPng vtf-to-png helper (textures without reflectivity, and the alpha of
+ *                                 see-through textures)
  * @param {string} o.pakDir        pass-1 PAK extraction
  * @param {object} o.props         pass-2 `--props-out` JSON (schema bsp-to-glb.props)
  * @param {string} o.workDir       scratch directory
@@ -1120,7 +1206,7 @@ export async function convertStaticProps(o) {
       materials: {
         ...stats.materials,
         neutralNames: neutralMaterials,
-        table: [...materialStats.values()].map(info => ({ name: info.name, source: info.source, kind: info.kind, ...(info.skip ? { skip: info.skip } : {}), albedo: info.albedo.map(v => round(v, 3)) })),
+        table: [...materialStats.values()].map(info => ({ name: info.name, source: info.source, kind: info.kind, ...(info.skip ? { skip: info.skip } : {}), ...(info.coverage !== undefined ? { coverage: info.coverage, alpha: info.alpha } : {}), albedo: info.albedo.map(v => round(v, 3)) })),
       },
       warnings,
     },

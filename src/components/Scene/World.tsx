@@ -464,9 +464,11 @@ export const World = (props: WorldProps) => {
     ref.current?.position.copy(bounds.center).add(new THREE.Vector3(x, y, z))
   }, [bounds])
 
-  // PAK static props (task M2): props.glb shares the world group's transform and material rules.
+  // PAK static props (task M2): props.glb shares the world group's transform and material rules. The
+  // URL comes from the loaded map's own folder, so a render between a map change and the reset above
+  // never pairs the new map name with the previous map's file list.
   const propsFile = loadedMap?.pipeline === 'bsp-to-glb' ? loadedMap.conversion?.files?.props : undefined
-  const propsUrl = propsFile ? getMapFileUrl(map, propsFile) : undefined
+  const propsUrl = loadedMap && propsFile ? getMapFileUrl(loadedMap.folder, propsFile) : undefined
 
   return (
     // Account for valve maps using different axis system

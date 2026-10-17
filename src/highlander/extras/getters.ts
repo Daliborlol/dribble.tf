@@ -159,7 +159,7 @@ export function activeWeaponAt(x: HighlanderExtras, p: number, tick: number, cla
 
 export interface WeaponState { state: number; reload: number; clip: number; readyToBackstab: boolean; critFire: boolean; lowered: boolean; chargeTick: number | null }
 
-/** State of the active weapon; clip -1 = no clip, chargeTick null = not charging. */
+/** State of the active weapon; clip -1 = no clip or unknown (`hasLocalTables`), chargeTick null = not charging or unknown. */
 export function weaponStateAt(x: HighlanderExtras, p: number, tick: number): WeaponState | null {
   const t = x.players.wstate
   const i = trackIndexAt(t, p, tick)
@@ -231,13 +231,27 @@ export function verticalFov(fovH43: number): number {
   return (2 * Math.atan(Math.tan((fovH43 * Math.PI) / 360) * 0.75) * 180) / Math.PI
 }
 
+/**
+ * True when p's local-only tables reached the demo (a Delta updated them; the Rust side checks per player).
+ * Old SourceTV demos such as the bundled 6v6 sample, and every player but the recorder of a POV demo, carry them
+ * only once, from the signon baseline. For those players the extras drop the view, ammo, scoring, itemCharge and
+ * sniper entries, and the local-only fields of other tracks read as unknown: `wstate.clip` -1, `chargeTick` null,
+ * `misc.rage` and `misc.stickies` 0, desired disguise 0, FOV rate 0 (instant zoom), `builder.type` 255. Gate a
+ * displayed rage, sticky count or clip on this.
+ */
+export function hasLocalTables(x: HighlanderExtras, p: number): boolean {
+  const has = (t: { offsets: Uint32Array }) => (t.offsets[p + 1] ?? 0) > (t.offsets[p] ?? 0)
+  return has(x.players.ammo) || has(x.players.view) || has(x.players.scoring)
+}
+
 /** VEC_DEAD_VIEWHEIGHT is 14; a living player's eye is never below the duck height (45). */
 const DEAD_EYE_Z_BELOW = 20
 
 /**
- * The player's own eye height (m_vecViewOffset z), null without data. Also null while p observes
- * (misc.obsMode != 0: the observer's view offset follows his observer target, so after a death it carries the
- * eye height of whoever he spectates) and for the dead view height (14) of the first ticks after a death.
+ * The player's own eye height (m_vecViewOffset z), null without data (also for every player whose local tables
+ * never updated, see `hasLocalTables`). Also null while p observes (misc.obsMode != 0: the observer's view offset
+ * follows his observer target, so after a death it carries the eye height of whoever he spectates) and for the
+ * dead view height (14) of the first ticks after a death.
  */
 export function eyeZAt(x: HighlanderExtras, p: number, tick: number): number | null {
   const i = trackIndexAt(x.players.view, p, tick)
@@ -283,7 +297,7 @@ export function loadoutAt(x: HighlanderExtras, p: number, tick: number): number[
 
 export interface ScoringState { kills: number; deaths: number; assists: number; damage: number; heals: number; caps: number; defenses: number; backstabs: number; headshots: number; invulns: number; teleports: number; built: number; destroyed: number; dominations: number; revenges: number; points: number }
 
-/** Null without data (no tv_transmitall). Match totals (section 2.6.4). */
+/** Null without data (local tables never updated, see `hasLocalTables`). Match totals (section 2.6.4). */
 export function scoringAt(x: HighlanderExtras, p: number, tick: number): ScoringState | null {
   const t = x.players.scoring
   const i = trackIndexAt(t, p, tick)
@@ -374,7 +388,10 @@ export function medicCallTicks(x: HighlanderExtras, p: number): Uint32Array {
   return perPlayer[p] ?? new Uint32Array(0)
 }
 
-/** `saveMeTick` is the tick of p's latest MEDIC! call at or before `tick`, -1 when there was none. */
+/**
+ * `saveMeTick` is the tick of p's latest MEDIC! call at or before `tick`, -1 when there was none. `rage` and
+ * `stickies` come from local-only tables: they read 0 when `hasLocalTables(x, p)` is false.
+ */
 export function miscAt(x: HighlanderExtras, p: number, tick: number): { healers: number; carrying: boolean; flip: boolean; obsMode: number; obsTarget: number; revenge: number; heads: number; charge: number; rage: number; stickies: number; saveMeTick: number } | null {
   const t = x.players.misc
   const i = trackIndexAt(t, p, tick)

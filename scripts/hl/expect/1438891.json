@@ -83,6 +83,32 @@
       "stat": "alignment.ok",
       "eq": true,
       "needsBase": true
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.ammo",
+      "eq": true
+    },
+    {
+      "stat": "available.scoring",
+      "eq": true
+    },
+    {
+      "stat": "available.watchers",
+      "eq": false
+    },
+    {
+      "stat": "available.carts",
+      "eq": false,
+      "name": "no cart on KOTH: three static func_tracktrain brushes and no train watcher"
     }
   ]
 }

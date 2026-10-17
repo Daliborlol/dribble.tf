@@ -14,17 +14,19 @@ onmessage = async (event: MessageEvent) => {
   try {
     const wasm = await init()
     const t0 = performance.now()
-    const fileBuffer: ArrayBuffer = data.buffer
-    let bytes: Uint8Array | null = new Uint8Array(fileBuffer)
-    data.buffer = null // after the copy below, no JS reference to the file remains
+    let fileBuffer: ArrayBuffer | null = data.buffer
+    data.buffer = null
+    let bytes: Uint8Array | null = new Uint8Array(fileBuffer as ArrayBuffer)
     const length = bytes.length
     const input = new ExtrasInput(length)
     new Uint8Array(wasm.memory.buffer, input.ptr(), length).set(bytes)
     bytes = null
     // ArrayBuffer.prototype.transfer (ES2024) detaches the file buffer and frees its memory now, so the parse peak
-    // holds the file once (in wasm memory) instead of until the next GC. Older browsers keep the GC path.
+    // holds the file once (in wasm memory) instead of until the next GC. Older browsers keep the GC path, which
+    // needs every reference gone: after this line no JS reference to the file remains.
     const transfer = (fileBuffer as ArrayBuffer & { transfer?: (length: number) => ArrayBuffer }).transfer
     if (typeof transfer === 'function') transfer.call(fileBuffer, 0)
+    fileBuffer = null
     const raw = parse_demo_extras_input(input, data.options, (p: number) => postMessage({ type: 'progress', progress: p }))
     if (typeof raw === 'string' || !raw) return postMessage({ type: 'error', error: raw || 'extras parse failed' })
     ;(raw as ExtrasRaw).meta.parseMs = performance.now() - t0

@@ -1,5 +1,20 @@
 {
   "demo": "1432698.dem",
   "about": "pl_vigil_rc10, 1557 s, 101 MB. Memory run with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
-  "checks": []
+  "checks": [
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.carts",
+      "eq": true,
+      "name": "payload cart"
+    }
+  ]
 }

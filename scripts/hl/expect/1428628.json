@@ -20,6 +20,20 @@
       "stat": "pd.bluMax",
       "min": 91,
       "name": "BLU score passes 90"
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.carts",
+      "eq": true,
+      "name": "tug-of-war carts (train watchers)"
     }
   ]
 }

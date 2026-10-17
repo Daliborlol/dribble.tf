@@ -251,7 +251,24 @@ set('hurts', x.hurts.tick.length)
 
 // instances
 const counts = x.meta.counts
-for (const [k, v] of Object.entries(counts)) if (k.startsWith('inst.') || k.startsWith('scoring.')) set(k, v)
+for (const [k, v] of Object.entries(counts)) if (k.startsWith('inst.') || k.startsWith('scoring.') || k.startsWith('localTables.')) set(k, v)
+// availability flags, so expectation files can assert them (`available.view` and so on)
+for (const [k, v] of Object.entries(x.meta.available)) set(`available.${k}`, v)
+{
+  // local-only tables (Rust drops values frozen at signon): players the getter reports, and stale values left over
+  let withLocal = 0, staleClip = 0, staleRage = 0
+  for (let p = 0; p < pc; p++) {
+    const live = getters.hasLocalTables(x, p)
+    if (live) withLocal++
+    if (live) continue
+    const w = x.players.wstate, m = x.players.misc
+    for (let i = w.offsets[p]; i < w.offsets[p + 1]; i++) if (w.clip[i] !== -1 || !Number.isNaN(w.chargeTick[i])) staleClip++
+    for (let i = m.offsets[p]; i < m.offsets[p + 1]; i++) if (m.rage[i] !== 0 || m.stickies[i] !== 0) staleRage++
+  }
+  set('localTables.getterPlayers', withLocal)
+  set('localTables.staleClipEntries', staleClip)
+  set('localTables.staleRageEntries', staleRage)
+}
 {
   const b = x.buildings
   let sentry = 0, dispenserPlayer = 0, dispenserMap = 0, teleporter = 0, sapper = 0

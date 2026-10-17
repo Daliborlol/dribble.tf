@@ -15,6 +15,75 @@
       "stat": "alignment.ok",
       "eq": true,
       "needsBase": true
+    },
+    {
+      "stat": "localTables.live",
+      "eq": 0,
+      "name": "old SourceTV demo: no player has live local tables"
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 12,
+      "name": "local tables frozen at signon for the 12 players who played a class"
+    },
+    {
+      "stat": "localTables.getterPlayers",
+      "eq": 0,
+      "name": "hasLocalTables() is false for every player"
+    },
+    {
+      "stat": "localTables.staleClipEntries",
+      "eq": 0,
+      "name": "no frozen clip or charge begin is left for those players"
+    },
+    {
+      "stat": "localTables.staleRageEntries",
+      "eq": 0,
+      "name": "no frozen rage or sticky count is left for those players"
+    },
+    {
+      "stat": "available.view",
+      "eq": false
+    },
+    {
+      "stat": "available.ammo",
+      "eq": false
+    },
+    {
+      "stat": "available.scoring",
+      "eq": false
+    },
+    {
+      "stat": "available.itemCharge",
+      "eq": false
+    },
+    {
+      "stat": "available.sniper",
+      "eq": false
+    },
+    {
+      "stat": "available.builder",
+      "eq": false,
+      "name": "builder type is local-only (DT_BuilderLocalData)"
+    },
+    {
+      "stat": "available.carts",
+      "eq": false
+    },
+    {
+      "stat": "available.wstate",
+      "eq": true,
+      "name": "wstate keeps the shared reload and weapon state"
+    },
+    {
+      "stat": "available.medigun",
+      "eq": true,
+      "name": "medigun charge comes from the non-local table"
+    },
+    {
+      "stat": "available.cloak",
+      "eq": true,
+      "name": "cloak meter is shared (DT_TFPlayerShared); 100 throughout, the sample has no spy"
     }
   ]
 }

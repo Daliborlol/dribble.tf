@@ -59,6 +59,7 @@ export async function startHighlanderExtras(buffer: ArrayBuffer, parsedDemo: Asy
   const fail = (message: string) => {
     if (!isCurrent()) return
     stopWorker()
+    instance().setExtras(undefined) // step 7: extras stay unset on every error path
     instance().setExtrasStatus('error', 100, message)
   }
 
@@ -66,6 +67,9 @@ export async function startHighlanderExtras(buffer: ArrayBuffer, parsedDemo: Asy
     stopWorker()
     lastAlignment = null
     lastTiming = null
+    // A restart on the same demo must not leave the previous extras readable (debug bridge, probes) while this
+    // parse runs or after it fails.
+    instance().setExtras(undefined)
 
     const seconds = parsedDemo.ticks * parsedDemo.intervalPerTick
     const plan = planExtrasGroups(buffer.byteLength, { seconds, budgetMB: budgetOverrideMB() })
@@ -112,32 +116,37 @@ export async function startHighlanderExtras(buffer: ArrayBuffer, parsedDemo: Asy
       }
 
       if (data.type !== 'result') return
-      stopWorker() // the result is complete; the worker's wasm heap goes with it
+      stopWorker() // the result is complete; the worker's wasm heap goes with it (this also clears the timeout)
       if (instance().parsedDemo !== parsedDemo) return
 
-      const extras = data.extras as HighlanderExtras
-      const alignment = checkAlignment(extras, parsedDemo)
-      lastAlignment = alignment
-      if (!alignment.ok) {
-        instance().setExtrasStatus('error', 100, `misaligned: ${alignment.reason ?? 'unknown reason'}`)
-        return
-      }
+      // The timeout is gone now, so anything that throws below must still end in a terminal status (step 8)
+      try {
+        const extras = data.extras as HighlanderExtras
+        const alignment = checkAlignment(extras, parsedDemo)
+        lastAlignment = alignment
+        if (!alignment.ok) {
+          fail(`misaligned: ${alignment.reason ?? 'unknown reason'}`)
+          return
+        }
 
-      const bytes = typedArrayBytes(extras)
-      lastTiming = { workerMs: data.ms, parseMs: extras.meta.parseMs, wasmMemoryBytes: data.wasmMemoryBytes, typedArrayBytes: bytes }
-      instance().setExtras(extras)
-      instance().setExtrasStatus('ready', 100)
-      console.info('[HL] extras ready', {
-        parseMs: Math.round(extras.meta.parseMs),
-        workerMs: Math.round(Number(data.ms) || 0),
-        typedArrayBytes: bytes,
-        typedArrayMB: Math.round((bytes / 1e6) * 10) / 10,
-        wasmMemoryMB: Math.round((Number(data.wasmMemoryBytes) || 0) / 1e5) / 10,
-        counts: extras.meta.counts,
-        excluded: extras.meta.excluded,
-        warnings: extras.meta.warnings,
-        alignment,
-      })
+        const bytes = typedArrayBytes(extras)
+        lastTiming = { workerMs: data.ms, parseMs: extras.meta.parseMs, wasmMemoryBytes: data.wasmMemoryBytes, typedArrayBytes: bytes }
+        instance().setExtras(extras)
+        instance().setExtrasStatus('ready', 100)
+        console.info('[HL] extras ready', {
+          parseMs: Math.round(extras.meta.parseMs),
+          workerMs: Math.round(Number(data.ms) || 0),
+          typedArrayBytes: bytes,
+          typedArrayMB: Math.round((bytes / 1e6) * 10) / 10,
+          wasmMemoryMB: Math.round((Number(data.wasmMemoryBytes) || 0) / 1e5) / 10,
+          counts: extras.meta.counts,
+          excluded: extras.meta.excluded,
+          warnings: extras.meta.warnings,
+          alignment,
+        })
+      } catch (error) {
+        fail(`extras result rejected: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
     worker.onerror = (event: ErrorEvent) => {
       event.preventDefault?.()
@@ -199,6 +208,7 @@ function playersAt(tickArg?: number) {
       classId: base.classId,
       health: base.health,
       flags: flagNames(flags),
+      localTables: getters.hasLocalTables(x, p),
       cloakMeter: getters.cloakMeterAt(x, p, tick),
       invis: safe(getters.invisAt(x, p, tick)),
       disguise: disguise && { ...disguise, weaponName: itemName(disguise.weaponDef) },

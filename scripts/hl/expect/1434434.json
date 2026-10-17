@@ -1,0 +1,205 @@
+{
+  "demo": "1434434.dem",
+  "about": "pl_vigil_rc10, 226 s. Contract section 2.7 acceptance table; probe values come from the hl_probe run (they include events before the cache start, so a count passes within 95..100 % of the probe value).",
+  "limits": {
+    "parseMs": 3000,
+    "typedArrayMB": 8
+  },
+  "checks": [
+    {
+      "stat": "hlRising.CLOAKED",
+      "probe": 10
+    },
+    {
+      "stat": "hlRising.DISGUISED",
+      "probe": 14
+    },
+    {
+      "stat": "hlRising.UBER",
+      "probe": 18
+    },
+    {
+      "stat": "condRising.11",
+      "probe": 2,
+      "name": "cond 11 (CRITBOOSTED) rising edges"
+    },
+    {
+      "stat": "hlRising.FEIGN",
+      "probe": 3
+    },
+    {
+      "stat": "hlRising.ZOOMED",
+      "probe": 61
+    },
+    {
+      "stat": "tempents.bullets",
+      "probe": 859
+    },
+    {
+      "stat": "players.anim",
+      "probe": 9356
+    },
+    {
+      "stat": "tempents.explosions",
+      "probe": 292
+    },
+    {
+      "stat": "fireByName.Dwapking",
+      "probe": 43,
+      "name": "players.fire Dwapking (soldier)",
+      "needsBase": true
+    },
+    {
+      "stat": "fireByName.kanon",
+      "probe": 36,
+      "name": "players.fire kanon (scout)",
+      "needsBase": true
+    },
+    {
+      "stat": "fireByName.dastron",
+      "probe": 56,
+      "name": "players.fire dastron (demoman)",
+      "needsBase": true
+    },
+    {
+      "stat": "fireByName.28awesomebugs.org",
+      "probe": 17,
+      "name": "players.fire the sniper",
+      "needsBase": true
+    },
+    {
+      "stat": "fireByName.moikill231",
+      "probe": 351,
+      "name": "players.fire the heavy",
+      "needsBase": true
+    },
+    {
+      "stat": "dots.laser0",
+      "probe": 61
+    },
+    {
+      "stat": "dots.laser1",
+      "probe": 7
+    },
+    {
+      "stat": "buildings.sentry",
+      "probe": 6
+    },
+    {
+      "stat": "buildings.dispenserPlayer",
+      "probe": 3,
+      "name": "dispensers with mapPlaced 0"
+    },
+    {
+      "stat": "buildings.teleporter",
+      "probe": 6
+    },
+    {
+      "stat": "inst.CObjectCartDispenser",
+      "eq": 2
+    },
+    {
+      "stat": "weaponDisguise.CWeaponMedigun",
+      "probe": 6,
+      "name": "CWeaponMedigun instances with disguise 1"
+    },
+    {
+      "stat": "medigun.spyDefEntries",
+      "eq": 0,
+      "name": "players.medigun entries with a def for spies",
+      "needsBase": true
+    },
+    {
+      "stat": "projKind.1",
+      "probe": 86
+    },
+    {
+      "stat": "projKind.2+3",
+      "probe": 140
+    },
+    {
+      "stat": "projKind.7",
+      "probe": 68
+    },
+    {
+      "stat": "projKind.8+9",
+      "probe": 15
+    },
+    {
+      "stat": "projKind.10",
+      "probe": 15
+    },
+    {
+      "stat": "projKind.6",
+      "probe": 14
+    },
+    {
+      "stat": "projKind.16",
+      "probe": 18
+    },
+    {
+      "stat": "events.kill",
+      "probe": 33
+    },
+    {
+      "stat": "kill.feign",
+      "probe": 3
+    },
+    {
+      "stat": "cp.count",
+      "eq": 4
+    },
+    {
+      "stat": "cp.pathDistance.0",
+      "near": 0.251,
+      "tol": 0.001
+    },
+    {
+      "stat": "cp.pathDistance.1",
+      "near": 0.451,
+      "tol": 0.001
+    },
+    {
+      "stat": "cp.pathDistance.2",
+      "near": 0.7176,
+      "tol": 0.001
+    },
+    {
+      "stat": "cp.pathDistance.3",
+      "near": 1,
+      "tol": 0.001
+    },
+    {
+      "stat": "alignment.ok",
+      "eq": true,
+      "needsBase": true
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.ammo",
+      "eq": true
+    },
+    {
+      "stat": "available.scoring",
+      "eq": true
+    },
+    {
+      "stat": "localTables.live",
+      "min": 18,
+      "name": "live local tables for the 18 players"
+    },
+    {
+      "stat": "available.carts",
+      "eq": true,
+      "name": "payload cart available (watchers and cart movers)"
+    }
+  ]
+}

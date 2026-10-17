@@ -1,0 +1,19 @@
+{
+  "demo": "1433815.dem",
+  "about": "koth_ashville_final1, 130 318 ticks, 123 MB. Memory run with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "checks": [
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.carts",
+      "eq": false
+    }
+  ]
+}

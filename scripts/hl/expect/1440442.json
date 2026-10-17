@@ -1,0 +1,66 @@
+{
+  "demo": "1440442.dem",
+  "about": "cp_steel_f12, 724 s, attack/defend stopwatch on control points. Contract section 2.7 acceptance table.",
+  "checks": [
+    {
+      "stat": "rules.stopwatch",
+      "eq": true,
+      "name": "RULES.STOPWATCH set"
+    },
+    {
+      "stat": "rules.swStateMax",
+      "min": 1,
+      "name": "swState reaches 1"
+    },
+    {
+      "stat": "cp.count",
+      "eq": 5
+    },
+    {
+      "stat": "events.capStart",
+      "min": 1,
+      "name": "capStart events present"
+    },
+    {
+      "stat": "events.captured",
+      "min": 1,
+      "name": "captured events present"
+    },
+    {
+      "stat": "convar0.mp_tournament_redteamname",
+      "eq": "BLU",
+      "name": "convarAt(x, 'mp_tournament_redteamname', 0)"
+    },
+    {
+      "stat": "weaponDisguise.CWeaponMedigun",
+      "probe": 27,
+      "name": "CWeaponMedigun disguise instances"
+    },
+    {
+      "stat": "alignment.ok",
+      "eq": true,
+      "needsBase": true
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.ammo",
+      "eq": true
+    },
+    {
+      "stat": "available.scoring",
+      "eq": true
+    },
+    {
+      "stat": "available.carts",
+      "eq": false
+    }
+  ]
+}

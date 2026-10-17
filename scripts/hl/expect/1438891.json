@@ -1,0 +1,114 @@
+{
+  "demo": "1438891.dem",
+  "about": "koth_product_final, 817 s. Contract section 2.7 acceptance table.",
+  "limits": {
+    "parseMs": 7000,
+    "typedArrayMB": 25
+  },
+  "checks": [
+    {
+      "stat": "hlRising.CLOAKED",
+      "probe": 51
+    },
+    {
+      "stat": "hlRising.ZOOMED",
+      "probe": 249
+    },
+    {
+      "stat": "tempents.bullets",
+      "probe": 5001
+    },
+    {
+      "stat": "players.anim",
+      "probe": 50239
+    },
+    {
+      "stat": "buildings.sentry",
+      "probe": 29
+    },
+    {
+      "stat": "buildings.sapper",
+      "probe": 13
+    },
+    {
+      "stat": "flames.count",
+      "probe": 333
+    },
+    {
+      "stat": "weaponDisguise.CWeaponMedigun",
+      "probe": 29,
+      "name": "CWeaponMedigun instances with disguise 1"
+    },
+    {
+      "stat": "medigun.spyDefEntries",
+      "eq": 0,
+      "name": "spy players.medigun entries with a def",
+      "needsBase": true
+    },
+    {
+      "stat": "events.kill",
+      "probe": 211
+    },
+    {
+      "stat": "kill.feign",
+      "min": 16,
+      "name": "kill events with feign (at least 16)"
+    },
+    {
+      "stat": "objectives.koth",
+      "eq": true
+    },
+    {
+      "stat": "rules.redKothResolved",
+      "min": 1,
+      "name": "rules.redKoth resolves to a timer"
+    },
+    {
+      "stat": "rules.bluKothResolved",
+      "min": 1,
+      "name": "rules.bluKoth resolves to a timer"
+    },
+    {
+      "stat": "scoring.element",
+      "min": 0,
+      "max": 1,
+      "name": "meta.counts['scoring.element'] is set"
+    },
+    {
+      "stat": "scoring.players",
+      "min": 16,
+      "name": "scoring has entries for at least 16 players"
+    },
+    {
+      "stat": "alignment.ok",
+      "eq": true,
+      "needsBase": true
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.ammo",
+      "eq": true
+    },
+    {
+      "stat": "available.scoring",
+      "eq": true
+    },
+    {
+      "stat": "available.watchers",
+      "eq": false
+    },
+    {
+      "stat": "available.carts",
+      "eq": false,
+      "name": "no cart on KOTH: three static func_tracktrain brushes and no train watcher"
+    }
+  ]
+}

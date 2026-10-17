@@ -1,0 +1,39 @@
+{
+  "demo": "1428628.dem",
+  "about": "tow_tetsudo_b10c, 94 378 ticks, tug of war. Too large for parser2 in Node on this machine, so it runs with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "checks": [
+    {
+      "stat": "pd.entries",
+      "min": 1,
+      "name": "pd has entries"
+    },
+    {
+      "stat": "pd.max",
+      "eq": 100
+    },
+    {
+      "stat": "pd.redMax",
+      "min": 91,
+      "name": "RED score passes 90"
+    },
+    {
+      "stat": "pd.bluMax",
+      "min": 91,
+      "name": "BLU score passes 90"
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.carts",
+      "eq": true,
+      "name": "tug-of-war carts (train watchers)"
+    }
+  ]
+}

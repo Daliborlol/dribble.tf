@@ -1,0 +1,67 @@
+{
+  "demo": "1442753.dem",
+  "about": "koth_ashville_final1, 910 s, the P1 memory demo (its parser2 child peaks near 0.8 GB, gated at 1500 MB available). Counts are the native survey values +/- 5 % (the browser path covers parser2's 93 extra end ticks).",
+  "checks": [
+    {
+      "stat": "projKind.17",
+      "min": 101,
+      "max": 112,
+      "name": "Pomson/Bison energy rings"
+    },
+    {
+      "stat": "projKind.16",
+      "min": 38,
+      "max": 42
+    },
+    {
+      "stat": "events.deflect",
+      "min": 86,
+      "max": 96
+    },
+    {
+      "stat": "events.sapped",
+      "min": 14,
+      "max": 16
+    },
+    {
+      "stat": "events.teleported",
+      "min": 33,
+      "max": 37
+    },
+    {
+      "stat": "events.uberDeployed",
+      "min": 10,
+      "max": 12
+    },
+    {
+      "stat": "dots.laser1",
+      "eq": 2
+    },
+    {
+      "stat": "objectives.koth",
+      "eq": true
+    },
+    {
+      "stat": "alignment.ok",
+      "eq": true,
+      "needsBase": true
+    },
+    {
+      "stat": "localTables.stale",
+      "eq": 0,
+      "name": "every player who played a class has live local tables"
+    },
+    {
+      "stat": "available.view",
+      "eq": true
+    },
+    {
+      "stat": "available.ammo",
+      "eq": true
+    },
+    {
+      "stat": "available.scoring",
+      "eq": true
+    }
+  ]
+}

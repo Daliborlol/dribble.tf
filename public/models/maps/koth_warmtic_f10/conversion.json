@@ -1,6 +1,6 @@
 {
  "mapName": "koth_warmtic_f10",
- "timestamp": "2026-10-17T17:01:33.254Z",
+ "timestamp": "2026-10-17T20:17:35.047Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -49,6 +49,11 @@
    33,
    35
   ]
+ },
+ "props": {
+  "pak": 0,
+  "stock": 1078,
+  "stockSolid": 473
  },
  "lightEnvironment": {
   "ambient": {
@@ -129,7 +134,7 @@
   "leaves": 5317
  },
  "stats": {
-  "exportMs": 1344,
+  "exportMs": 1374,
   "sourceFaces": 10450,
   "sourceTriangles": 40640,
   "keptTriangles": 38825,
@@ -149,7 +154,42 @@
   "glbBytes": 571696,
   "lightmapBytes": 603974,
   "metaBytes": 12144,
-  "visibilityBytes": 349102
+  "visibilityBytes": 349102,
+  "props": {
+   "ms": 16,
+   "bytes": 0,
+   "skybox": 0,
+   "dynamicSkipped": {
+    "named": 1
+   },
+   "unconvertible": 0,
+   "models": 0,
+   "clusters": 0,
+   "nodes": 0,
+   "instancedNodes": 0,
+   "bakedInstances": 0,
+   "primitives": 0,
+   "vertices": 0,
+   "triangles": 0,
+   "renderedTriangles": 0,
+   "skippedPrimitives": 0,
+   "lighting": {
+    "exact": 0,
+    "estimated": 0,
+    "mismatched": 0,
+    "set": "hdr",
+    "exposure": 0.9418,
+    "floor": 0.015,
+    "worstSharedError": 0
+   },
+   "materials": {
+    "pak": 0,
+    "neutral": 0,
+    "neutralNames": [],
+    "table": []
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "NATURE/BLENDGROUNDTOGRASS007": {

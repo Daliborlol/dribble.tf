@@ -1,6 +1,6 @@
 {
  "mapName": "pl_downfall_b13",
- "timestamp": "2026-10-17T17:01:54.162Z",
+ "timestamp": "2026-10-17T20:20:28.186Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,11 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 43,
+  "stock": 1844,
+  "stockSolid": 837
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +129,7 @@
   "leaves": 10628
  },
  "stats": {
-  "exportMs": 2847,
+  "exportMs": 2900,
   "sourceFaces": 21928,
   "sourceTriangles": 295417,
   "keptTriangles": 291954,
@@ -143,7 +149,94 @@
   "glbBytes": 2015060,
   "lightmapBytes": 1322158,
   "metaBytes": 65308,
-  "visibilityBytes": 1115749
+  "visibilityBytes": 1115749,
+  "props": {
+   "ms": 313,
+   "bytes": 622876,
+   "skybox": 0,
+   "dynamicSkipped": {},
+   "unconvertible": 0,
+   "models": 9,
+   "clusters": 23,
+   "nodes": 15,
+   "instancedNodes": 0,
+   "bakedInstances": 29,
+   "primitives": 16,
+   "vertices": 54877,
+   "triangles": 67823,
+   "renderedTriangles": 67823,
+   "skippedPrimitives": 0,
+   "lighting": {
+    "exact": 43,
+    "estimated": 0,
+    "mismatched": 0,
+    "set": "hdr",
+    "exposure": 2,
+    "floor": 0.015,
+    "worstSharedError": 1.186
+   },
+   "materials": {
+    "pak": 3,
+    "neutral": 2,
+    "neutralNames": [
+     "pumpkin",
+     "handrail128_skin2"
+    ],
+    "table": [
+     {
+      "name": "flatcrate_pallet",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.232,
+       0.201,
+       0.153
+      ]
+     },
+     {
+      "name": "tank001_blue0",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.06,
+       0.057,
+       0.057
+      ]
+     },
+     {
+      "name": "pumpkin",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "handrail128_skin2",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "tree_pine_skinny_skin0",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.065,
+       0.05,
+       0.026
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "METAL/WALL027B": {

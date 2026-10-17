@@ -1,6 +1,6 @@
 {
  "mapName": "cp_steel_f12",
- "timestamp": "2026-10-17T17:01:12.949Z",
+ "timestamp": "2026-10-17T20:13:55.983Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,11 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 5,
+  "stock": 1450,
+  "stockSolid": 649
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +129,7 @@
   "leaves": 9999
  },
  "stats": {
-  "exportMs": 1824,
+  "exportMs": 1897,
   "sourceFaces": 18394,
   "sourceTriangles": 64671,
   "keptTriangles": 62195,
@@ -143,7 +149,53 @@
   "glbBytes": 1437600,
   "lightmapBytes": 944642,
   "metaBytes": 44747,
-  "visibilityBytes": 908471
+  "visibilityBytes": 908471,
+  "props": {
+   "ms": 69,
+   "bytes": 105776,
+   "skybox": 0,
+   "dynamicSkipped": {},
+   "unconvertible": 0,
+   "models": 1,
+   "clusters": 3,
+   "nodes": 2,
+   "instancedNodes": 0,
+   "bakedInstances": 4,
+   "primitives": 2,
+   "vertices": 8550,
+   "triangles": 8000,
+   "renderedTriangles": 8000,
+   "skippedPrimitives": 0,
+   "lighting": {
+    "exact": 5,
+    "estimated": 0,
+    "mismatched": 0,
+    "set": "hdr",
+    "exposure": 1.3695,
+    "floor": 0.015,
+    "worstSharedError": 0.388
+   },
+   "materials": {
+    "pak": 0,
+    "neutral": 1,
+    "neutralNames": [
+     "vault_door"
+    ],
+    "table": [
+     {
+      "name": "vault_door",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "METAL/IBEAM001B": {

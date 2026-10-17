@@ -1,6 +1,6 @@
 {
  "mapName": "pl_vigil_rc10",
- "timestamp": "2026-10-17T17:02:26.117Z",
+ "timestamp": "2026-10-17T20:27:19.708Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -47,6 +48,11 @@
   "darkNamedStyles": [
    33
   ]
+ },
+ "props": {
+  "pak": 88,
+  "stock": 1428,
+  "stockSolid": 409
  },
  "lightEnvironment": {
   "ambient": {
@@ -127,7 +133,7 @@
   "leaves": 10003
  },
  "stats": {
-  "exportMs": 2441,
+  "exportMs": 2478,
   "sourceFaces": 19316,
   "sourceTriangles": 93634,
   "keptTriangles": 88905,
@@ -147,7 +153,193 @@
   "glbBytes": 1132124,
   "lightmapBytes": 1579052,
   "metaBytes": 63572,
-  "visibilityBytes": 874943
+  "visibilityBytes": 874943,
+  "props": {
+   "ms": 317,
+   "bytes": 877776,
+   "skybox": 6,
+   "dynamicSkipped": {
+    "parented": 2
+   },
+   "unconvertible": 0,
+   "models": 10,
+   "clusters": 44,
+   "nodes": 30,
+   "instancedNodes": 2,
+   "bakedInstances": 56,
+   "primitives": 30,
+   "vertices": 70932,
+   "triangles": 42867,
+   "renderedTriangles": 42897,
+   "skippedPrimitives": 0,
+   "lighting": {
+    "exact": 88,
+    "estimated": 0,
+    "mismatched": 0,
+    "set": "hdr",
+    "exposure": 1.0846,
+    "floor": 0.015,
+    "worstSharedError": 1.189
+   },
+   "materials": {
+    "pak": 15,
+    "neutral": 0,
+    "neutralNames": [],
+    "table": [
+     {
+      "name": "cliff_wall_vigil",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.285,
+       0.242,
+       0.206
+      ]
+     },
+     {
+      "name": "large_ammo_wood",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.197,
+       0.182,
+       0.15
+      ]
+     },
+     {
+      "name": "medium_ammo_wood",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.233,
+       0.205,
+       0.168
+      ]
+     },
+     {
+      "name": "medium_health_wood",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.211,
+       0.193,
+       0.16
+      ]
+     },
+     {
+      "name": "medium_ammo_metal",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.225,
+       0.223,
+       0.197
+      ]
+     },
+     {
+      "name": "medium_health_metal",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.217,
+       0.216,
+       0.192
+      ]
+     },
+     {
+      "name": "mousetrap",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.208,
+       0.186,
+       0.166
+      ]
+     },
+     {
+      "name": "no_build_sign_diffuse",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.432,
+       0.244,
+       0.03
+      ]
+     },
+     {
+      "name": "vigil_dome_railing",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.13,
+       0.122,
+       0.103
+      ]
+     },
+     {
+      "name": "pet_mouse",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.071,
+       0.065,
+       0.063
+      ]
+     },
+     {
+      "name": "small_ammo_wood",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.215,
+       0.198,
+       0.164
+      ]
+     },
+     {
+      "name": "small_health_wood",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.219,
+       0.201,
+       0.167
+      ]
+     },
+     {
+      "name": "small_ammo_metal",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.23,
+       0.231,
+       0.205
+      ]
+     },
+     {
+      "name": "small_health_metal",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.232,
+       0.23,
+       0.202
+      ]
+     },
+     {
+      "name": "wooden_doorway",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.018,
+       0.012,
+       0.009
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "COALMINES/RED_BEAM1": {

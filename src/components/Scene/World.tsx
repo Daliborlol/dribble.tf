@@ -29,6 +29,7 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
+import { StaticProps } from '@highlander/map/StaticProps'
 
 const INVISIBLE_TOOL_MATERIALS = new Set([
   'toolsnodraw',
@@ -463,11 +464,16 @@ export const World = (props: WorldProps) => {
     ref.current?.position.copy(bounds.center).add(new THREE.Vector3(x, y, z))
   }, [bounds])
 
+  // PAK static props (task M2): props.glb shares the world group's transform and material rules.
+  const propsFile = loadedMap?.pipeline === 'bsp-to-glb' ? loadedMap.conversion?.files?.props : undefined
+  const propsUrl = propsFile ? getMapFileUrl(map, propsFile) : undefined
+
   return (
     // Account for valve maps using different axis system
     <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]}>
       {mapModel ? <primitive object={mapModel} /> : null}
       {mapOverlay ? <primitive object={mapOverlay} /> : null}
+      {propsUrl ? <StaticProps url={propsUrl} mode={mode ?? 'textured'} /> : null}
     </group>
   )
 }

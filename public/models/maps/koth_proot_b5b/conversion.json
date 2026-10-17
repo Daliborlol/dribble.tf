@@ -1,6 +1,6 @@
 {
  "mapName": "koth_proot_b5b",
- "timestamp": "2026-10-17T17:01:26.668Z",
+ "timestamp": "2026-10-17T20:15:58.021Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,11 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 57,
+  "stock": 353,
+  "stockSolid": 117
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +129,7 @@
   "leaves": 3246
  },
  "stats": {
-  "exportMs": 1467,
+  "exportMs": 1547,
   "sourceFaces": 7601,
   "sourceTriangles": 37597,
   "keptTriangles": 36521,
@@ -143,7 +149,207 @@
   "glbBytes": 531308,
   "lightmapBytes": 454536,
   "metaBytes": 14456,
-  "visibilityBytes": 243119
+  "visibilityBytes": 243119,
+  "props": {
+   "ms": 383,
+   "bytes": 1140280,
+   "skybox": 139,
+   "dynamicSkipped": {},
+   "unconvertible": 0,
+   "models": 19,
+   "clusters": 30,
+   "nodes": 19,
+   "instancedNodes": 5,
+   "bakedInstances": 32,
+   "primitives": 20,
+   "vertices": 104335,
+   "triangles": 98300,
+   "renderedTriangles": 114288,
+   "skippedPrimitives": 0,
+   "lighting": {
+    "exact": 57,
+    "estimated": 0,
+    "mismatched": 0,
+    "set": "hdr",
+    "exposure": 1.5169,
+    "floor": 0.015,
+    "worstSharedError": 1.581
+   },
+   "materials": {
+    "pak": 11,
+    "neutral": 5,
+    "neutralNames": [
+     "cliff_wall_02",
+     "cliff_wall_05",
+     "cliff_wall_06",
+     "cliff_wall_09",
+     "rock004"
+    ],
+    "table": [
+     {
+      "name": "frog002",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.026,
+       0.047,
+       0.011
+      ]
+     },
+     {
+      "name": "oak_leaf_sheet_fall_01",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.429,
+       0.082,
+       0.015
+      ]
+     },
+     {
+      "name": "oak_leaf_sheet_fall_03",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.386,
+       0.018,
+       0.004
+      ]
+     },
+     {
+      "name": "oak_fall_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.077,
+       0.033,
+       0.015
+      ]
+     },
+     {
+      "name": "oak_leaf_sheet_fall_02",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.304,
+       0.039,
+       0.007
+      ]
+     },
+     {
+      "name": "oak_fall_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.044,
+       0.019,
+       0.008
+      ]
+     },
+     {
+      "name": "crate_tarp_2",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.044,
+       0.041,
+       0.026
+      ]
+     },
+     {
+      "name": "birch_leaves_2",
+      "source": "pak",
+      "kind": "translucent",
+      "albedo": [
+       0.132,
+       0.071,
+       0.031
+      ]
+     },
+     {
+      "name": "birch_main",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.181,
+       0.169,
+       0.171
+      ]
+     },
+     {
+      "name": "cliff_wall_02",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "cliff_wall_05",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "cliff_wall_06",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "cliff_wall_09",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "rock004",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "rock005",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.099,
+       0.082,
+       0.079
+      ]
+     },
+     {
+      "name": "beer_barrel",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.086,
+       0.063,
+       0.051
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "WOOD/WESTERN_WOODWALL005": {

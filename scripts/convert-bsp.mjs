@@ -14,18 +14,24 @@
  *   lightmap.webp    sRGB 8-bit lightmap atlas (TEXCOORD_0 of lit primitives), exposure baked in.
  *   visibility.json  MapVisibilityMetadata v2 (exact PVS → chunk mapping) for World.tsx culling.
  *   map-meta.json    spawns, control points, capture areas, payload paths, doors, lights, sky...
- *   conversion.json  worldBounds, lightEnvironment (Lights.tsx shape), skybox, camera defaults.
+ *   conversion.json  worldBounds, lightEnvironment (Lights.tsx shape), skybox, camera defaults,
+ *                    files.props and props { pak, stock, stockSolid } (static prop counts).
+ *   props.glb        static props whose models ship in the BSP's PAK (scripts/lib/static-props.mjs):
+ *                    EXT_mesh_gpu_instancing nodes plus one merged batch, vertex colours = PAK texture
+ *                    albedo x the PAK's per-vertex prop lighting. Stock props are game assets: not drawn.
  *   ../../skybox/<skyname>/<skyname>_<side>.png when the BSP PAK embeds the sky faces.
  *
  * Usage:
  *   node scripts/convert-bsp.mjs --bsp <map.bsp> [--map <name>] [--out-dir <dir>]
  *        [--bsp-to-glb <binary>] [--chunk-grid 4] [--lightmap-format webp|png]
  *        [--meshopt true|false] [--skybox-dir public/models/skybox] [--keep-temp true]
- *        [--only-meta true] [--overwrite-sky true]
+ *        [--only-meta true] [--overwrite-sky true] [--props false]
  *
  *   --only-meta true runs both bsp-to-glb passes into the temp dir (the brush-model bounds and the
  *   camera occlusion test need the render export) but writes only map-meta.json. Used for maps that
  *   keep an older textured GLB and conversion.json, such as koth_product_final.
+ *
+ *   --props false skips the static-prop pass (no props.glb, no props fields in conversion.json).
  *
  *   PAK skies: when public/models/skybox/<skyname>/ already exists with different pixels (another map
  *   ships or uses the same sky name), it is left alone and this map's faces go to <skyname>_<map>/;
@@ -76,6 +82,7 @@ const useMeshopt = bool('meshopt', 'true')
 const keepTemp = bool('keep-temp', 'false')
 const onlyMeta = bool('only-meta', 'false')
 const overwriteSky = bool('overwrite-sky', 'false')
+const withProps = bool('props', 'true')
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
 
 // Lightmap encoding: stored = sRGB(clamp(linear * exposure / LIGHTMAP_RANGE)). At runtime
@@ -193,6 +200,7 @@ const exportRun = run(
     '--lightmap-manifest', lightmapManifestPath,
     '--visibility-out', rawVisibilityPath,
     '--material-manifest', path.join(tempDir, 'materials.json'),
+    '--props-out', path.join(tempDir, 'props.json'), // static prop lump for the props pass (M2)
   ],
   'render export'
 )
@@ -884,6 +892,34 @@ if (onlyMeta) {
   process.exit(0)
 }
 
+// ─── PAK static props (task M2, scripts/lib/static-props.mjs) ────────────────
+// Static props whose models ship in the PAK become props.glb, lit by the PAK's per-vertex lighting in
+// the lightmap's exposure. Stock props are game assets and are only counted (props.stock).
+
+let propsResult = null
+if (withProps) {
+  const { convertStaticProps } = await import('./lib/static-props.mjs')
+  propsResult = await convertStaticProps({
+    bspToGlb,
+    vtfToPng,
+    pakDir,
+    props: JSON.parse(fs.readFileSync(path.join(tempDir, 'props.json'), 'utf8')),
+    workDir: path.join(tempDir, 'props'),
+    outPath: path.join(outDir, 'props.glb'),
+    worldMins,
+    worldMaxs,
+    lighting: { set: lightmapInfo?.set ?? 'hdr', exposure: lightmapInfo?.exposure ?? 1, floor: lightmapInfo?.floor ?? 0 },
+    sunDirection: meta.light?.environment?.direction ?? null,
+    meshopt: useMeshopt,
+    log: message => console.log(message),
+  })
+  const p = propsResult.props
+  console.log(`  props.glb ${(propsResult.stats.bytes / 1048576).toFixed(2)} MB: ${p.pak} PAK static props` +
+    `${p.dynamic ? ` and ${p.dynamic} unnamed prop_dynamic` : ''} of ${propsResult.stats.models} models ` +
+    `(${propsResult.stats.lighting.exact} with their VHV, ${propsResult.stats.lighting.estimated} estimated), ${propsResult.stats.skybox} in the 3D skybox skipped; ` +
+    `${p.stock} stock props not rendered (${p.stockSolid} solid)`)
+}
+
 // ─── conversion.json ─────────────────────────────────────────────────────────
 
 const env = meta.light?.environment
@@ -896,8 +932,16 @@ const conversion = {
     boundaryMin: { x: worldMins[0], y: worldMins[1], z: worldMins[2] },
     boundaryMax: { x: worldMaxs[0], y: worldMaxs[1], z: worldMaxs[2] },
   },
-  files: { model: 'world.glb', lightmap: lightmapInfo?.file ?? null, visibility: 'visibility.json', meta: 'map-meta.json' },
+  files: {
+    model: 'world.glb',
+    lightmap: lightmapInfo?.file ?? null,
+    visibility: 'visibility.json',
+    meta: 'map-meta.json',
+    ...(propsResult?.file ? { props: propsResult.file } : {}),
+  },
   lightmap: lightmapInfo,
+  // Static props: rendered from the PAK, stock (game assets, not rendered), stock and solid.
+  ...(propsResult ? { props: propsResult.props } : {}),
   // Same shape convert-map.mjs wrote, so Lights.tsx keeps working unchanged.
   lightEnvironment: env
     ? {
@@ -937,6 +981,7 @@ const conversion = {
     lightmapBytes: lightmapInfo ? fs.statSync(path.join(outDir, lightmapInfo.file)).size : 0,
     metaBytes: fs.statSync(path.join(outDir, 'map-meta.json')).size,
     visibilityBytes: fs.statSync(path.join(outDir, 'visibility.json')).size,
+    ...(propsResult ? { props: propsResult.stats } : {}),
   },
   materials: Object.fromEntries([...materialStats].sort((a, b) => b[1].triangles - a[1].triangles).map(([name, s]) => [name, { kind: s.kind, triangles: s.triangles, albedo: s.albedo.map(v => +v.toFixed(4)) }])),
   success: true,

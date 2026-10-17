@@ -158,11 +158,17 @@ registerHlProbe('combat.fx', (tick?: number) => {
   const c = context()
   if (!c) return { error: 'extras not ready' }
   const t = tickArg(tick)
-  const fx = combatEffectsAt(c.x, c.demo, getProjectileSource(c.x, c.demo), t.tickF, (p, tickF, out) => playerViewAt(c.demo, p, tickF, out), povCameraOwner(), readCombatSettings())
+  // with Highlander off the layers are unmounted: report the settings that draw nothing
+  const enabled = getHlSetting<boolean>('enabled') !== false
+  const settings = enabled
+    ? readCombatSettings()
+    : { critGlow: false, explosions: false, tracers: false, flames: false, airblast: false, extraTypes: false }
+  const fx = combatEffectsAt(c.x, c.demo, getProjectileSource(c.x, c.demo), t.tickF, (p, tickF, out) => playerViewAt(c.demo, p, tickF, out), povCameraOwner(), settings)
   return {
     ...fx,
     counts: Object.fromEntries(Object.entries(fx).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).length])),
-    drawn: combatRecord.tickF === t.tickF ? { ...combatRecord.counts } : null,
+    drawn: enabled && combatRecord.tickF === t.tickF ? { ...combatRecord.counts } : null,
+    enabled,
     playing: getState().playback.playing,
   }
 })

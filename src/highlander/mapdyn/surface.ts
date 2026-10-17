@@ -23,7 +23,6 @@ export interface SpotSurface {
   /** 1 when the map GLB already draws a kit at the spot. */
   baked: Uint8Array
   /** Diagnostics for probes. */
-  ms: number
   trianglesTested: number
   bakedBlobs: number
 }
@@ -50,7 +49,6 @@ const isVisibleChain = (object: THREE.Object3D, root: THREE.Object3D) => {
 const _box = new THREE.Box3()
 
 export function analyzeSpots(world: THREE.Object3D, spots: Spot[], detectBaked: boolean): SpotSurface {
-  const start = performance.now() // diagnostics only (`ms`), never drawn
   const n = spots.length
   const floor = new Float32Array(n).fill(NaN)
   const baked = new Uint8Array(n)
@@ -169,5 +167,5 @@ export function analyzeSpots(world: THREE.Object3D, spots: Spot[], detectBaked: 
       ? 1
       : 0
   })
-  return { floor, baked, ms: performance.now() - start, trianglesTested, bakedBlobs: pickupKits.length }
+  return { floor, baked, trianglesTested, bakedBlobs: pickupKits.length }
 }

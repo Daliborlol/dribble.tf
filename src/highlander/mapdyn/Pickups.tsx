@@ -72,7 +72,7 @@ export const getActiveKitEntries = () => activeEntries
 export const getActiveKitSurface = () => activeSurface
 
 /** Floor and baked flags per entry, from one analysis of the unique spots. */
-function analyzeEntries(world: THREE.Object3D, entries: KitEntry[], detectBaked: boolean): KitSurface {
+export function analyzeEntries(world: THREE.Object3D, entries: KitEntry[], detectBaked: boolean): KitSurface {
   const keyOf = (e: KitEntry) => `${Math.round(e.x * 4)},${Math.round(e.y * 4)},${Math.round(e.z * 4)}`
   const spotIndex = new Map<string, number>()
   const spots: { x: number; y: number; z: number }[] = []
@@ -97,7 +97,7 @@ function analyzeEntries(world: THREE.Object3D, entries: KitEntry[], detectBaked:
     entries,
     floor,
     baked,
-    analysis: { ms: result.ms, trianglesTested: result.trianglesTested, bakedBlobs: result.bakedBlobs, spots: spots.length },
+    analysis: { trianglesTested: result.trianglesTested, bakedBlobs: result.bakedBlobs, spots: spots.length },
   }
 }
 

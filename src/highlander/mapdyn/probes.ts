@@ -3,7 +3,8 @@
 //                                      { instance, bspModel, cls, classname, name, pos, quat, vis, visible,
 //                                        nodeFound, node: { visible, pos } | null }
 //   hl.probe('mapdyn.pickups', tick?)  pickups alive at the tick: { instance, kind, size, visible, respawnIn,
-//                                      progress, takenTick, nextTick, estimated, pos }
+//                                      progress, takenTick, nextTick, estimated, pos, floor, baked }
+//   hl.probe('mapdyn.surface', remeasure?) floor and baked-kit analysis of the kit spots (surface.ts)
 //   hl.probe('mapdyn.slabs', tick?)    prop-door slabs: { bspModel, name, visible, center }
 //   hl.probe('mapdyn.markers', tick?)  death markers and live drops at the tick
 //   hl.probe('mapdyn.state')           what the mounted components drew in their last frame
@@ -29,7 +30,7 @@ import {
   sampleMover,
   type MoverSample,
 } from './movers'
-import { getActiveKitEntries, getActiveKitSurface } from './Pickups'
+import { analyzeEntries, getActiveKitEntries, getActiveKitSurface } from './Pickups'
 import { PICKUP_KIND_NAMES, PICKUP_SIZE_NAMES, samplePickup, type PickupSample } from './pickups'
 import { slabMatrixAt } from './slabs'
 
@@ -135,9 +136,20 @@ registerHlProbe('mapdyn.pickups', (tick?: number) => {
   }))
 })
 
-registerHlProbe('mapdyn.surface', () => {
+// `remeasure` re-runs the analysis on the loaded map and reports its duration (debug only, not drawn).
+registerHlProbe('mapdyn.surface', (remeasure?: boolean) => {
   const surface = getActiveKitSurface()
   if (!surface) return null
+  let ms: number | null = null
+  if (remeasure) {
+    const world = useInstance.getState().threeScene?.getObjectByName('world')
+    const pipeline = useInstance.getState().mapStatus.pipeline
+    if (world) {
+      const start = performance.now()
+      analyzeEntries(world, surface.entries, pipeline !== 'bsp-to-glb')
+      ms = Math.round((performance.now() - start) * 10) / 10
+    }
+  }
   let floors = 0
   let baked = 0
   const offsets: number[] = []
@@ -157,7 +169,7 @@ registerHlProbe('mapdyn.surface', () => {
       ? { min: offsets[0], median: offsets[offsets.length >> 1], max: offsets[offsets.length - 1] }
       : null,
     ...surface.analysis,
-    ms: Math.round(surface.analysis.ms * 10) / 10,
+    ms,
   }
 })
 

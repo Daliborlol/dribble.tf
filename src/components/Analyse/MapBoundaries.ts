@@ -90,6 +90,17 @@ export const OVERWRITE_MAP_BOUNDARIES: { [mapName: string]: MapBoundaries } = {
     rtsCenter: { x: 3897, y: 4704, z: 358 },
     cameraOffset: { x: 488, y: -515, z: 537 },
   },
+  // The map's plhud.nut writes the tug-of-war push counter into the world entity's m_WorldMins and HUD
+  // counters into m_WorldMaxs, so the demo's world bounds are not the BSP bounds (1428628 changes
+  // m_WorldMins 1572 times, e.g. (+/-0.03, 0, 0)). Pin the BSP bounds (conversion.json worldBounds) and
+  // the converter's camera (conversion.json camera) so positions shift to the GLB's frame and nothing
+  // reads the HUD data. Other Highlander maps need no override: their demo bounds equal the BSP bounds.
+  tow_tetsudo_b10c: {
+    boundaryMin: { x: -7168, y: -2608, z: -256 },
+    boundaryMax: { x: 7168, y: 2608, z: 655 },
+    rtsCenter: { x: 7084, y: 2703, z: 40 },
+    cameraOffset: { x: 0, y: 1202, z: 1924 },
+  },
 }
 
 OVERWRITE_MAP_BOUNDARIES['koth_viaduct'] = OVERWRITE_MAP_BOUNDARIES['koth_product_rcx']

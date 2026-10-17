@@ -1,0 +1,1933 @@
+{
+ "mapName": "pl_eruption_b15",
+ "timestamp": "2026-10-17T17:02:06.028Z",
+ "pipeline": "bsp-to-glb",
+ "converter": {
+  "name": "bsp-to-glb",
+  "version": "0.2.0",
+  "target": "x86_64-unknown-linux-gnu",
+  "sourceCommit": "41841bf60d9acbca09f18b0f69d4bd2c5c21bec8",
+  "patches": "scripts/bsp-to-glb/*.patch"
+ },
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -9600,
+   "y": -4608,
+   "z": -960
+  },
+  "boundaryMax": {
+   "x": 2560,
+   "y": 3200,
+   "z": 2560
+  }
+ },
+ "files": {
+  "model": "world.glb",
+  "lightmap": "lightmap.webp",
+  "visibility": "visibility.json",
+  "meta": "map-meta.json"
+ },
+ "lightmap": {
+  "file": "lightmap.webp",
+  "width": 4096,
+  "height": 1287,
+  "set": "hdr",
+  "exposure": 0.9919,
+  "floor": 0.015,
+  "p90Luminance": 1.2601,
+  "range": 4,
+  "colorSpace": "srgb",
+  "uvChannel": 0,
+  "filter": "linear-no-mipmaps",
+  "runtimeIntensity": "range * PI for MeshBasicMaterial",
+  "styles": "sum-enabled-styles",
+  "enabledNamedStyles": [],
+  "darkNamedStyles": []
+ },
+ "lightEnvironment": {
+  "ambient": {
+   "color": [
+    124,
+    138,
+    203
+   ],
+   "brightness": 300
+  },
+  "sun": {
+   "color": [
+    253,
+    243,
+    208
+   ],
+   "brightness": 500
+  },
+  "pitch": -64,
+  "yaw": 43,
+  "sunSpreadAngle": 5,
+  "direction": [
+   0.3206,
+   0.299,
+   -0.8988
+  ]
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   159,
+   165,
+   152
+  ],
+  "start": 200,
+  "end": 13000,
+  "maxDensity": 1,
+  "farZ": -1
+ },
+ "skyboxName": "sky_tf2_04",
+ "skybox": {
+  "name": "sky_tf2_04",
+  "source": "existing"
+ },
+ "camera": {
+  "rtsCenter": {
+   "x": 5754,
+   "y": 4950,
+   "z": 701
+  },
+  "cameraOffset": {
+   "x": 0,
+   "y": -1063,
+   "z": 1701
+  },
+  "focusSource": [
+   -3845.8,
+   342.1,
+   -259.5
+  ],
+  "method": "payload-first-push",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 0,
+   "azimuthDeg": 0,
+   "distance": 2006,
+   "focusShift": 0
+  }
+ },
+ "chunking": {
+  "grid": 4,
+  "chunks": 15
+ },
+ "visibility": {
+  "clusters": 2807,
+  "chunks": 15,
+  "leaves": 6198
+ },
+ "stats": {
+  "exportMs": 2659,
+  "sourceFaces": 16259,
+  "sourceTriangles": 243936,
+  "keptTriangles": 242066,
+  "droppedTriangles": 1218,
+  "worldFaces": 14840,
+  "skyboxFaces": 311,
+  "brushEntityNodes": 47,
+  "brushEntityNodesWithGeometry": 45,
+  "brushEntityNodesInitiallyHidden": 13,
+  "hiddenBrushEntities": 52,
+  "displacementFaces": 1536,
+  "staticProps": 1597,
+  "solidStaticProps": 620,
+  "dynamicProps": 145,
+  "sanitizedDisplacementAlphas": 34,
+  "unresolvedMaterialAssets": 264,
+  "glbBytes": 1820056,
+  "lightmapBytes": 1018234,
+  "metaBytes": 60923,
+  "visibilityBytes": 833206
+ },
+ "materials": {
+  "NATURE/BLENDROCKGROUNDWALLISLAND_INTERIOR02": {
+   "kind": "opaque",
+   "triangles": 76416,
+   "albedo": [
+    0.1482,
+    0.1366,
+    0.1268
+   ]
+  },
+  "NATURE/BLENDROCKGROUNDWALLISLAND": {
+   "kind": "opaque",
+   "triangles": 75264,
+   "albedo": [
+    0.1482,
+    0.1366,
+    0.1268
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRASS011_ISLAND": {
+   "kind": "opaque",
+   "triangles": 21888,
+   "albedo": [
+    0.3033,
+    0.2296,
+    0.1494
+   ]
+  },
+  "NATURE/BLENDGROUNDTOROCK001_ISLAND": {
+   "kind": "opaque",
+   "triangles": 13824,
+   "albedo": [
+    0.3033,
+    0.2296,
+    0.1494
+   ]
+  },
+  "METAL/ISLAND_GANTRY_METAL003": {
+   "kind": "opaque",
+   "triangles": 8673,
+   "albedo": [
+    0.2969,
+    0.178,
+    0.0507
+   ]
+  },
+  "ERUPTION/GROUNDTOGRAVEL001": {
+   "kind": "opaque",
+   "triangles": 4480,
+   "albedo": [
+    0.0609,
+    0.0481,
+    0.0458
+   ]
+  },
+  "WOOD/WOOD_BEAM03": {
+   "kind": "opaque",
+   "triangles": 2560,
+   "albedo": [
+    0.1517,
+    0.0967,
+    0.0761
+   ]
+  },
+  "WOOD/WOOD_BRIDGE001": {
+   "kind": "unlit",
+   "triangles": 2433,
+   "albedo": [
+    0.1297,
+    0.092,
+    0.0758
+   ]
+  },
+  "EXTOL/EXTOL_METALTRIM2": {
+   "kind": "opaque",
+   "triangles": 2164,
+   "albedo": [
+    0.018,
+    0.0162,
+    0.0163
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRASS011_ISLAND_NODETAIL": {
+   "kind": "opaque",
+   "triangles": 1920,
+   "albedo": [
+    0.3033,
+    0.2296,
+    0.1494
+   ]
+  },
+  "ISLAND/ISLAND_WALL_BASE003": {
+   "kind": "opaque",
+   "triangles": 1806,
+   "albedo": [
+    0.1262,
+    0.0934,
+    0.05
+   ]
+  },
+  "METAL/METALDOOR001": {
+   "kind": "opaque",
+   "triangles": 1668,
+   "albedo": [
+    0.1633,
+    0.1603,
+    0.161
+   ]
+  },
+  "METAL/METALTRIM01": {
+   "kind": "opaque",
+   "triangles": 1632,
+   "albedo": [
+    0.3214,
+    0.3152,
+    0.3167
+   ]
+  },
+  "NATURE/LAVAWALL001_BLEND": {
+   "kind": "opaque",
+   "triangles": 1536,
+   "albedo": [
+    0.5977,
+    0.092,
+    0
+   ]
+  },
+  "CONCRETE/CONCRETEWALL_ISLAND001": {
+   "kind": "opaque",
+   "triangles": 1504,
+   "albedo": [
+    0.2802,
+    0.263,
+    0.2044
+   ]
+  },
+  "WOOD/WOOD_FLOOR003": {
+   "kind": "opaque",
+   "triangles": 1247,
+   "albedo": [
+    0.0771,
+    0.0545,
+    0.039
+   ]
+  },
+  "ISLAND/THATCH_ROOF001": {
+   "kind": "opaque",
+   "triangles": 1152,
+   "albedo": [
+    0.1308,
+    0.1145,
+    0.0922
+   ]
+  },
+  "METAL/IBEAM003": {
+   "kind": "opaque",
+   "triangles": 1060,
+   "albedo": [
+    0.3842,
+    0.3628,
+    0.3288
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR007": {
+   "kind": "opaque",
+   "triangles": 940,
+   "albedo": [
+    0.124,
+    0.115,
+    0.1
+   ]
+  },
+  "CONCRETE/CONCRETEWALL011A": {
+   "kind": "opaque",
+   "triangles": 877,
+   "albedo": [
+    0.4203,
+    0.3708,
+    0.3237
+   ]
+  },
+  "METAL/IMETAL003": {
+   "kind": "opaque",
+   "triangles": 851,
+   "albedo": [
+    0.46,
+    0.427,
+    0.387
+   ]
+  },
+  "METAL/IBEAM001B": {
+   "kind": "opaque",
+   "triangles": 786,
+   "albedo": [
+    0.1383,
+    0.124,
+    0.1259
+   ]
+  },
+  "EXTOL/EXTOL_METALTRIM": {
+   "kind": "opaque",
+   "triangles": 757,
+   "albedo": [
+    0.0303,
+    0.0291,
+    0.0303
+   ]
+  },
+  "CONCRETE/CONCRETEWALL_ISLAND001D": {
+   "kind": "opaque",
+   "triangles": 737,
+   "albedo": [
+    0.3721,
+    0.352,
+    0.2876
+   ]
+  },
+  "CONCRETE/COMPUTERWALL003B": {
+   "kind": "opaque",
+   "triangles": 723,
+   "albedo": [
+    0.2884,
+    0.0464,
+    0.0117
+   ]
+  },
+  "WOOD/WESTERN_WOODWALL002": {
+   "kind": "opaque",
+   "triangles": 590,
+   "albedo": [
+    0.2445,
+    0.1868,
+    0.1371
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR_ISLAND001": {
+   "kind": "opaque",
+   "triangles": 540,
+   "albedo": [
+    0.1828,
+    0.1759,
+    0.1483
+   ]
+  },
+  "METAL/WALL_ISLAND001": {
+   "kind": "opaque",
+   "triangles": 525,
+   "albedo": [
+    0.0624,
+    0.0542,
+    0.0455
+   ]
+  },
+  "METAL/IBEAM001_MEDIUM": {
+   "kind": "opaque",
+   "triangles": 469,
+   "albedo": [
+    0.1162,
+    0.1046,
+    0.1006
+   ]
+  },
+  "CONCRETE/CONCRETEWALL003F": {
+   "kind": "opaque",
+   "triangles": 467,
+   "albedo": [
+    0.139,
+    0.0603,
+    0.0394
+   ]
+  },
+  "CONCRETE/COMPUTERWALL003": {
+   "kind": "opaque",
+   "triangles": 458,
+   "albedo": [
+    0.3015,
+    0.0469,
+    0.0103
+   ]
+  },
+  "METAL/FLOORPLATE01": {
+   "kind": "opaque",
+   "triangles": 456,
+   "albedo": [
+    0.2618,
+    0.2778,
+    0.314
+   ]
+  },
+  "METAL/METALTRACK001": {
+   "kind": "opaque",
+   "triangles": 432,
+   "albedo": [
+    0.0516,
+    0.0418,
+    0.0474
+   ]
+  },
+  "METAL/METALTRIM02": {
+   "kind": "opaque",
+   "triangles": 426,
+   "albedo": [
+    0.2561,
+    0.2352,
+    0.2045
+   ]
+  },
+  "CONCRETE/CONCRETEWALL009": {
+   "kind": "opaque",
+   "triangles": 415,
+   "albedo": [
+    0.1663,
+    0.151,
+    0.1311
+   ]
+  },
+  "CONCRETE/COMPUTERWALL003E": {
+   "kind": "opaque",
+   "triangles": 411,
+   "albedo": [
+    0.5141,
+    0.4268,
+    0.3457
+   ]
+  },
+  "BRICK/WALL028": {
+   "kind": "opaque",
+   "triangles": 407,
+   "albedo": [
+    0.278,
+    0.2297,
+    0.1957
+   ]
+  },
+  "water/water_well_beneath.vmt": {
+   "kind": "water",
+   "triangles": 397,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR003": {
+   "kind": "opaque",
+   "triangles": 347,
+   "albedo": [
+    0.2322,
+    0.1794,
+    0.1313
+   ]
+  },
+  "METAL/METALTRUSS001": {
+   "kind": "opaque",
+   "triangles": 333,
+   "albedo": [
+    0.2183,
+    0.2031,
+    0.1798
+   ]
+  },
+  "CONCRETE/COMPUTERWALL004": {
+   "kind": "opaque",
+   "triangles": 327,
+   "albedo": [
+    0.1085,
+    0.0474,
+    0.0256
+   ]
+  },
+  "CONCRETE/CONCRETEWALL003D": {
+   "kind": "opaque",
+   "triangles": 326,
+   "albedo": [
+    0.1227,
+    0.0488,
+    0.0319
+   ]
+  },
+  "METAL/METALTRACK002": {
+   "kind": "opaque",
+   "triangles": 324,
+   "albedo": [
+    0.4618,
+    0.4449,
+    0.3799
+   ]
+  },
+  "METAL/IMETAL001B": {
+   "kind": "opaque",
+   "triangles": 299,
+   "albedo": [
+    0.1473,
+    0.0698,
+    0.0526
+   ]
+  },
+  "METAL/IBEAM003B": {
+   "kind": "opaque",
+   "triangles": 291,
+   "albedo": [
+    0.493,
+    0.4587,
+    0.406
+   ]
+  },
+  "PROPS/HAZARDSTRIP001A": {
+   "kind": "opaque",
+   "triangles": 257,
+   "albedo": [
+    0.3393,
+    0.2213,
+    0.0702
+   ]
+  },
+  "CONCRETE/CONCRETEWALL_ISLAND001B": {
+   "kind": "opaque",
+   "triangles": 244,
+   "albedo": [
+    0.309,
+    0.2912,
+    0.2304
+   ]
+  },
+  "METAL/ISLAND_GANTRY_METAL001_EDGE": {
+   "kind": "opaque",
+   "triangles": 234,
+   "albedo": [
+    0.2458,
+    0.0962,
+    0.0639
+   ]
+  },
+  "EXTOL/EXTOL_METALTRIM3": {
+   "kind": "opaque",
+   "triangles": 234,
+   "albedo": [
+    0.0149,
+    0.0141,
+    0.0149
+   ]
+  },
+  "WOOD/GRAIN_ELEVATOR_SILO_07": {
+   "kind": "opaque",
+   "triangles": 218,
+   "albedo": [
+    0.1691,
+    0.1562,
+    0.1562
+   ]
+  },
+  "METAL/IMETAL006": {
+   "kind": "opaque",
+   "triangles": 207,
+   "albedo": [
+    0.1334,
+    0.118,
+    0.0934
+   ]
+  },
+  "METAL/WALL_ISLAND_HEAVY02C": {
+   "kind": "opaque",
+   "triangles": 199,
+   "albedo": [
+    0.3606,
+    0.3371,
+    0.3018
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012C": {
+   "kind": "opaque",
+   "triangles": 199,
+   "albedo": [
+    0.5329,
+    0.5012,
+    0.4305
+   ]
+  },
+  "METAL/ISLAND_IBEAM003": {
+   "kind": "opaque",
+   "triangles": 186,
+   "albedo": [
+    0.1636,
+    0.055,
+    0.0389
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR007B": {
+   "kind": "opaque",
+   "triangles": 182,
+   "albedo": [
+    0.1268,
+    0.1182,
+    0.1055
+   ]
+  },
+  "METAL/IBEAM002": {
+   "kind": "opaque",
+   "triangles": 178,
+   "albedo": [
+    0.1285,
+    0.109,
+    0.1081
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR006A": {
+   "kind": "opaque",
+   "triangles": 176,
+   "albedo": [
+    0.1952,
+    0.1772,
+    0.1582
+   ]
+  },
+  "METAL/CHICKEN_WIRE001": {
+   "kind": "translucent",
+   "triangles": 156,
+   "albedo": [
+    0.0577,
+    0.0577,
+    0.0577
+   ]
+  },
+  "LIGHTS/IBEAM_LIGHT_01A": {
+   "kind": "opaque",
+   "triangles": 151,
+   "albedo": [
+    0.1926,
+    0.1748,
+    0.1457
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_island_dx80_-6592_2944_-400": {
+   "kind": "water",
+   "triangles": 146,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "METAL/METALGRATE011A": {
+   "kind": "translucent",
+   "triangles": 132,
+   "albedo": [
+    0.0885,
+    0.0786,
+    0.0796
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-2304_-3008_128": {
+   "kind": "opaque",
+   "triangles": 131,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "NATURE/METALGRATE": {
+   "kind": "translucent",
+   "triangles": 128,
+   "albedo": [
+    0.0676,
+    0.0566,
+    0.0489
+   ]
+  },
+  "WOOD/GRAIN_ELEVATOR_FACADE_14C": {
+   "kind": "opaque",
+   "triangles": 127,
+   "albedo": [
+    0.152,
+    0.0803,
+    0.0615
+   ]
+  },
+  "CP_MIST/WALL_ISLAND_HEAVY02C_FIX_HTY": {
+   "kind": "opaque",
+   "triangles": 122,
+   "albedo": [
+    0.3468,
+    0.3401,
+    0.294
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012B": {
+   "kind": "opaque",
+   "triangles": 121,
+   "albedo": [
+    0.5875,
+    0.544,
+    0.4579
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1280_-1664_128": {
+   "kind": "opaque",
+   "triangles": 119,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "SIGNS/HAZARD_YELLOW001": {
+   "kind": "opaque",
+   "triangles": 117,
+   "albedo": [
+    0.3643,
+    0.1945,
+    0.0806
+   ]
+  },
+  "TILE/FLOOR_TILE_006A": {
+   "kind": "opaque",
+   "triangles": 111,
+   "albedo": [
+    0.5469,
+    0.5286,
+    0.4808
+   ]
+  },
+  "CONCRETE/CONCRETEWALL011": {
+   "kind": "opaque",
+   "triangles": 106,
+   "albedo": [
+    0.4865,
+    0.4308,
+    0.3755
+   ]
+  },
+  "PROPS/METALDOOR01_96": {
+   "kind": "opaque",
+   "triangles": 106,
+   "albedo": [
+    0.1714,
+    0.1882,
+    0.191
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_island_dx80_2496_-4256_-400": {
+   "kind": "water",
+   "triangles": 102,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "TOOLS/TOOLSBLACK": {
+   "kind": "opaque",
+   "triangles": 94,
+   "albedo": [
+    0,
+    0,
+    0
+   ]
+  },
+  "CONCRETE/COMPUTERWALL003A": {
+   "kind": "opaque",
+   "triangles": 94,
+   "albedo": [
+    0.5391,
+    0.4474,
+    0.3617
+   ]
+  },
+  "CONCRETE/CONCRETEWALL003E": {
+   "kind": "opaque",
+   "triangles": 92,
+   "albedo": [
+    0.1444,
+    0.0684,
+    0.0433
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012": {
+   "kind": "opaque",
+   "triangles": 88,
+   "albedo": [
+    0.6082,
+    0.5699,
+    0.4878
+   ]
+  },
+  "METAL/ISLAND_GRATE001": {
+   "kind": "translucent",
+   "triangles": 80,
+   "albedo": [
+    0.0462,
+    0.0157,
+    0.0112
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_island_dx80_-832_1248_-516": {
+   "kind": "water",
+   "triangles": 72,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "CONCRETE/CONCRETEWALL_ISLAND001C": {
+   "kind": "opaque",
+   "triangles": 70,
+   "albedo": [
+    0.4348,
+    0.414,
+    0.3392
+   ]
+  },
+  "NATURE/GROUND_04": {
+   "kind": "opaque",
+   "triangles": 68,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "ISLAND/ISLAND_WALL_BASE003B": {
+   "kind": "opaque",
+   "triangles": 68,
+   "albedo": [
+    0.0979,
+    0.0736,
+    0.0383
+   ]
+  },
+  "WATER/WATERFALL_SOLID": {
+   "kind": "translucent",
+   "triangles": 68,
+   "albedo": [
+    0.1742,
+    0.1824,
+    0.1639
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1728_-1792_128": {
+   "kind": "opaque",
+   "triangles": 57,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004c_-3776_-2240_0": {
+   "kind": "opaque",
+   "triangles": 56,
+   "albedo": [
+    0.1007,
+    0.0647,
+    0.0549
+   ]
+  },
+  "METAL/ISLAND_GANTRY_METAL001": {
+   "kind": "opaque",
+   "triangles": 55,
+   "albedo": [
+    0.2527,
+    0.0955,
+    0.0597
+   ]
+  },
+  "METAL/WALL030": {
+   "kind": "opaque",
+   "triangles": 54,
+   "albedo": [
+    0.3731,
+    0.3395,
+    0.3195
+   ]
+  },
+  "METAL/RECK_METALGRATE013A2": {
+   "kind": "translucent",
+   "triangles": 52,
+   "albedo": [
+    0.0389,
+    0.0375,
+    0.0356
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_island_dx80_-8896_-1408_-400": {
+   "kind": "water",
+   "triangles": 52,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "METAL/OFFICEDOOR001": {
+   "kind": "opaque",
+   "triangles": 49,
+   "albedo": [
+    0.2755,
+    0.2431,
+    0.2131
+   ]
+  },
+  "maps/pl_eruption_b15/island/thatch_roof001_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 46,
+   "albedo": [
+    0.1308,
+    0.1145,
+    0.0922
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-3136_-2912_128": {
+   "kind": "opaque",
+   "triangles": 46,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_001a_-1152_-3168_192": {
+   "kind": "opaque",
+   "triangles": 45,
+   "albedo": [
+    0.1005,
+    0.0623,
+    0.0553
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004a_-3776_-2240_0": {
+   "kind": "opaque",
+   "triangles": 41,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "GLASS/GLASSWINDOW006A": {
+   "kind": "translucent",
+   "triangles": 40,
+   "albedo": [
+    0.0379,
+    0.0339,
+    0.0344
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1472_-2464_192": {
+   "kind": "opaque",
+   "triangles": 38,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "TILE/FLOOR_TILE_006B": {
+   "kind": "opaque",
+   "triangles": 37,
+   "albedo": [
+    0.1108,
+    0.0599,
+    0.0419
+   ]
+  },
+  "TEST/COLOR013": {
+   "kind": "opaque",
+   "triangles": 36,
+   "albedo": [
+    0.0494,
+    0.0254,
+    0.0266
+   ]
+  },
+  "TEST/COLOR008": {
+   "kind": "opaque",
+   "triangles": 36,
+   "albedo": [
+    0.8994,
+    0.8994,
+    0.8357
+   ]
+  },
+  "maps/pl_eruption_b15/nature/lavawall001_blend_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 34,
+   "albedo": [
+    0.5977,
+    0.092,
+    0
+   ]
+  },
+  "METAL/IMETAL005": {
+   "kind": "opaque",
+   "triangles": 30,
+   "albedo": [
+    0.1662,
+    0.124,
+    0.1267
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004c_-1856_-2992_128": {
+   "kind": "opaque",
+   "triangles": 29,
+   "albedo": [
+    0.1007,
+    0.0647,
+    0.0549
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-2880_-3584_128": {
+   "kind": "opaque",
+   "triangles": 29,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_island_dx80_-6368_352_-175": {
+   "kind": "water",
+   "triangles": 29,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "METAL/METALGRATE013A2": {
+   "kind": "translucent",
+   "triangles": 28,
+   "albedo": [
+    0.0389,
+    0.0375,
+    0.0356
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004c_-1472_-2944_192": {
+   "kind": "opaque",
+   "triangles": 28,
+   "albedo": [
+    0.1007,
+    0.0647,
+    0.0549
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_001a_-3776_-2240_0": {
+   "kind": "opaque",
+   "triangles": 28,
+   "albedo": [
+    0.1005,
+    0.0623,
+    0.0553
+   ]
+  },
+  "maps/pl_eruption_b15/metal/wall_island_heavy02a_-192_544_-381": {
+   "kind": "opaque",
+   "triangles": 27,
+   "albedo": [
+    0.2676,
+    0.2155,
+    0.1368
+   ]
+  },
+  "TILE/FLOOR_TILE_007B": {
+   "kind": "opaque",
+   "triangles": 24,
+   "albedo": [
+    0.3833,
+    0.362,
+    0.3292
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-3264_-2240_128": {
+   "kind": "opaque",
+   "triangles": 24,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1472_-2944_192": {
+   "kind": "opaque",
+   "triangles": 23,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1152_-2496_192": {
+   "kind": "opaque",
+   "triangles": 23,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "PROPS/MONITOR_WORLD_RED": {
+   "kind": "opaque",
+   "triangles": 22,
+   "albedo": [
+    0.3256,
+    0.0846,
+    0.0469
+   ]
+  },
+  "maps/pl_eruption_b15/nature/blendgroundtogravel007_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 22,
+   "albedo": [
+    0.0609,
+    0.0481,
+    0.0458
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1856_-2992_128": {
+   "kind": "opaque",
+   "triangles": 22,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_001a_-1472_-2944_192": {
+   "kind": "opaque",
+   "triangles": 22,
+   "albedo": [
+    0.1005,
+    0.0623,
+    0.0553
+   ]
+  },
+  "OVERLAYS/NO_ENTRY": {
+   "kind": "visualizer",
+   "triangles": 22,
+   "albedo": [
+    0.1,
+    0.23,
+    0.37
+   ]
+  },
+  "CONCRETE/COMPUTERWALL003C": {
+   "kind": "opaque",
+   "triangles": 20,
+   "albedo": [
+    0.4804,
+    0.3707,
+    0.2954
+   ]
+  },
+  "maps/pl_eruption_b15/icarus/glasschrome003_126_-2768_149": {
+   "kind": "translucent",
+   "triangles": 20,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "maps/pl_eruption_b15/metal/wall_island_heavy02a_-832_1248_-516": {
+   "kind": "opaque",
+   "triangles": 20,
+   "albedo": [
+    0.2676,
+    0.2155,
+    0.1368
+   ]
+  },
+  "PROPS/METALDOOR01_96_NOENTRY": {
+   "kind": "opaque",
+   "triangles": 20,
+   "albedo": [
+    0.1772,
+    0.1833,
+    0.1858
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1484_-2056_192": {
+   "kind": "opaque",
+   "triangles": 19,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002b_-4992_512_-384": {
+   "kind": "translucent",
+   "triangles": 16,
+   "albedo": [
+    0.1391,
+    0.1891,
+    0.1092
+   ]
+  },
+  "maps/pl_eruption_b15/concrete/concretefloor008_-4160_-2832_64": {
+   "kind": "opaque",
+   "triangles": 15,
+   "albedo": [
+    0.0444,
+    0.0432,
+    0.0359
+   ]
+  },
+  "METAL/METALGRATE011B": {
+   "kind": "translucent",
+   "triangles": 14,
+   "albedo": [
+    0.3463,
+    0.3198,
+    0.2803
+   ]
+  },
+  "SWAMP/METAL/SWAMPMETAL001": {
+   "kind": "opaque",
+   "triangles": 14,
+   "albedo": [
+    0.056,
+    0.0473,
+    0.0377
+   ]
+  },
+  "LIGHTS/WHITE001": {
+   "kind": "unlit",
+   "triangles": 14,
+   "albedo": [
+    0.9,
+    0.88,
+    0.8
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-2304_-1344_64": {
+   "kind": "opaque",
+   "triangles": 13,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "METAL/STEELDOOR001": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.0781,
+    0.0636,
+    0.0618
+   ]
+  },
+  "CONCRETE/CONCRETEWALL001E": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.2875,
+    0.2536,
+    0.2217
+   ]
+  },
+  "METAL/BRIDGEBEAM001": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.1908,
+    0.1616,
+    0.1605
+   ]
+  },
+  "ISLAND/ISLAND_WALL_BASE001": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.0848,
+    0.055,
+    0.0283
+   ]
+  },
+  "WOOD/WALL020B": {
+   "kind": "opaque",
+   "triangles": 10,
+   "albedo": [
+    0.0909,
+    0.0489,
+    0.0383
+   ]
+  },
+  "TEST/COLOR005": {
+   "kind": "opaque",
+   "triangles": 10,
+   "albedo": [
+    0.1669,
+    0.0546,
+    0.0316
+   ]
+  },
+  "METAL/WALL021": {
+   "kind": "opaque",
+   "triangles": 10,
+   "albedo": [
+    0.1148,
+    0.1142,
+    0.1123
+   ]
+  },
+  "maps/pl_eruption_b15/icarus/glasschrome001_164_-2416_-36": {
+   "kind": "translucent",
+   "triangles": 10,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001b_-3744_-864_-64": {
+   "kind": "translucent",
+   "triangles": 10,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001b_-3488_480_-5": {
+   "kind": "translucent",
+   "triangles": 10,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-832_-2080_128": {
+   "kind": "opaque",
+   "triangles": 9,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "SKYBOX/CLOUD001A": {
+   "kind": "translucent",
+   "triangles": 9,
+   "albedo": [
+    0.3036,
+    0.3342,
+    0.3997
+   ]
+  },
+  "NATURE/LAVAWALL001A": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.5977,
+    0.092,
+    0
+   ]
+  },
+  "DEV/REFLECTIVITY_20": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.1969,
+    0.1969,
+    0.1969
+   ]
+  },
+  "DEV/REFLECTIVITY_70B": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.6997,
+    0.6993,
+    0.6994
+   ]
+  },
+  "CONCRETE/COMPUTERWALL004TRIM": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.1204,
+    0.0518,
+    0.0279
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004c_-4160_-2832_64": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.1007,
+    0.0647,
+    0.0549
+   ]
+  },
+  "SKYBOX/CLOUD001D": {
+   "kind": "translucent",
+   "triangles": 7,
+   "albedo": [
+    0.1842,
+    0.2517,
+    0.4151
+   ]
+  },
+  "METAL/METALSTAIR001A": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.1171,
+    0.1191,
+    0.1143
+   ]
+  },
+  "GLASS/GLASSWINDOW006B": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.0379,
+    0.0339,
+    0.0344
+   ]
+  },
+  "METAL/IMETAL001": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.1783,
+    0.104,
+    0.0809
+   ]
+  },
+  "TEST/COLOR004": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.1836,
+    0.1604,
+    0.122
+   ]
+  },
+  "METAL/METALPANEL01": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.0878,
+    0.1252,
+    0.1119
+   ]
+  },
+  "maps/pl_eruption_b15/icarus/glasschrome001_-140_-1785_67": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-2880_-3584_128": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002a_-2464_-2276_64": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1463,
+    0.1463,
+    0.1463
+   ]
+  },
+  "AUTUMNAL/SIGNS/SIGN_HOLO_BOTTOM": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1618,
+    0.0137,
+    0.0094
+   ]
+  },
+  "PROPS/METALDOOR01_192": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.1703,
+    0.1872,
+    0.1901
+   ]
+  },
+  "LIGHTS/WHITE002": {
+   "kind": "unlit",
+   "triangles": 4,
+   "albedo": [
+    0.9,
+    0.88,
+    0.8
+   ]
+  },
+  "METAL/RECK_METALGRATE011A": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.0885,
+    0.0786,
+    0.0796
+   ]
+  },
+  "GLASS/GLASSWINDOW003A": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.6492,
+    0.6408,
+    0.608
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_004d_-1800_-1764_-132": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-2304_-3008_128": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-1856_-2992_128": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-1484_-2056_192": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-4992_512_-384": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001c_-3488_480_-5": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/metal/wall_island_heavy02a_-6592_2944_-400": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.2676,
+    0.2155,
+    0.1368
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-2880_-3584_128": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/metal/wall_island_heavy02a_-3488_480_-5": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.2676,
+    0.2155,
+    0.1368
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001c_-2304_-1344_64": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002a_-3136_-2912_128": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1463,
+    0.1463,
+    0.1463
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002a_-3264_-2240_128": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1463,
+    0.1463,
+    0.1463
+   ]
+  },
+  "AUTUMNAL/SIGNS/SIGN_HOLO_RED": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.3741,
+    0.2247,
+    0.1989
+   ]
+  },
+  "SKYBOX/CLOUD001B": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.5385,
+    0.55,
+    0.5732
+   ]
+  },
+  "SKYBOX/CLOUD_DUSTBOWL_001A": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.3672,
+    0.5047,
+    0.6401
+   ]
+  },
+  "maps/pl_eruption_b15/tile/floor_tile_001a_-3264_-2240_-128": {
+   "kind": "opaque",
+   "triangles": 3,
+   "albedo": [
+    0.1005,
+    0.0623,
+    0.0553
+   ]
+  },
+  "DEV/REFLECTIVITY_60": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.5924,
+    0.5924,
+    0.5923
+   ]
+  },
+  "CONCRETE/CONCRETEWALL_ISLAND001F": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.2597,
+    0.2458,
+    0.1751
+   ]
+  },
+  "OVERLAYS/STEELDOOR001_OVERLAY": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0781,
+    0.0636,
+    0.0618
+   ]
+  },
+  "GLASS/GLASSWINDOW004A": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0397,
+    0.0397,
+    0.0397
+   ]
+  },
+  "METAL/OFFICEDOOR002": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.2469,
+    0.2068,
+    0.1699
+   ]
+  },
+  "maps/pl_eruption_b15/nature/blendrockgroundwallisland_interior02_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1482,
+    0.1366,
+    0.1268
+   ]
+  },
+  "maps/pl_eruption_b15/water/water_hydro_cheap_-6592_2944_-400": {
+   "kind": "water",
+   "triangles": 2,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "maps/pl_eruption_b15/icarus/glasschrome003_-1936_-2548_-128": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-1472_-2464_192": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-1356_-2368_-192": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-2304_-3008_128": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/metal/metalchrome001_-2368_-2400_-128": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1361,
+    0.1361,
+    0.1361
+   ]
+  },
+  "maps/pl_eruption_b15/metal/wall_island_heavy02a_-1536_512_-384": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.2676,
+    0.2155,
+    0.1368
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001c_-1280_-1664_128": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001c_-1728_-1792_128": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1627,
+    0.2716,
+    0.1302
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002b_-3744_-864_-64": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1391,
+    0.1891,
+    0.1092
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_2496_-4256_-400": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-8896_-1408_-400": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow001a_-1152_-3168_192": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_eruption_b15/icarus/glasschrome003_-2464_-2276_64": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "maps/pl_eruption_b15/glass/glasswindow002a_-3776_-2240_0": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1463,
+    0.1463,
+    0.1463
+   ]
+  },
+  "AUTUMNAL/SIGNS/SIGN_HOLO_BLUE": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.2581,
+    0.321,
+    0.5007
+   ]
+  },
+  "AUTUMNAL/SIGNS/SIGN_HOLO_BOTTOM_BLU": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0094,
+    0.0843,
+    0.1618
+   ]
+  },
+  "AUTUMNAL/SIGNS/SIGN_HOLO_NO_ENTRY": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.2846,
+    0.1186,
+    0.0901
+   ]
+  }
+ },
+ "success": true
+}

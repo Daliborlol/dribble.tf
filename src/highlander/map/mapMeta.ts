@@ -1,8 +1,13 @@
 // map-meta.json v1 (contract section 4.4; owner M1, read by F5 and F6).
-// S0 writes the type (maps.md section 6, checked against the 11 research outputs) and stub bodies.
-// All positions are raw Source units, Z up; scene = Source - boundaryMin of the demo.
+// The type follows maps.md section 6 and the 11 files scripts/convert-bsp.mjs writes (koth_product_final
+// gets only this file, from `--only-meta true`). All positions are raw Source units, Z up;
+// scene = Source - sceneOrigin, where sceneOrigin is the demo's boundaryMin after ParseWorker applied any
+// OVERWRITE_MAP_BOUNDARIES shift (koth_product_final, tow_tetsudo_b10c), i.e. parsedDemo.world.boundaryMin.
 
+import { useEffect, useState } from 'react'
 import * as THREE from 'three'
+
+import { fetchJsonFile, fetchMapConversion, getMapFileUrl, getMapFolder } from '@utils/mapAssets'
 
 type Vec3 = [number, number, number]
 type XYZ = { x: number; y: number; z: number }
@@ -164,7 +169,19 @@ export interface MapMeta {
     cameraOffset: XYZ
     focusSource: Vec3
     method: string
-    occlusion?: { clear: boolean; elevationDeg: number; quarterTurns?: number }
+    /**
+     * The converter's line-of-sight search: clear false means every candidate was blocked and the
+     * camera looks almost straight down. focusShift is the distance in units between the objective
+     * focus and the framed point (the focus slides along the objective when it is enclosed).
+     */
+    occlusion?: {
+      clear: boolean
+      elevationDeg: number
+      quarterTurns?: number
+      azimuthDeg?: number
+      distance?: number
+      focusShift?: number
+    }
   } | null
   spawns: MapMetaSpawn[]
   controlPoints: MapMetaControlPoint[]
@@ -192,14 +209,81 @@ export interface MapMeta {
   water: { material: string; triangles: number; mins: Vec3; maxs: Vec3; surfaceZ: number }[]
 }
 
-/** Cached per folder; null when absent. S0 stub: always null (M1 writes the loader). */
-export function fetchMapMeta(_map: string): Promise<MapMeta | null> {
-  return Promise.resolve(null)
+const pending = new Map<string, Promise<MapMeta | null>>()
+const resolved = new Map<string, MapMeta | null>()
+
+const isMapMeta = (value: unknown): value is MapMeta =>
+  !!value &&
+  typeof value === 'object' &&
+  (value as MapMeta).schema === 'dribble.map-meta' &&
+  (value as MapMeta).version === 1
+
+/**
+ * Cached per folder; null when the map has no folder or no map-meta.json. A missing file, a body that is
+ * not JSON (the dev server and the Netlify rewrite answer a missing file with index.html and 200) and a
+ * schema mismatch are cached as null, like a loaded file. Only a failed request is not cached: it
+ * resolves null, getLoadedMapMeta() stays undefined and the next call retries.
+ */
+export function fetchMapMeta(map: string): Promise<MapMeta | null> {
+  const folder = getMapFolder(map)
+  if (!folder) return Promise.resolve(null)
+
+  let request = pending.get(folder)
+  if (!request) {
+    const created: Promise<MapMeta | null> = fetchMapConversion(map)
+      .then(conversion => {
+        const url = getMapFileUrl(map, conversion?.files?.meta ?? 'map-meta.json')
+        return url ? fetchJsonFile(url) : null
+      })
+      .then(json => {
+        const meta = isMapMeta(json) ? json : null
+        if (pending.get(folder) === created) resolved.set(folder, meta)
+        return meta
+      })
+      .catch(error => {
+        if (pending.get(folder) === created) pending.delete(folder)
+        console.warn(`map-meta.json for ${folder} unavailable`, error)
+        return null
+      })
+    pending.set(folder, created)
+    request = created
+  }
+  return request
 }
 
-/** Hook; null while loading. S0 stub: always null. */
-export function useMapMeta(_map: string): MapMeta | null {
-  return null
+/**
+ * The map-meta once fetchMapMeta has resolved for this map's folder: MapMeta, or null when the map has
+ * none; undefined before that (not requested yet, in flight, or the request failed). A sync read for
+ * useFrame code; useMapMeta() starts the fetch, so do not call fetchMapMeta() per frame.
+ */
+export function getLoadedMapMeta(map: string): MapMeta | null | undefined {
+  const folder = getMapFolder(map)
+  return folder ? resolved.get(folder) : null
+}
+
+/** Hook; null while loading and for maps without map-meta.json. */
+export function useMapMeta(map: string): MapMeta | null {
+  const [state, setState] = useState<{ map: string; meta: MapMeta | null }>(() => ({
+    map,
+    meta: getLoadedMapMeta(map) ?? null,
+  }))
+
+  useEffect(() => {
+    let cancelled = false
+    const apply = (meta: MapMeta | null) =>
+      setState(prev => (prev.map === map && prev.meta === meta ? prev : { map, meta }))
+    const cached = getLoadedMapMeta(map)
+    if (cached !== undefined) apply(cached)
+    else
+      fetchMapMeta(map).then(meta => {
+        if (!cancelled) apply(meta)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [map])
+
+  return state.map === map ? state.meta : (getLoadedMapMeta(map) ?? null)
 }
 
 /** Raw Source position to scene space (scene = Source - sceneOrigin). */

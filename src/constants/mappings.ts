@@ -63,6 +63,17 @@ export const MAP_NAME_SEARCH_MAP: { [key: string]: string } = {
   koth_bagel: 'koth_bagel_rc12',
   koth_clearcut: 'koth_clearcut_b18',
   koth_product: 'koth_product_final',
+  // Highlander maps converted from the BSP by scripts/convert-bsp.mjs (bsp-to-glb pipeline)
+  cp_steel: 'cp_steel_f12',
+  koth_ashville: 'koth_ashville_final1',
+  koth_proot: 'koth_proot_b5b',
+  koth_warmtic: 'koth_warmtic_f10',
+  pl_divulgence: 'pl_divulgence_b4b',
+  pl_downfall: 'pl_downfall_b13',
+  pl_eruption: 'pl_eruption_b15',
+  pl_upward: 'pl_upward_f12',
+  pl_vigil: 'pl_vigil_rc10',
+  tow_tetsudo: 'tow_tetsudo_b10c',
 }
 
 export const MAP_SKYBOX_MAP: { [key: string]: string } = {
@@ -79,4 +90,15 @@ export const MAP_SKYBOX_MAP: { [key: string]: string } = {
   koth_clearcut: 'sky_morningsnow_01', //placeholder
   koth_bagel: 'sky_granary_01', //placeholder //complete
   koth_product: 'sky_morningsnow_01', //complete
+  // Highlander maps: the BSP's skyname, PAK-embedded faces where the BSP ships them
+  cp_steel: 'sky_dustbowl_01',
+  koth_ashville: 'sky_midnight_01', // from the BSP PAK
+  koth_proot: 'sky_eveningtoast_01', // from the BSP PAK
+  koth_warmtic: 'sky_trainyard_01',
+  pl_divulgence: 'sky_dustbowl_01', // stand-in for the stock sky_badlands_01
+  pl_downfall: 'sky_badlands90_01', // from the BSP PAK
+  pl_eruption: 'sky_tf2_04',
+  pl_upward: 'sky_tf2_04', // stand-in for the stock sky_upward
+  pl_vigil: 'sky_vigil_01', // from the BSP PAK
+  tow_tetsudo: 'sky_trainyard_01',
 }

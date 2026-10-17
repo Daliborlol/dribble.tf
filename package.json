@@ -55,7 +55,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "convert:map": "node scripts/convert-map.mjs",
-    "update:map-bounds": "node scripts/update-map-bounds.mjs"
+    "update:map-bounds": "node scripts/update-map-bounds.mjs",
+    "setup:bsp": "node scripts/setup-bsp-to-glb.mjs",
+    "convert:bsp": "node scripts/convert-bsp.mjs"
   },
   "browserslist": {
     "production": [

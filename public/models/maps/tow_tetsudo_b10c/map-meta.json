@@ -1,0 +1,3113 @@
+{
+ "schema": "dribble.map-meta",
+ "version": 1,
+ "map": "tow_tetsudo_b10c",
+ "bspVersion": 20,
+ "coordinateSpace": "source",
+ "sceneTransform": "scene = source - worldBounds.boundaryMin",
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -7168,
+   "y": -2608,
+   "z": -256
+  },
+  "boundaryMax": {
+   "x": 7168,
+   "y": 2608,
+   "z": 655
+  }
+ },
+ "gameMode": "tug-of-war",
+ "camera": {
+  "rtsCenter": {
+   "x": 7084,
+   "y": 2703,
+   "z": 40
+  },
+  "cameraOffset": {
+   "x": 0,
+   "y": 1202,
+   "z": 1924
+  },
+  "focusSource": [
+   -83.7,
+   95.4,
+   -216
+  ],
+  "method": "tug-of-war-centre",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 2,
+   "azimuthDeg": 180,
+   "distance": 2269,
+   "focusShift": 127
+  }
+ },
+ "spawns": [
+  {
+   "team": 2,
+   "origin": [
+    -4896,
+    976,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4896,
+    720,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4896,
+    784,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4896,
+    848,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4896,
+    912,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4800,
+    720,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4800,
+    784,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4800,
+    848,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4800,
+    912,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4800,
+    976,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4992,
+    912,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4704,
+    912,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4704,
+    848,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4704,
+    784,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4992,
+    784,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 2,
+   "origin": [
+    -4992,
+    848,
+    -16
+   ],
+   "yaw": 0,
+   "name": "red_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4896,
+    -976,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4896,
+    -720,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4896,
+    -784,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4896,
+    -848,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4896,
+    -912,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4800,
+    -720,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4800,
+    -784,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4800,
+    -848,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4800,
+    -912,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4800,
+    -976,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4992,
+    -912,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4704,
+    -912,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4704,
+    -848,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4704,
+    -784,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4992,
+    -784,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  },
+  {
+   "team": 3,
+   "origin": [
+    4992,
+    -848,
+    -16
+   ],
+   "yaw": 180,
+   "name": "blu_spawn_attack"
+  }
+ ],
+ "controlPoints": [
+  {
+   "name": "CP_REDHQ",
+   "index": 1,
+   "printName": "RED Base",
+   "origin": [
+    -2708,
+    216,
+    -95
+   ],
+   "defaultOwner": 2,
+   "startLocked": false,
+   "group": 0,
+   "hidden": true,
+   "captureAreas": []
+  },
+  {
+   "name": "CP_Center",
+   "index": 3,
+   "printName": "Middle",
+   "origin": [
+    0,
+    0,
+    -249
+   ],
+   "defaultOwner": 0,
+   "startLocked": false,
+   "group": 0,
+   "hidden": true,
+   "captureAreas": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "CP_BLUHQ",
+   "index": 5,
+   "printName": "BLU Base",
+   "origin": [
+    2708,
+    -216,
+    -93
+   ],
+   "defaultOwner": 3,
+   "startLocked": false,
+   "group": 0,
+   "hidden": true,
+   "captureAreas": []
+  }
+ ],
+ "captureAreas": [
+  {
+   "name": "CP_Init",
+   "capPoint": "CP_Center",
+   "timeToCap": 1,
+   "canCap": {
+    "2": true,
+    "3": true
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": null,
+   "startDisabled": true,
+   "bspModelIndex": 28,
+   "node": null,
+   "mins": [
+    -147.1,
+    -147.1,
+    -256
+   ],
+   "maxs": [
+    147.1,
+    147.1,
+    -160
+   ]
+  },
+  {
+   "name": "Trigger_BLUCart",
+   "capPoint": "CP_Center",
+   "timeToCap": 99999,
+   "canCap": {
+    "2": false,
+    "3": true
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": "PL_Payload",
+   "startDisabled": true,
+   "bspModelIndex": 32,
+   "node": null,
+   "mins": [
+    -112,
+    -112,
+    534.6
+   ],
+   "maxs": [
+    80,
+    112,
+    662.6
+   ]
+  },
+  {
+   "name": "Trigger_REDCart",
+   "capPoint": "CP_Center",
+   "timeToCap": 99999,
+   "canCap": {
+    "2": true,
+    "3": false
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": "PL_Payload",
+   "startDisabled": true,
+   "bspModelIndex": 33,
+   "node": null,
+   "mins": [
+    -112,
+    -112,
+    534.6
+   ],
+   "maxs": [
+    80,
+    112,
+    662.6
+   ]
+  }
+ ],
+ "koth": null,
+ "roundTimers": [
+  {
+   "name": "Timer",
+   "timerLength": 540,
+   "setupLength": 0,
+   "maxLength": 0,
+   "startPaused": false,
+   "showInHud": true
+  }
+ ],
+ "payload": [
+  {
+   "watcher": "PL_Watcher",
+   "team": 0,
+   "train": "PL_Payload",
+   "startNode": "track1",
+   "goalNode": "track92",
+   "canRecede": false,
+   "path": [
+    {
+     "name": "track1",
+     "origin": [
+      2708,
+      -200,
+      -57
+     ],
+     "distance": 0,
+     "next": "track2",
+     "speed": 0
+    },
+    {
+     "name": "track2",
+     "origin": [
+      2708,
+      -216,
+      -57
+     ],
+     "distance": 16,
+     "next": "track3",
+     "speed": 0
+    },
+    {
+     "name": "track3",
+     "origin": [
+      2708,
+      -248,
+      -57
+     ],
+     "distance": 48,
+     "next": "track4",
+     "speed": 0
+    },
+    {
+     "name": "track4",
+     "origin": [
+      2708,
+      -272,
+      -57
+     ],
+     "distance": 72,
+     "next": "track5",
+     "speed": 0
+    },
+    {
+     "name": "track5",
+     "origin": [
+      2708,
+      -288,
+      -57
+     ],
+     "distance": 88,
+     "next": "track6",
+     "speed": 0
+    },
+    {
+     "name": "track6",
+     "origin": [
+      2708,
+      -428,
+      -57
+     ],
+     "distance": 228,
+     "next": "track7",
+     "speed": 0
+    },
+    {
+     "name": "track7",
+     "origin": [
+      2708,
+      -532,
+      -57
+     ],
+     "distance": 332,
+     "next": "track8",
+     "speed": 0
+    },
+    {
+     "name": "track8",
+     "origin": [
+      2696,
+      -572,
+      -57
+     ],
+     "distance": 373.8,
+     "next": "track9",
+     "speed": 0
+    },
+    {
+     "name": "track9",
+     "origin": [
+      2672,
+      -604,
+      -57
+     ],
+     "distance": 413.8,
+     "next": "pass3b",
+     "speed": 0
+    },
+    {
+     "name": "pass3b",
+     "origin": [
+      2608,
+      -668,
+      -57
+     ],
+     "distance": 504.3,
+     "next": "track10",
+     "speed": 0
+    },
+    {
+     "name": "track10",
+     "origin": [
+      2592,
+      -684,
+      -57
+     ],
+     "distance": 526.9,
+     "next": "track11",
+     "speed": 0
+    },
+    {
+     "name": "track11",
+     "origin": [
+      2572,
+      -712,
+      -57
+     ],
+     "distance": 561.3,
+     "next": "track12",
+     "speed": 0
+    },
+    {
+     "name": "track12",
+     "origin": [
+      2564,
+      -751,
+      -57
+     ],
+     "distance": 601.1,
+     "next": "track13",
+     "speed": 0
+    },
+    {
+     "name": "track13",
+     "origin": [
+      2564,
+      -1080,
+      -152
+     ],
+     "distance": 943.6,
+     "next": "track14",
+     "speed": 0
+    },
+    {
+     "name": "track14",
+     "origin": [
+      2556,
+      -1124,
+      -152
+     ],
+     "distance": 988.3,
+     "next": "track15",
+     "speed": 0
+    },
+    {
+     "name": "track15",
+     "origin": [
+      2536,
+      -1172,
+      -152
+     ],
+     "distance": 1040.3,
+     "next": "track16",
+     "speed": 0
+    },
+    {
+     "name": "track16",
+     "origin": [
+      2508,
+      -1212,
+      -152
+     ],
+     "distance": 1089.1,
+     "next": "track17",
+     "speed": 0
+    },
+    {
+     "name": "track17",
+     "origin": [
+      2472,
+      -1248,
+      -152
+     ],
+     "distance": 1140,
+     "next": "track18",
+     "speed": 0
+    },
+    {
+     "name": "track18",
+     "origin": [
+      2428,
+      -1272,
+      -152
+     ],
+     "distance": 1190.1,
+     "next": "track19",
+     "speed": 0
+    },
+    {
+     "name": "track19",
+     "origin": [
+      2360,
+      -1292,
+      -152
+     ],
+     "distance": 1261,
+     "next": "track20",
+     "speed": 0
+    },
+    {
+     "name": "track20",
+     "origin": [
+      2156,
+      -1292,
+      -152
+     ],
+     "distance": 1465,
+     "next": "track21",
+     "speed": 0
+    },
+    {
+     "name": "track21",
+     "origin": [
+      2120,
+      -1284,
+      -152
+     ],
+     "distance": 1501.9,
+     "next": "track22",
+     "speed": 0
+    },
+    {
+     "name": "track22",
+     "origin": [
+      2088,
+      -1264,
+      -152
+     ],
+     "distance": 1539.6,
+     "next": "track23",
+     "speed": 0
+    },
+    {
+     "name": "track23",
+     "origin": [
+      1968,
+      -1144,
+      -152
+     ],
+     "distance": 1709.3,
+     "next": "track24",
+     "speed": 0
+    },
+    {
+     "name": "track24",
+     "origin": [
+      1780,
+      -952,
+      -108
+     ],
+     "distance": 1981.6,
+     "next": "track25",
+     "speed": 0
+    },
+    {
+     "name": "track25",
+     "origin": [
+      1684,
+      -860,
+      -88
+     ],
+     "distance": 2116.1,
+     "next": "track26",
+     "speed": 0
+    },
+    {
+     "name": "track26",
+     "origin": [
+      1652,
+      -840,
+      -88
+     ],
+     "distance": 2153.8,
+     "next": "track27",
+     "speed": 0
+    },
+    {
+     "name": "track27",
+     "origin": [
+      1616,
+      -832,
+      -88
+     ],
+     "distance": 2190.7,
+     "next": "pass2b",
+     "speed": 0
+    },
+    {
+     "name": "pass2b",
+     "origin": [
+      1520,
+      -832,
+      -88
+     ],
+     "distance": 2286.7,
+     "next": "track28",
+     "speed": 0
+    },
+    {
+     "name": "track28",
+     "origin": [
+      1436,
+      -832,
+      -88
+     ],
+     "distance": 2370.7,
+     "next": "track29",
+     "speed": 0
+    },
+    {
+     "name": "track29",
+     "origin": [
+      1392,
+      -840,
+      -88
+     ],
+     "distance": 2415.4,
+     "next": "track30",
+     "speed": 0
+    },
+    {
+     "name": "track30",
+     "origin": [
+      1356,
+      -864,
+      -88
+     ],
+     "distance": 2458.7,
+     "next": "track31",
+     "speed": 0
+    },
+    {
+     "name": "track31",
+     "origin": [
+      1180,
+      -1040,
+      -88
+     ],
+     "distance": 2707.6,
+     "next": "track32",
+     "speed": 0
+    },
+    {
+     "name": "track32",
+     "origin": [
+      1152,
+      -1056,
+      -88
+     ],
+     "distance": 2739.8,
+     "next": "track33",
+     "speed": 0
+    },
+    {
+     "name": "track33",
+     "origin": [
+      1116,
+      -1064,
+      -88
+     ],
+     "distance": 2776.7,
+     "next": "track34",
+     "speed": 0
+    },
+    {
+     "name": "track34",
+     "origin": [
+      1008,
+      -1064,
+      -88
+     ],
+     "distance": 2884.7,
+     "next": "track35",
+     "speed": 0
+    },
+    {
+     "name": "track35",
+     "origin": [
+      824,
+      -1064,
+      -40
+     ],
+     "distance": 3074.9,
+     "next": "track36",
+     "speed": 0
+    },
+    {
+     "name": "track36",
+     "origin": [
+      595,
+      -1064,
+      -40
+     ],
+     "distance": 3303.9,
+     "next": "track37",
+     "speed": 0
+    },
+    {
+     "name": "track37",
+     "origin": [
+      428,
+      -1064,
+      -97
+     ],
+     "distance": 3480.3,
+     "next": "track38",
+     "speed": 0
+    },
+    {
+     "name": "track38",
+     "origin": [
+      405,
+      -1064,
+      -104
+     ],
+     "distance": 3504.4,
+     "next": "track39",
+     "speed": 0
+    },
+    {
+     "name": "track39",
+     "origin": [
+      372,
+      -1056,
+      -104
+     ],
+     "distance": 3538.3,
+     "next": "track40",
+     "speed": 0
+    },
+    {
+     "name": "track40",
+     "origin": [
+      340,
+      -1032,
+      -104
+     ],
+     "distance": 3578.3,
+     "next": "track41",
+     "speed": 0
+    },
+    {
+     "name": "track41",
+     "origin": [
+      128,
+      -820,
+      -104
+     ],
+     "distance": 3878.2,
+     "next": "track42",
+     "speed": 0
+    },
+    {
+     "name": "track42",
+     "origin": [
+      104,
+      -784,
+      -104
+     ],
+     "distance": 3921.4,
+     "next": "track43",
+     "speed": 0
+    },
+    {
+     "name": "track43",
+     "origin": [
+      96,
+      -732,
+      -104
+     ],
+     "distance": 3974,
+     "next": "pass1b",
+     "speed": 0
+    },
+    {
+     "name": "pass1b",
+     "origin": [
+      96,
+      -496,
+      -104
+     ],
+     "distance": 4210,
+     "next": "track44",
+     "speed": 0
+    },
+    {
+     "name": "track44",
+     "origin": [
+      96,
+      -152,
+      -216
+     ],
+     "distance": 4571.8,
+     "next": "track45",
+     "speed": 0
+    },
+    {
+     "name": "track45",
+     "origin": [
+      88,
+      -104,
+      -216
+     ],
+     "distance": 4620.5,
+     "next": "track46",
+     "speed": 0
+    },
+    {
+     "name": "track46",
+     "origin": [
+      72,
+      -72,
+      -216
+     ],
+     "distance": 4656.2,
+     "next": "trackTA",
+     "speed": 0
+    },
+    {
+     "name": "trackTA",
+     "origin": [
+      56.6,
+      -56,
+      -216
+     ],
+     "distance": 4678.5,
+     "next": "trackTB"
+    },
+    {
+     "name": "trackTB",
+     "origin": [
+      11.3,
+      -10.7,
+      -211
+     ],
+     "distance": 4742.7,
+     "next": "trackTC"
+    },
+    {
+     "name": "trackTC",
+     "origin": [
+      0,
+      0.6,
+      -211
+     ],
+     "distance": 4758.7,
+     "next": "trackTD"
+    },
+    {
+     "name": "trackTD",
+     "origin": [
+      -11.3,
+      11.9,
+      -211
+     ],
+     "distance": 4774.7,
+     "next": "trackTE"
+    },
+    {
+     "name": "trackTE",
+     "origin": [
+      -56.6,
+      57.1,
+      -216
+     ],
+     "distance": 4838.9,
+     "next": "track47"
+    },
+    {
+     "name": "track47",
+     "origin": [
+      -72,
+      72,
+      -216
+     ],
+     "distance": 4860.3,
+     "next": "track48",
+     "speed": 0
+    },
+    {
+     "name": "track48",
+     "origin": [
+      -88,
+      104,
+      -216
+     ],
+     "distance": 4896.1,
+     "next": "track49",
+     "speed": 0
+    },
+    {
+     "name": "track49",
+     "origin": [
+      -96,
+      152,
+      -216
+     ],
+     "distance": 4944.7,
+     "next": "pass1r",
+     "speed": 0
+    },
+    {
+     "name": "pass1R",
+     "origin": [
+      -96,
+      496,
+      -104
+     ],
+     "distance": 5306.5,
+     "next": "track50",
+     "speed": 0
+    },
+    {
+     "name": "track50",
+     "origin": [
+      -96,
+      732,
+      -104
+     ],
+     "distance": 5542.5,
+     "next": "track51",
+     "speed": 0
+    },
+    {
+     "name": "track51",
+     "origin": [
+      -104,
+      784,
+      -104
+     ],
+     "distance": 5595.1,
+     "next": "track52",
+     "speed": 0
+    },
+    {
+     "name": "track52",
+     "origin": [
+      -128,
+      820,
+      -104
+     ],
+     "distance": 5638.4,
+     "next": "track53",
+     "speed": 0
+    },
+    {
+     "name": "track53",
+     "origin": [
+      -340,
+      1032,
+      -104
+     ],
+     "distance": 5938.2,
+     "next": "track54",
+     "speed": 0
+    },
+    {
+     "name": "track54",
+     "origin": [
+      -372,
+      1056,
+      -104
+     ],
+     "distance": 5978.2,
+     "next": "track55",
+     "speed": 0
+    },
+    {
+     "name": "track55",
+     "origin": [
+      -408,
+      1064,
+      -104
+     ],
+     "distance": 6015.1,
+     "next": "track56",
+     "speed": 0
+    },
+    {
+     "name": "track56",
+     "origin": [
+      -428,
+      1064,
+      -99
+     ],
+     "distance": 6035.7,
+     "next": "track57",
+     "speed": 0
+    },
+    {
+     "name": "track57",
+     "origin": [
+      -594,
+      1064,
+      -40
+     ],
+     "distance": 6211.9,
+     "next": "track58",
+     "speed": 0
+    },
+    {
+     "name": "track58",
+     "origin": [
+      -823,
+      1064,
+      -40
+     ],
+     "distance": 6440.9,
+     "next": "track59",
+     "speed": 0
+    },
+    {
+     "name": "track59",
+     "origin": [
+      -1007,
+      1064,
+      -88
+     ],
+     "distance": 6631,
+     "next": "track60",
+     "speed": 0
+    },
+    {
+     "name": "track60",
+     "origin": [
+      -1116,
+      1064,
+      -88
+     ],
+     "distance": 6740,
+     "next": "track61",
+     "speed": 0
+    },
+    {
+     "name": "track61",
+     "origin": [
+      -1152,
+      1056,
+      -88
+     ],
+     "distance": 6776.9,
+     "next": "track62",
+     "speed": 0
+    },
+    {
+     "name": "track62",
+     "origin": [
+      -1180,
+      1040,
+      -88
+     ],
+     "distance": 6809.1,
+     "next": "track63",
+     "speed": 0
+    },
+    {
+     "name": "track63",
+     "origin": [
+      -1356,
+      864,
+      -88
+     ],
+     "distance": 7058,
+     "next": "track64",
+     "speed": 0
+    },
+    {
+     "name": "track64",
+     "origin": [
+      -1392,
+      840,
+      -88
+     ],
+     "distance": 7101.3,
+     "next": "track65",
+     "speed": 0
+    },
+    {
+     "name": "track65",
+     "origin": [
+      -1436,
+      832,
+      -88
+     ],
+     "distance": 7146,
+     "next": "pass2R",
+     "speed": 0
+    },
+    {
+     "name": "pass2R",
+     "origin": [
+      -1520,
+      832,
+      -88
+     ],
+     "distance": 7230,
+     "next": "track66",
+     "speed": 0
+    },
+    {
+     "name": "track66",
+     "origin": [
+      -1616,
+      832,
+      -88
+     ],
+     "distance": 7326,
+     "next": "track67",
+     "speed": 0
+    },
+    {
+     "name": "track67",
+     "origin": [
+      -1652,
+      840,
+      -88
+     ],
+     "distance": 7362.9,
+     "next": "track68",
+     "speed": 0
+    },
+    {
+     "name": "track68",
+     "origin": [
+      -1684,
+      860,
+      -88
+     ],
+     "distance": 7400.7,
+     "next": "track69",
+     "speed": 0
+    },
+    {
+     "name": "track69",
+     "origin": [
+      -1780,
+      952,
+      -109
+     ],
+     "distance": 7535.3,
+     "next": "track70",
+     "speed": 0
+    },
+    {
+     "name": "track70",
+     "origin": [
+      -1968,
+      1144,
+      -152
+     ],
+     "distance": 7807.4,
+     "next": "track71",
+     "speed": 0
+    },
+    {
+     "name": "track71",
+     "origin": [
+      -2088,
+      1264,
+      -152
+     ],
+     "distance": 7977.1,
+     "next": "track72",
+     "speed": 0
+    },
+    {
+     "name": "track72",
+     "origin": [
+      -2120,
+      1284,
+      -152
+     ],
+     "distance": 8014.8,
+     "next": "track73",
+     "speed": 0
+    },
+    {
+     "name": "track73",
+     "origin": [
+      -2156,
+      1292,
+      -152
+     ],
+     "distance": 8051.7,
+     "next": "track74",
+     "speed": 0
+    },
+    {
+     "name": "track74",
+     "origin": [
+      -2360,
+      1292,
+      -152
+     ],
+     "distance": 8255.7,
+     "next": "track75",
+     "speed": 0
+    },
+    {
+     "name": "track75",
+     "origin": [
+      -2428,
+      1272,
+      -152
+     ],
+     "distance": 8326.6,
+     "next": "track76",
+     "speed": 0
+    },
+    {
+     "name": "track76",
+     "origin": [
+      -2472,
+      1248,
+      -152
+     ],
+     "distance": 8376.7,
+     "next": "track77",
+     "speed": 0
+    },
+    {
+     "name": "track77",
+     "origin": [
+      -2508,
+      1212,
+      -152
+     ],
+     "distance": 8427.6,
+     "next": "track78",
+     "speed": 0
+    },
+    {
+     "name": "track78",
+     "origin": [
+      -2536,
+      1172,
+      -152
+     ],
+     "distance": 8476.5,
+     "next": "track79",
+     "speed": 0
+    },
+    {
+     "name": "track79",
+     "origin": [
+      -2556,
+      1124,
+      -152
+     ],
+     "distance": 8528.5,
+     "next": "track80",
+     "speed": 0
+    },
+    {
+     "name": "track80",
+     "origin": [
+      -2564,
+      1080,
+      -152
+     ],
+     "distance": 8573.2,
+     "next": "track81",
+     "speed": 0
+    },
+    {
+     "name": "track81",
+     "origin": [
+      -2564,
+      750,
+      -56
+     ],
+     "distance": 8916.9,
+     "next": "track82",
+     "speed": 0
+    },
+    {
+     "name": "track82",
+     "origin": [
+      -2572,
+      712,
+      -56
+     ],
+     "distance": 8955.7,
+     "next": "track83",
+     "speed": 0
+    },
+    {
+     "name": "track83",
+     "origin": [
+      -2592,
+      684,
+      -56
+     ],
+     "distance": 8990.1,
+     "next": "pass3R",
+     "speed": 0
+    },
+    {
+     "name": "pass3R",
+     "origin": [
+      -2608,
+      668,
+      -56
+     ],
+     "distance": 9012.7,
+     "next": "track84",
+     "speed": 0
+    },
+    {
+     "name": "track84",
+     "origin": [
+      -2672,
+      604,
+      -56
+     ],
+     "distance": 9103.2,
+     "next": "track85",
+     "speed": 0
+    },
+    {
+     "name": "track85",
+     "origin": [
+      -2696,
+      572,
+      -56
+     ],
+     "distance": 9143.2,
+     "next": "track86",
+     "speed": 0
+    },
+    {
+     "name": "track86",
+     "origin": [
+      -2708,
+      532,
+      -56
+     ],
+     "distance": 9185,
+     "next": "track87",
+     "speed": 0
+    },
+    {
+     "name": "track87",
+     "origin": [
+      -2708,
+      428,
+      -56
+     ],
+     "distance": 9289,
+     "next": "track88",
+     "speed": 0
+    },
+    {
+     "name": "track88",
+     "origin": [
+      -2708,
+      288,
+      -56
+     ],
+     "distance": 9429,
+     "next": "track89",
+     "speed": 0
+    },
+    {
+     "name": "track89",
+     "origin": [
+      -2708,
+      272,
+      -56
+     ],
+     "distance": 9445,
+     "next": "track90",
+     "speed": 0
+    },
+    {
+     "name": "track90",
+     "origin": [
+      -2708,
+      248,
+      -56
+     ],
+     "distance": 9469,
+     "next": "track91",
+     "speed": 0
+    },
+    {
+     "name": "track91",
+     "origin": [
+      -2708,
+      216,
+      -56
+     ],
+     "distance": 9501,
+     "next": "track92",
+     "speed": 0
+    },
+    {
+     "name": "track92",
+     "origin": [
+      -2708,
+      200,
+      -56
+     ],
+     "distance": 9517,
+     "next": null,
+     "speed": 0
+    }
+   ],
+   "length": 9517,
+   "linked": [
+    {
+     "pathTrack": "track92",
+     "controlPoint": "CP_REDHQ",
+     "pathIndex": 102,
+     "distance": 9517
+    },
+    {
+     "pathTrack": "trackTC",
+     "controlPoint": "CP_Center",
+     "pathIndex": 51,
+     "distance": 4758.7
+    },
+    {
+     "pathTrack": "track1",
+     "controlPoint": "CP_BLUHQ",
+     "pathIndex": 0,
+     "distance": 0
+    }
+   ],
+   "cart": {
+    "origin": [
+     -18,
+     0,
+     579.1
+    ],
+    "brush": {
+     "bspModelIndex": 31,
+     "node": "model_31_func_tracktrain_PL_Payload",
+     "mins": [
+      -68,
+      -24,
+      551.6
+     ],
+     "maxs": [
+      32,
+      24,
+      606.6
+     ]
+    },
+    "models": [
+     "models/props_tow/tow_cart.mdl",
+     "models/props_farm/padlock.mdl"
+    ],
+    "attached": [
+     {
+      "classname": "env_spark",
+      "name": "spark_blu"
+     },
+     {
+      "classname": "env_spark",
+      "name": "spark_blu"
+     },
+     {
+      "classname": "env_spark",
+      "name": "spark_red"
+     },
+     {
+      "classname": "env_spark",
+      "name": "spark_red"
+     },
+     {
+      "classname": "trigger_multiple",
+      "name": "hold_blu"
+     },
+     {
+      "classname": "trigger_multiple",
+      "name": "hold_red"
+     },
+     {
+      "classname": "trigger_capture_area",
+      "name": "Trigger_BLUCart"
+     },
+     {
+      "classname": "trigger_capture_area",
+      "name": "Trigger_REDCart"
+     },
+     {
+      "classname": "trigger_multiple",
+      "name": "red_oncart"
+     },
+     {
+      "classname": "trigger_multiple",
+      "name": "blu_oncart"
+     },
+     {
+      "classname": "prop_dynamic",
+      "name": "port_priority"
+     },
+     {
+      "classname": "trigger_hurt",
+      "name": "train1_hurt"
+     },
+     {
+      "classname": "trigger_hurt",
+      "name": "train2_hurt"
+     },
+     {
+      "classname": "prop_dynamic",
+      "name": "decoy"
+     },
+     {
+      "classname": "mapobj_cart_dispenser",
+      "name": "healbeam_BLU"
+     },
+     {
+      "classname": "mapobj_cart_dispenser",
+      "name": "healbeam_RED"
+     },
+     {
+      "classname": "func_door",
+      "name": "DispcontrolBLU"
+     },
+     {
+      "classname": "func_door",
+      "name": "DispcontrolRED"
+     }
+    ]
+   }
+  }
+ ],
+ "doors": [
+  {
+   "name": "door_blu_large_win_1",
+   "classname": "func_door",
+   "origin": [
+    4098.3,
+    -1344,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 2,
+   "node": "model_2_func_door_door_blu_large_win_1",
+   "mins": [
+    4097,
+    -1440,
+    -16
+   ],
+   "maxs": [
+    4102,
+    -1248,
+    101
+   ]
+  },
+  {
+   "name": "door_blu_large_win_2",
+   "classname": "func_door",
+   "origin": [
+    4224,
+    -1010.3,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 4,
+   "node": "model_4_func_door_door_blu_large_win_2",
+   "mins": [
+    4128,
+    -1014,
+    -16
+   ],
+   "maxs": [
+    4320,
+    -1009,
+    101
+   ]
+  },
+  {
+   "name": "door_blu_large_win_3",
+   "classname": "func_door",
+   "origin": [
+    4338.3,
+    -416,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 6,
+   "node": "model_6_func_door_door_blu_large_win_3",
+   "mins": [
+    4337,
+    -512,
+    -16
+   ],
+   "maxs": [
+    4342,
+    -320,
+    101
+   ]
+  },
+  {
+   "name": "door_red_large_win_1",
+   "classname": "func_door",
+   "origin": [
+    -4098.3,
+    1344,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 13,
+   "node": "model_13_func_door_door_red_large_win_1",
+   "mins": [
+    -4102,
+    1248,
+    -16
+   ],
+   "maxs": [
+    -4097,
+    1440,
+    101
+   ]
+  },
+  {
+   "name": "door_red_large_win_2",
+   "classname": "func_door",
+   "origin": [
+    -4224,
+    1010.3,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 15,
+   "node": "model_15_func_door_door_red_large_win_2",
+   "mins": [
+    -4320,
+    1009,
+    -16
+   ],
+   "maxs": [
+    -4128,
+    1014,
+    101
+   ]
+  },
+  {
+   "name": "door_red_large_win_3",
+   "classname": "func_door",
+   "origin": [
+    -4338.3,
+    416,
+    42.5
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 550,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 17,
+   "node": "model_17_func_door_door_red_large_win_3",
+   "mins": [
+    -4342,
+    320,
+    -16
+   ],
+   "maxs": [
+    -4337,
+    512,
+    101
+   ]
+  },
+  {
+   "name": "DispcontrolBLU",
+   "classname": "func_door",
+   "origin": [
+    -60,
+    496,
+    527.6
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": -500,
+   "speed": 1500,
+   "spawnflags": 4108,
+   "props": [],
+   "bspModelIndex": 40,
+   "node": "model_40_func_door_DispcontrolBLU",
+   "mins": [
+    20,
+    400,
+    519.6
+   ],
+   "maxs": [
+    36,
+    416,
+    535.6
+   ]
+  },
+  {
+   "name": "DispcontrolRED",
+   "classname": "func_door",
+   "origin": [
+    -44,
+    448,
+    527.6
+   ],
+   "moveDir": [
+    0,
+    0,
+    -1
+   ],
+   "lip": -500,
+   "speed": 1500,
+   "spawnflags": 4108,
+   "props": [],
+   "bspModelIndex": 41,
+   "node": "model_41_func_door_DispcontrolRED",
+   "mins": [
+    20,
+    368,
+    519.6
+   ],
+   "maxs": [
+    36,
+    384,
+    535.6
+   ]
+  },
+  {
+   "name": "train_door_blu2_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    3208,
+    -93.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 42,
+   "node": "model_42_func_door_rotating_train_door_blu2_l",
+   "mins": [
+    3204,
+    -98,
+    0
+   ],
+   "maxs": [
+    3212,
+    2,
+    265
+   ]
+  },
+  {
+   "name": "train_door_blu2_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    3208,
+    94,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 43,
+   "node": "model_43_func_door_rotating_train_door_blu2_r",
+   "mins": [
+    3204,
+    2,
+    0
+   ],
+   "maxs": [
+    3212,
+    98,
+    265
+   ]
+  },
+  {
+   "name": "train_door_blu3_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    1904,
+    92,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 44,
+   "node": "model_44_func_door_rotating_train_door_blu3_r",
+   "mins": [
+    1900,
+    0,
+    0
+   ],
+   "maxs": [
+    1908,
+    96,
+    265
+   ]
+  },
+  {
+   "name": "train_door_blu3_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    1904,
+    -95.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 45,
+   "node": "model_45_func_door_rotating_train_door_blu3_l",
+   "mins": [
+    1900,
+    -100,
+    0
+   ],
+   "maxs": [
+    1908,
+    0,
+    265
+   ]
+  },
+  {
+   "name": "train_door_blu4_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    736,
+    92,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 46,
+   "node": "model_46_func_door_rotating_train_door_blu4_r",
+   "mins": [
+    732,
+    0,
+    0
+   ],
+   "maxs": [
+    740,
+    96,
+    265
+   ]
+  },
+  {
+   "name": "train_door_blu4_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    736,
+    -95.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 47,
+   "node": "model_47_func_door_rotating_train_door_blu4_l",
+   "mins": [
+    732,
+    -100,
+    0
+   ],
+   "maxs": [
+    740,
+    0,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red2_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    -3208,
+    95.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 50,
+   "node": "model_50_func_door_rotating_train_door_red2_l",
+   "mins": [
+    -3212,
+    0,
+    0
+   ],
+   "maxs": [
+    -3204,
+    100,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red2_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    -3208,
+    -92,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 51,
+   "node": "model_51_func_door_rotating_train_door_red2_r",
+   "mins": [
+    -3212,
+    -96,
+    0
+   ],
+   "maxs": [
+    -3204,
+    0,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red3_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    -1904,
+    -92,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 52,
+   "node": "model_52_func_door_rotating_train_door_red3_r",
+   "mins": [
+    -1908,
+    -96,
+    0
+   ],
+   "maxs": [
+    -1900,
+    0,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red3_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    -1904,
+    95.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 53,
+   "node": "model_53_func_door_rotating_train_door_red3_l",
+   "mins": [
+    -1908,
+    0,
+    0
+   ],
+   "maxs": [
+    -1900,
+    100,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red4_r",
+   "classname": "func_door_rotating",
+   "origin": [
+    -736,
+    -92,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 54,
+   "node": "model_54_func_door_rotating_train_door_red4_r",
+   "mins": [
+    -740,
+    -96,
+    0
+   ],
+   "maxs": [
+    -732,
+    0,
+    265
+   ]
+  },
+  {
+   "name": "train_door_red4_l",
+   "classname": "func_door_rotating",
+   "origin": [
+    -736,
+    95.8,
+    132.5
+   ],
+   "moveDir": [
+    1,
+    0,
+    0
+   ],
+   "lip": 0,
+   "speed": 300,
+   "spawnflags": 0,
+   "props": [
+    "models/props_trainyard/train_gate002.mdl"
+   ],
+   "bspModelIndex": 55,
+   "node": "model_55_func_door_rotating_train_door_red4_l",
+   "mins": [
+    -740,
+    0,
+    0
+   ],
+   "maxs": [
+    -732,
+    100,
+    265
+   ]
+  }
+ ],
+ "respawnRooms": [
+  {
+   "name": "respawn_room_red",
+   "team": 2,
+   "bspModelIndex": 22,
+   "node": null,
+   "mins": [
+    -5088,
+    304,
+    -16
+   ],
+   "maxs": [
+    -4096,
+    1552,
+    336
+   ]
+  },
+  {
+   "name": "respawn_room_blu",
+   "team": 3,
+   "bspModelIndex": 23,
+   "node": null,
+   "mins": [
+    4096,
+    -1552,
+    -16
+   ],
+   "maxs": [
+    5088,
+    -304,
+    336
+   ]
+  }
+ ],
+ "respawnVisualizers": [
+  {
+   "room": "respawn_room_red",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 19,
+   "node": "model_19_func_respawnroomvisualizer",
+   "mins": [
+    -4352,
+    320,
+    -16
+   ],
+   "maxs": [
+    -4336,
+    512,
+    112
+   ]
+  },
+  {
+   "room": "respawn_room_red",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 20,
+   "node": "model_20_func_respawnroomvisualizer",
+   "mins": [
+    -4320,
+    1008,
+    -16
+   ],
+   "maxs": [
+    -4128,
+    1024,
+    112
+   ]
+  },
+  {
+   "room": "respawn_room_red",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 21,
+   "node": "model_21_func_respawnroomvisualizer",
+   "mins": [
+    -4112,
+    1248,
+    -16
+   ],
+   "maxs": [
+    -4096,
+    1440,
+    112
+   ]
+  },
+  {
+   "room": "respawn_room_blu",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 25,
+   "node": "model_25_func_respawnroomvisualizer",
+   "mins": [
+    4336,
+    -512,
+    -16
+   ],
+   "maxs": [
+    4352,
+    -320,
+    112
+   ]
+  },
+  {
+   "room": "respawn_room_blu",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 26,
+   "node": "model_26_func_respawnroomvisualizer",
+   "mins": [
+    4128,
+    -1024,
+    -16
+   ],
+   "maxs": [
+    4320,
+    -1008,
+    112
+   ]
+  },
+  {
+   "room": "respawn_room_blu",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 27,
+   "node": "model_27_func_respawnroomvisualizer",
+   "mins": [
+    4096,
+    -1440,
+    -16
+   ],
+   "maxs": [
+    4112,
+    -1248,
+    112
+   ]
+  }
+ ],
+ "resupply": [
+  {
+   "team": 2,
+   "locker": "prop_locker_red_1",
+   "bspModelIndex": 18,
+   "node": null,
+   "mins": [
+    -4448,
+    912,
+    -16
+   ],
+   "maxs": [
+    -4352,
+    1008,
+    112
+   ]
+  },
+  {
+   "team": 3,
+   "locker": "prop_locker_blu_1",
+   "bspModelIndex": 24,
+   "node": null,
+   "mins": [
+    4352,
+    -1008,
+    -16
+   ],
+   "maxs": [
+    4448,
+    -912,
+    112
+   ]
+  }
+ ],
+ "items": [
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -2480,
+    1520,
+    48.2
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -2400,
+    1520,
+    48.2
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -3127.4,
+    1159.4,
+    -95.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -3184,
+    1216,
+    -95.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -2160,
+    426.7,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -2120,
+    496,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -3248,
+    280,
+    -55.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -3248,
+    200,
+    -56
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -496,
+    762,
+    48.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -496,
+    710,
+    48.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -296,
+    -974,
+    -127.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -294,
+    -1056,
+    -127.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -320,
+    144,
+    -239.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    -400,
+    144,
+    -239.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -816,
+    1812,
+    -31.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -896,
+    1812,
+    -31.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    -1248,
+    272,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -1248,
+    192,
+    -15.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    2480,
+    -1520,
+    48.2
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    2400,
+    -1520,
+    48.2
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    3127.4,
+    -1159.4,
+    -95.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    3184,
+    -1216,
+    -95.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    2160,
+    -426.7,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    2120,
+    -496,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    3248,
+    -280,
+    -55.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    3248,
+    -200,
+    -56
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    496,
+    -762,
+    48.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    496,
+    -710,
+    48.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    320,
+    -144,
+    -239.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    400,
+    -144,
+    -239.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    816,
+    -1812,
+    -31.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    896,
+    -1812,
+    -31.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    1248,
+    -272,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    1248,
+    -192,
+    -15.7
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    294,
+    1056,
+    -127.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    296,
+    974,
+    -127.7
+   ]
+  }
+ ],
+ "teleports": [],
+ "gameplayProps": [
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_blu_large_win_1",
+   "origin": [
+    4100,
+    -1344,
+    -16
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_blu_large_win_2",
+   "origin": [
+    4224,
+    -1012,
+    -16
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_blu_large_win_3",
+   "origin": [
+    4340,
+    -416,
+    -16
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_1",
+   "origin": [
+    -4100,
+    1344,
+    -16
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_2",
+   "origin": [
+    -4224,
+    1012,
+    -16
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "door_red_large_win_3",
+   "origin": [
+    -4340,
+    416,
+    -16
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_1",
+   "origin": [
+    -4368.4,
+    960,
+    -15.8
+   ],
+   "angles": [
+    0,
+    180,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_1",
+   "origin": [
+    4368.4,
+    -960,
+    -15.8
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  }
+ ],
+ "light": {
+  "environment": {
+   "sun": {
+    "color": [
+     253,
+     243,
+     208
+    ],
+    "brightness": 750
+   },
+   "sunHDR": {
+    "color": [
+     253,
+     243,
+     208
+    ],
+    "brightness": 800
+   },
+   "ambient": {
+    "color": [
+     124,
+     138,
+     203
+    ],
+    "brightness": 900
+   },
+   "ambientHDR": {
+    "color": [
+     124,
+     138,
+     203
+    ],
+    "brightness": 1300
+   },
+   "pitch": -65,
+   "yaw": 300,
+   "sunSpreadAngle": 5,
+   "direction": [
+    0.2113,
+    -0.366,
+    -0.9063
+   ]
+  },
+  "shadow": {
+   "direction": [
+    0.445,
+    0.5495,
+    -0.7071
+   ],
+   "color": [
+    133,
+    135,
+    156
+   ],
+   "distance": 75
+  },
+  "sunSprite": null
+ },
+ "sky": {
+  "name": "sky_trainyard_01",
+  "camera": {
+   "origin": [
+    648,
+    -7064,
+    70
+   ],
+   "scale": 16
+  }
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   171,
+   177,
+   209
+  ],
+  "start": 500,
+  "end": 4550,
+  "maxDensity": 1,
+  "farZ": 5000
+ },
+ "water": []
+}

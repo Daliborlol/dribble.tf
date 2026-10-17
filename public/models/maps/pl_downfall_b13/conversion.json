@@ -1,0 +1,1654 @@
+{
+ "mapName": "pl_downfall_b13",
+ "timestamp": "2026-10-17T17:01:54.162Z",
+ "pipeline": "bsp-to-glb",
+ "converter": {
+  "name": "bsp-to-glb",
+  "version": "0.2.0",
+  "target": "x86_64-unknown-linux-gnu",
+  "sourceCommit": "41841bf60d9acbca09f18b0f69d4bd2c5c21bec8",
+  "patches": "scripts/bsp-to-glb/*.patch"
+ },
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -5824,
+   "y": -1760,
+   "z": -1728
+  },
+  "boundaryMax": {
+   "x": 7328,
+   "y": 6912,
+   "z": 824
+  }
+ },
+ "files": {
+  "model": "world.glb",
+  "lightmap": "lightmap.webp",
+  "visibility": "visibility.json",
+  "meta": "map-meta.json"
+ },
+ "lightmap": {
+  "file": "lightmap.webp",
+  "width": 4096,
+  "height": 1807,
+  "set": "hdr",
+  "exposure": 2,
+  "floor": 0.015,
+  "p90Luminance": 0.3078,
+  "range": 4,
+  "colorSpace": "srgb",
+  "uvChannel": 0,
+  "filter": "linear-no-mipmaps",
+  "runtimeIntensity": "range * PI for MeshBasicMaterial",
+  "styles": "sum-enabled-styles",
+  "enabledNamedStyles": [],
+  "darkNamedStyles": []
+ },
+ "lightEnvironment": {
+  "ambient": {
+   "color": [
+    153,
+    159,
+    187
+   ],
+   "brightness": 200
+  },
+  "sun": {
+   "color": [
+    251,
+    201,
+    155
+   ],
+   "brightness": 250
+  },
+  "pitch": -20,
+  "yaw": 133,
+  "sunSpreadAngle": 5,
+  "direction": [
+   -0.6409,
+   0.6872,
+   -0.342
+  ]
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   120,
+   120,
+   140
+  ],
+  "start": 1000,
+  "end": 4000,
+  "maxDensity": 0.66,
+  "farZ": -1
+ },
+ "skyboxName": "sky_badlands90_01",
+ "skybox": {
+  "name": "sky_badlands90_01",
+  "source": "bsp-pak"
+ },
+ "camera": {
+  "rtsCenter": {
+   "x": 3142,
+   "y": 3696,
+   "z": 1840
+  },
+  "cameraOffset": {
+   "x": 1048,
+   "y": 0,
+   "z": 1677
+  },
+  "focusSource": [
+   -2682,
+   1936.1,
+   112
+  ],
+  "method": "payload-first-push",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 1,
+   "azimuthDeg": 90,
+   "distance": 1978,
+   "focusShift": 0
+  }
+ },
+ "chunking": {
+  "grid": 4,
+  "chunks": 14
+ },
+ "visibility": {
+  "clusters": 4035,
+  "chunks": 14,
+  "leaves": 10628
+ },
+ "stats": {
+  "exportMs": 2847,
+  "sourceFaces": 21928,
+  "sourceTriangles": 295417,
+  "keptTriangles": 291954,
+  "droppedTriangles": 2577,
+  "worldFaces": 18754,
+  "skyboxFaces": 5,
+  "brushEntityNodes": 99,
+  "brushEntityNodesWithGeometry": 77,
+  "brushEntityNodesInitiallyHidden": 4,
+  "hiddenBrushEntities": 51,
+  "displacementFaces": 1815,
+  "staticProps": 1887,
+  "solidStaticProps": 855,
+  "dynamicProps": 68,
+  "sanitizedDisplacementAlphas": 0,
+  "unresolvedMaterialAssets": 222,
+  "glbBytes": 2015060,
+  "lightmapBytes": 1322158,
+  "metaBytes": 65308,
+  "visibilityBytes": 1115749
+ },
+ "materials": {
+  "METAL/WALL027B": {
+   "kind": "opaque",
+   "triangles": 84400,
+   "albedo": [
+    0.1412,
+    0.0746,
+    0.0484
+   ]
+  },
+  "WOOD/WOOD_BRIDGE001": {
+   "kind": "unlit",
+   "triangles": 43500,
+   "albedo": [
+    0.1297,
+    0.092,
+    0.0758
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRASS007_NODETAIL": {
+   "kind": "opaque",
+   "triangles": 38016,
+   "albedo": [
+    0.2931,
+    0.2329,
+    0.1625
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRASS007": {
+   "kind": "opaque",
+   "triangles": 26240,
+   "albedo": [
+    0.2931,
+    0.2329,
+    0.1625
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRAVEL008": {
+   "kind": "opaque",
+   "triangles": 18304,
+   "albedo": [
+    0.2012,
+    0.1886,
+    0.1688
+   ]
+  },
+  "PL_LONGBOY/BLENDCLIFFTOGRASS007": {
+   "kind": "opaque",
+   "triangles": 10880,
+   "albedo": [
+    0.144,
+    0.1011,
+    0.0843
+   ]
+  },
+  "PL_DOWNFALL/BLENDGROUNDTOGRASS008": {
+   "kind": "opaque",
+   "triangles": 4992,
+   "albedo": [
+    0.2012,
+    0.1886,
+    0.1688
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_REDWORN002": {
+   "kind": "opaque",
+   "triangles": 4529,
+   "albedo": [
+    0.1373,
+    0.0519,
+    0.0397
+   ]
+  },
+  "METAL/WALL027": {
+   "kind": "opaque",
+   "triangles": 4014,
+   "albedo": [
+    0.1412,
+    0.0746,
+    0.0484
+   ]
+  },
+  "METAL/WALL028": {
+   "kind": "opaque",
+   "triangles": 3924,
+   "albedo": [
+    0.1539,
+    0.0938,
+    0.0708
+   ]
+  },
+  "BRICK/WALL028": {
+   "kind": "opaque",
+   "triangles": 3883,
+   "albedo": [
+    0.278,
+    0.2297,
+    0.1957
+   ]
+  },
+  "METAL/WALL026": {
+   "kind": "opaque",
+   "triangles": 3837,
+   "albedo": [
+    0.2427,
+    0.1152,
+    0.08
+   ]
+  },
+  "SWAMP/NATURE/ROCKWALL006": {
+   "kind": "opaque",
+   "triangles": 3765,
+   "albedo": [
+    0.144,
+    0.1011,
+    0.0843
+   ]
+  },
+  "CP_ANTIQUITY/RUINS/BLENDGROUNDTORUBBLE": {
+   "kind": "opaque",
+   "triangles": 3584,
+   "albedo": [
+    0.0489,
+    0.0413,
+    0.0239
+   ]
+  },
+  "NATURE/BLENDGROUNDTOGRASS007_REDUCEDETAIL": {
+   "kind": "opaque",
+   "triangles": 2944,
+   "albedo": [
+    0.2931,
+    0.2329,
+    0.1625
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_DARKBROWN001B": {
+   "kind": "opaque",
+   "triangles": 2775,
+   "albedo": [
+    0.1135,
+    0.0613,
+    0.0495
+   ]
+  },
+  "METAL/WALL025": {
+   "kind": "opaque",
+   "triangles": 2603,
+   "albedo": [
+    0.2661,
+    0.2081,
+    0.206
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_DARKBROWN001": {
+   "kind": "opaque",
+   "triangles": 2574,
+   "albedo": [
+    0.0789,
+    0.0504,
+    0.0402
+   ]
+  },
+  "WOOD/WOOD_FLOOR002": {
+   "kind": "opaque",
+   "triangles": 2525,
+   "albedo": [
+    0.1052,
+    0.0739,
+    0.0526
+   ]
+  },
+  "TILE/SLATEROOF003": {
+   "kind": "opaque",
+   "triangles": 2048,
+   "albedo": [
+    0.0344,
+    0.0306,
+    0.027
+   ]
+  },
+  "METAL/IBEAM001B": {
+   "kind": "opaque",
+   "triangles": 1517,
+   "albedo": [
+    0.1383,
+    0.124,
+    0.1259
+   ]
+  },
+  "WOOD/WOOD_WALL005A": {
+   "kind": "opaque",
+   "triangles": 1437,
+   "albedo": [
+    0.354,
+    0.1123,
+    0.069
+   ]
+  },
+  "METAL/WALL029": {
+   "kind": "opaque",
+   "triangles": 1184,
+   "albedo": [
+    0.5288,
+    0.4206,
+    0.3397
+   ]
+  },
+  "METAL/WALL029A": {
+   "kind": "opaque",
+   "triangles": 1033,
+   "albedo": [
+    0.5317,
+    0.364,
+    0.2685
+   ]
+  },
+  "METAL/METALTRIM02": {
+   "kind": "opaque",
+   "triangles": 906,
+   "albedo": [
+    0.2561,
+    0.2352,
+    0.2045
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_REDWORN002C": {
+   "kind": "opaque",
+   "triangles": 779,
+   "albedo": [
+    0.1632,
+    0.1121,
+    0.0979
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR006A": {
+   "kind": "opaque",
+   "triangles": 753,
+   "albedo": [
+    0.1952,
+    0.1772,
+    0.1582
+   ]
+  },
+  "METAL/WALL014B_HARBOR": {
+   "kind": "opaque",
+   "triangles": 714,
+   "albedo": [
+    0.4168,
+    0.1433,
+    0.1183
+   ]
+  },
+  "DEV/REFLECTIVITY_50": {
+   "kind": "opaque",
+   "triangles": 695,
+   "albedo": [
+    0.492,
+    0.492,
+    0.4919
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_YELLOWWORN002": {
+   "kind": "opaque",
+   "triangles": 678,
+   "albedo": [
+    0.2396,
+    0.203,
+    0.1616
+   ]
+  },
+  "METAL/WALL011H": {
+   "kind": "opaque",
+   "triangles": 641,
+   "albedo": [
+    0.2127,
+    0.1762,
+    0.1897
+   ]
+  },
+  "METAL/CHICKEN_WIRE001": {
+   "kind": "translucent",
+   "triangles": 634,
+   "albedo": [
+    0.0577,
+    0.0577,
+    0.0577
+   ]
+  },
+  "METAL/IBEAM002": {
+   "kind": "opaque",
+   "triangles": 573,
+   "albedo": [
+    0.1285,
+    0.109,
+    0.1081
+   ]
+  },
+  "METAL/IMETAL006": {
+   "kind": "opaque",
+   "triangles": 460,
+   "albedo": [
+    0.1334,
+    0.118,
+    0.0934
+   ]
+  },
+  "METAL/WALL011B": {
+   "kind": "opaque",
+   "triangles": 447,
+   "albedo": [
+    0.205,
+    0.1665,
+    0.1686
+   ]
+  },
+  "WOOD/WOOD_WALL002": {
+   "kind": "opaque",
+   "triangles": 444,
+   "albedo": [
+    0.1723,
+    0.0943,
+    0.074
+   ]
+  },
+  "CUSTOMDEV/DEV_MEASUREWALL01RED": {
+   "kind": "opaque",
+   "triangles": 412,
+   "albedo": [
+    0.2379,
+    0.0474,
+    0.0474
+   ]
+  },
+  "METAL/IMETAL001B": {
+   "kind": "opaque",
+   "triangles": 403,
+   "albedo": [
+    0.1473,
+    0.0698,
+    0.0526
+   ]
+  },
+  "WOOD/WESTERN_WOODWALL001": {
+   "kind": "opaque",
+   "triangles": 384,
+   "albedo": [
+    0.2316,
+    0.1114,
+    0.0853
+   ]
+  },
+  "COALMINES/BLENDGROUNDTOGRASS_COALMINES2": {
+   "kind": "opaque",
+   "triangles": 384,
+   "albedo": [
+    0.0609,
+    0.0481,
+    0.0458
+   ]
+  },
+  "WOOD/WOOD_WALL006Z": {
+   "kind": "opaque",
+   "triangles": 382,
+   "albedo": [
+    0.1117,
+    0.067,
+    0.0444
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_REDWORN001B": {
+   "kind": "opaque",
+   "triangles": 361,
+   "albedo": [
+    0.1951,
+    0.0846,
+    0.0695
+   ]
+  },
+  "METAL/METALDOOR001": {
+   "kind": "opaque",
+   "triangles": 291,
+   "albedo": [
+    0.1633,
+    0.1603,
+    0.161
+   ]
+  },
+  "SIGNS/HAZARD_YELLOW001": {
+   "kind": "opaque",
+   "triangles": 286,
+   "albedo": [
+    0.3643,
+    0.1945,
+    0.0806
+   ]
+  },
+  "WOOD/WOOD_WALL006B": {
+   "kind": "opaque",
+   "triangles": 279,
+   "albedo": [
+    0.1499,
+    0.0759,
+    0.0566
+   ]
+  },
+  "PL_LONGBOY/CONCRETE/CONCRETEWALL009_DARK": {
+   "kind": "opaque",
+   "triangles": 274,
+   "albedo": [
+    0.0728,
+    0.0688,
+    0.0577
+   ]
+  },
+  "METAL/STEELDOOR001": {
+   "kind": "opaque",
+   "triangles": 271,
+   "albedo": [
+    0.0781,
+    0.0636,
+    0.0618
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR003": {
+   "kind": "opaque",
+   "triangles": 265,
+   "albedo": [
+    0.2322,
+    0.1794,
+    0.1313
+   ]
+  },
+  "METAL/WALL019B": {
+   "kind": "opaque",
+   "triangles": 265,
+   "albedo": [
+    0.2049,
+    0.1405,
+    0.1256
+   ]
+  },
+  "PL_BARNBLITZ/METALSIDING_BLUE001D": {
+   "kind": "opaque",
+   "triangles": 262,
+   "albedo": [
+    0.1354,
+    0.1556,
+    0.1535
+   ]
+  },
+  "DEV/REFLECTIVITY_10B": {
+   "kind": "opaque",
+   "triangles": 258,
+   "albedo": [
+    0.0995,
+    0.0996,
+    0.0995
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_BROWNSLATS001": {
+   "kind": "opaque",
+   "triangles": 254,
+   "albedo": [
+    0.0784,
+    0.0535,
+    0.0357
+   ]
+  },
+  "METAL/METALTRACK001": {
+   "kind": "opaque",
+   "triangles": 251,
+   "albedo": [
+    0.0516,
+    0.0418,
+    0.0474
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012D": {
+   "kind": "opaque",
+   "triangles": 244,
+   "albedo": [
+    0.4552,
+    0.3828,
+    0.3196
+   ]
+  },
+  "METAL/WALL014_HARBOR": {
+   "kind": "opaque",
+   "triangles": 239,
+   "albedo": [
+    0.4497,
+    0.1426,
+    0.1184
+   ]
+  },
+  "TOOLS/TOOLSBLACK": {
+   "kind": "opaque",
+   "triangles": 217,
+   "albedo": [
+    0,
+    0,
+    0
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR007_HARBOR": {
+   "kind": "opaque",
+   "triangles": 216,
+   "albedo": [
+    0.2012,
+    0.1886,
+    0.1688
+   ]
+  },
+  "METAL/BRIDGEBEAM001": {
+   "kind": "opaque",
+   "triangles": 188,
+   "albedo": [
+    0.1908,
+    0.1616,
+    0.1605
+   ]
+  },
+  "COALMINES/RED_BEAM1": {
+   "kind": "opaque",
+   "triangles": 179,
+   "albedo": [
+    0.0988,
+    0.0679,
+    0.0555
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_REDWORN002B": {
+   "kind": "opaque",
+   "triangles": 149,
+   "albedo": [
+    0.1487,
+    0.0768,
+    0.064
+   ]
+  },
+  "METAL/WALL011": {
+   "kind": "opaque",
+   "triangles": 144,
+   "albedo": [
+    0.2103,
+    0.174,
+    0.1873
+   ]
+  },
+  "CONCRETE/CONCRETEWALL001E": {
+   "kind": "opaque",
+   "triangles": 134,
+   "albedo": [
+    0.2875,
+    0.2536,
+    0.2217
+   ]
+  },
+  "PL_BARNBLITZ/METALSIDING_BLUE001C": {
+   "kind": "opaque",
+   "triangles": 132,
+   "albedo": [
+    0.1379,
+    0.1648,
+    0.1665
+   ]
+  },
+  "METAL/METALTRIM01": {
+   "kind": "opaque",
+   "triangles": 124,
+   "albedo": [
+    0.3214,
+    0.3152,
+    0.3167
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012": {
+   "kind": "opaque",
+   "triangles": 122,
+   "albedo": [
+    0.6082,
+    0.5699,
+    0.4878
+   ]
+  },
+  "METAL/WALL016": {
+   "kind": "opaque",
+   "triangles": 110,
+   "albedo": [
+    0.1971,
+    0.2355,
+    0.243
+   ]
+  },
+  "CONCRETE/CONCRETEWALL001B": {
+   "kind": "opaque",
+   "triangles": 98,
+   "albedo": [
+    0.5252,
+    0.4292,
+    0.3409
+   ]
+  },
+  "METAL/WALL016E": {
+   "kind": "opaque",
+   "triangles": 93,
+   "albedo": [
+    0.2825,
+    0.1367,
+    0.0937
+   ]
+  },
+  "maps/pl_downfall_b13/water/water_well_-3104_2016_-64": {
+   "kind": "water",
+   "triangles": 79,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "water/water_well_beneath.vmt": {
+   "kind": "water",
+   "triangles": 79,
+   "albedo": [
+    0.06,
+    0.13,
+    0.17
+   ]
+  },
+  "METAL/WALL016D": {
+   "kind": "opaque",
+   "triangles": 78,
+   "albedo": [
+    0.1941,
+    0.2237,
+    0.2259
+   ]
+  },
+  "GLASS/GLASSWINDOW005A": {
+   "kind": "translucent",
+   "triangles": 78,
+   "albedo": [
+    0.1086,
+    0.0924,
+    0.0787
+   ]
+  },
+  "METAL/IMETAL005": {
+   "kind": "opaque",
+   "triangles": 75,
+   "albedo": [
+    0.1662,
+    0.124,
+    0.1267
+   ]
+  },
+  "TILE/FLOOR_TILE_007A": {
+   "kind": "opaque",
+   "triangles": 72,
+   "albedo": [
+    0.5528,
+    0.5273,
+    0.488
+   ]
+  },
+  "CONCRETE/CONCRETEWALL002A": {
+   "kind": "opaque",
+   "triangles": 70,
+   "albedo": [
+    0.4787,
+    0.4987,
+    0.5057
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012C": {
+   "kind": "opaque",
+   "triangles": 67,
+   "albedo": [
+    0.5329,
+    0.5012,
+    0.4305
+   ]
+  },
+  "PL_BARNBLITZ/WOODWALL_GRAYSLATS001": {
+   "kind": "opaque",
+   "triangles": 66,
+   "albedo": [
+    0.1624,
+    0.1368,
+    0.1276
+   ]
+  },
+  "PROPS/METALDOOR01_96_NOENTRY": {
+   "kind": "opaque",
+   "triangles": 60,
+   "albedo": [
+    0.1772,
+    0.1833,
+    0.1858
+   ]
+  },
+  "WOOD/WALL007": {
+   "kind": "opaque",
+   "triangles": 60,
+   "albedo": [
+    0.7896,
+    0.7227,
+    0.6237
+   ]
+  },
+  "CONCRETE/CONCRETEFLOOR007": {
+   "kind": "opaque",
+   "triangles": 55,
+   "albedo": [
+    0.124,
+    0.115,
+    0.1
+   ]
+  },
+  "WOOD/GRAIN_ELEVATOR_SILO_10D": {
+   "kind": "opaque",
+   "triangles": 53,
+   "albedo": [
+    0.3102,
+    0.2514,
+    0.192
+   ]
+  },
+  "SWAMP/METAL/SWAMPMETAL001": {
+   "kind": "opaque",
+   "triangles": 52,
+   "albedo": [
+    0.056,
+    0.0473,
+    0.0377
+   ]
+  },
+  "PROPS/METALDOOR01_192": {
+   "kind": "opaque",
+   "triangles": 52,
+   "albedo": [
+    0.1703,
+    0.1872,
+    0.1901
+   ]
+  },
+  "METAL/IMETAL001": {
+   "kind": "opaque",
+   "triangles": 52,
+   "albedo": [
+    0.1783,
+    0.104,
+    0.0809
+   ]
+  },
+  "WOOD/WESTERN_WOODWALL005": {
+   "kind": "opaque",
+   "triangles": 49,
+   "albedo": [
+    0.1818,
+    0.1525,
+    0.1409
+   ]
+  },
+  "CONCRETE/CONCRETEWALL002C_RED": {
+   "kind": "opaque",
+   "triangles": 43,
+   "albedo": [
+    0.5117,
+    0.4451,
+    0.3985
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012Z": {
+   "kind": "opaque",
+   "triangles": 42,
+   "albedo": [
+    0.3859,
+    0.399,
+    0.3436
+   ]
+  },
+  "METAL/OFFICEDOOR002": {
+   "kind": "opaque",
+   "triangles": 36,
+   "albedo": [
+    0.2469,
+    0.2068,
+    0.1699
+   ]
+  },
+  "OVERLAYS/BLACK_GRADIENT": {
+   "kind": "translucent",
+   "triangles": 35,
+   "albedo": [
+    0,
+    0,
+    0
+   ]
+  },
+  "maps/pl_downfall_b13/tile/floor_tile_004d_3104_-904_112": {
+   "kind": "opaque",
+   "triangles": 34,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "METAL/METALSTAIR001A": {
+   "kind": "opaque",
+   "triangles": 32,
+   "albedo": [
+    0.1171,
+    0.1191,
+    0.1143
+   ]
+  },
+  "METAL/METALRAIL003A": {
+   "kind": "opaque",
+   "triangles": 31,
+   "albedo": [
+    0.0326,
+    0.03,
+    0.0243
+   ]
+  },
+  "MEDIEVAL/WOODTRIM001": {
+   "kind": "opaque",
+   "triangles": 30,
+   "albedo": [
+    0.1176,
+    0.0749,
+    0.0589
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_-216_1936_-192": {
+   "kind": "opaque",
+   "triangles": 30,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "CONCRETE/CONCRETEWALL011A": {
+   "kind": "opaque",
+   "triangles": 29,
+   "albedo": [
+    0.4203,
+    0.3708,
+    0.3237
+   ]
+  },
+  "maps/pl_downfall_b13/nature/blendgroundtogravel008_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 27,
+   "albedo": [
+    0.2012,
+    0.1886,
+    0.1688
+   ]
+  },
+  "CONCRETE/CONCRETEWALL002E": {
+   "kind": "opaque",
+   "triangles": 26,
+   "albedo": [
+    0.3473,
+    0.3807,
+    0.3884
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_3697_-270_-288": {
+   "kind": "opaque",
+   "triangles": 26,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "CONCRETE/CONCRETEWALL011": {
+   "kind": "opaque",
+   "triangles": 25,
+   "albedo": [
+    0.4865,
+    0.4308,
+    0.3755
+   ]
+  },
+  "WOOD/WOOD_WALL006": {
+   "kind": "opaque",
+   "triangles": 24,
+   "albedo": [
+    0.1831,
+    0.0997,
+    0.0776
+   ]
+  },
+  "OVERLAYS/NO_ENTRY": {
+   "kind": "visualizer",
+   "triangles": 24,
+   "albedo": [
+    0.48,
+    0.04,
+    0.045
+   ]
+  },
+  "CONCRETE/CONCRETEWALL011C": {
+   "kind": "opaque",
+   "triangles": 19,
+   "albedo": [
+    0.4362,
+    0.354,
+    0.3043
+   ]
+  },
+  "TOOLS/TOOLSBLACK_NOFOG": {
+   "kind": "opaque",
+   "triangles": 19,
+   "albedo": [
+    0,
+    0,
+    0
+   ]
+  },
+  "METAL/IMETAL003": {
+   "kind": "opaque",
+   "triangles": 19,
+   "albedo": [
+    0.46,
+    0.427,
+    0.387
+   ]
+  },
+  "CONCRETE/CONCRETEWALL003E": {
+   "kind": "opaque",
+   "triangles": 18,
+   "albedo": [
+    0.1444,
+    0.0684,
+    0.0433
+   ]
+  },
+  "METAL/IBEAM003": {
+   "kind": "opaque",
+   "triangles": 18,
+   "albedo": [
+    0.3842,
+    0.3628,
+    0.3288
+   ]
+  },
+  "SOHO/WINDOWUNI001A": {
+   "kind": "opaque",
+   "triangles": 17,
+   "albedo": [
+    0.6084,
+    0.4969,
+    0.3152
+   ]
+  },
+  "PROPS/COBWEB001": {
+   "kind": "translucent",
+   "triangles": 16,
+   "albedo": [
+    1,
+    1,
+    1
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_3056_-445_-32": {
+   "kind": "opaque",
+   "triangles": 15,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_-640_1504_-192": {
+   "kind": "opaque",
+   "triangles": 15,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_-648_1040_-178": {
+   "kind": "opaque",
+   "triangles": 15,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_492_1830_0": {
+   "kind": "opaque",
+   "triangles": 14,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_120_2256_-192": {
+   "kind": "opaque",
+   "triangles": 13,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/pl_longboy/blendclifftograss007_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.144,
+    0.1011,
+    0.0843
+   ]
+  },
+  "PL_LONGBOY/METAL/METALDOOR001_NOBUMP": {
+   "kind": "opaque",
+   "triangles": 12,
+   "albedo": [
+    0.1633,
+    0.1603,
+    0.161
+   ]
+  },
+  "CP_MIST/METALGRATE011A_BUTBETTER": {
+   "kind": "translucent",
+   "triangles": 11,
+   "albedo": [
+    0.0885,
+    0.0786,
+    0.0796
+   ]
+  },
+  "LIGHTS/WHITE008": {
+   "kind": "unlit",
+   "triangles": 10,
+   "albedo": [
+    0.9,
+    0.88,
+    0.8
+   ]
+  },
+  "METAL/IBEAM001_MEDIUM": {
+   "kind": "opaque",
+   "triangles": 10,
+   "albedo": [
+    0.1162,
+    0.1046,
+    0.1006
+   ]
+  },
+  "DEV/REFLECTIVITY_40B": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.3988,
+    0.3986,
+    0.3985
+   ]
+  },
+  "maps/pl_downfall_b13/pl_downfall/blendgroundtograss008_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 8,
+   "albedo": [
+    0.2012,
+    0.1886,
+    0.1688
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_2246_-298_336": {
+   "kind": "translucent",
+   "triangles": 8,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_3438_-897_112": {
+   "kind": "translucent",
+   "triangles": 8,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_1928_1496_-32": {
+   "kind": "translucent",
+   "triangles": 8,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3460_1960_240": {
+   "kind": "translucent",
+   "triangles": 8,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/tile/floor_tile_004d_3056_-445_-32": {
+   "kind": "opaque",
+   "triangles": 7,
+   "albedo": [
+    0.0415,
+    0.0266,
+    0.0214
+   ]
+  },
+  "WOOD/WALL020": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.1176,
+    0.0623,
+    0.0402
+   ]
+  },
+  "METAL/METALGRATE013A2": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.0389,
+    0.0375,
+    0.0356
+   ]
+  },
+  "METAL/WALL_ISLAND001": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.0624,
+    0.0542,
+    0.0455
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-888_1080_-178": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_3104_-904_112": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_1376_704_0": {
+   "kind": "opaque",
+   "triangles": 6,
+   "albedo": [
+    0.0444,
+    0.0432,
+    0.0359
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-648_1040_-178": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/icarus/glasschrome003_2559_1060_64": {
+   "kind": "translucent",
+   "triangles": 6,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_184_2552_-192": {
+   "kind": "opaque",
+   "triangles": 5,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/concretefloor008_reflect_blue_3436_-273_-192": {
+   "kind": "opaque",
+   "triangles": 5,
+   "albedo": [
+    0.3002,
+    0.2658,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3485_-373_32": {
+   "kind": "translucent",
+   "triangles": 5,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-2784_-376_32": {
+   "kind": "translucent",
+   "triangles": 5,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "METAL/OFFICEDOOR001B": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.2755,
+    0.2431,
+    0.2131
+   ]
+  },
+  "METAL/FLOORPLATE01": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.2618,
+    0.2778,
+    0.314
+   ]
+  },
+  "CONCRETE/CONCRETEWALL012B": {
+   "kind": "opaque",
+   "triangles": 4,
+   "albedo": [
+    0.5875,
+    0.544,
+    0.4579
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3142_-675_64": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3432_2696_192": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_2198_65_144": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3681_105_151": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3138_362_169": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3520_1536_192": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_1232_64_64": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/icarus/glasschrome003_2120_1040_288": {
+   "kind": "translucent",
+   "triangles": 4,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "WOOD/GRAIN_ELEVATOR_SILO_10A": {
+   "kind": "opaque",
+   "triangles": 3,
+   "albedo": [
+    0.3536,
+    0.2874,
+    0.2182
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-3900_-343_128": {
+   "kind": "translucent",
+   "triangles": 3,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "CONCRETE/CONCRETEWALL003D": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.1227,
+    0.0488,
+    0.0319
+   ]
+  },
+  "METAL/METALGRATE011A": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0885,
+    0.0786,
+    0.0796
+   ]
+  },
+  "maps/pl_downfall_b13/concrete/blendwetpavement001_wvt_patch": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.0358,
+    0.0382,
+    0.0355
+   ]
+  },
+  "maps/pl_downfall_b13/icarus/glasschrome003_3697_-270_-288": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_1640_1880_288": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_2154_230_336": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_1756_690_64": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-1557_2992_192": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_1600_1472_12": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow001a_-540_1318_112": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.1854,
+    0.1854,
+    0.2058
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow002c_-3832_-732_32": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0373,
+    0.0182,
+    0.0063
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow002c_-3136_-1121_64": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0373,
+    0.0182,
+    0.0063
+   ]
+  },
+  "maps/pl_downfall_b13/glass/glasswindow002c_-3900_-343_128": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.0373,
+    0.0182,
+    0.0063
+   ]
+  },
+  "DEV/REFLECTIVITY_20B": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.199,
+    0.199,
+    0.199
+   ]
+  },
+  "DEV/REFLECTIVITY_70B": {
+   "kind": "opaque",
+   "triangles": 2,
+   "albedo": [
+    0.6997,
+    0.6993,
+    0.6994
+   ]
+  },
+  "maps/pl_downfall_b13/icarus/glasschrome003_1086_1019_369": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.029,
+    0.029,
+    0.029
+   ]
+  },
+  "CP_MOUNTAINLAB/MISC/BALLOON": {
+   "kind": "translucent",
+   "triangles": 2,
+   "albedo": [
+    0.2762,
+    0.0564,
+    0.0473
+   ]
+  }
+ },
+ "success": true
+}

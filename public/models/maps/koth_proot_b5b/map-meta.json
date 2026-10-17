@@ -1,0 +1,1195 @@
+{
+ "schema": "dribble.map-meta",
+ "version": 1,
+ "map": "koth_proot_b5b",
+ "bspVersion": 20,
+ "coordinateSpace": "source",
+ "sceneTransform": "scene = source - worldBounds.boundaryMin",
+ "worldBounds": {
+  "boundaryMin": {
+   "x": -1984,
+   "y": -4032,
+   "z": -288
+  },
+  "boundaryMax": {
+   "x": 1792,
+   "y": 4032,
+   "z": 904
+  }
+ },
+ "gameMode": "koth",
+ "camera": {
+  "rtsCenter": {
+   "x": 1984,
+   "y": 4032,
+   "z": 228
+  },
+  "cameraOffset": {
+   "x": -869,
+   "y": 0,
+   "z": 1390
+  },
+  "focusSource": [
+   0,
+   0,
+   -59.8
+  ],
+  "method": "koth-point",
+  "occlusion": {
+   "clear": true,
+   "elevationDeg": 58,
+   "quarterTurns": 0,
+   "azimuthDeg": 0,
+   "distance": 1639,
+   "focusShift": 0
+  }
+ },
+ "spawns": [
+  {
+   "team": 3,
+   "origin": [
+    256,
+    -3720,
+    -48
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    256,
+    -3592,
+    -92
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    192,
+    -3592,
+    -96
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    192,
+    -3656,
+    -88
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    384,
+    -3592,
+    -64
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    384,
+    -3656,
+    -60
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    384,
+    -3720,
+    -56
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    320,
+    -3720,
+    -52
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    320,
+    -3656,
+    -72
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    320,
+    -3592,
+    -76
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    384,
+    -3528,
+    -68
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    320,
+    -3528,
+    -80
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    256,
+    -3528,
+    -100
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    192,
+    -3528,
+    -104
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 2,
+   "origin": [
+    384,
+    3656,
+    -60
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    384,
+    3720,
+    -56
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    320,
+    3720,
+    -52
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    320,
+    3656,
+    -72
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    256,
+    3720,
+    -48
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    192,
+    3720,
+    -44
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    256,
+    3656,
+    -84
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    192,
+    3656,
+    -88
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    192,
+    3592,
+    -96
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    256,
+    3592,
+    -92
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    320,
+    3592,
+    -76
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    384,
+    3592,
+    -64
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    384,
+    3528,
+    -68
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    320,
+    3528,
+    -80
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    256,
+    3528,
+    -100
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 2,
+   "origin": [
+    192,
+    3528,
+    -104
+   ],
+   "yaw": 270
+  },
+  {
+   "team": 3,
+   "origin": [
+    192,
+    -3720,
+    -44
+   ],
+   "yaw": 90
+  },
+  {
+   "team": 3,
+   "origin": [
+    256,
+    -3656,
+    -84
+   ],
+   "yaw": 90
+  }
+ ],
+ "controlPoints": [
+  {
+   "name": "cp_koth",
+   "index": 0,
+   "printName": "#koth_viaduct_cap",
+   "origin": [
+    0,
+    0,
+    -59.8
+   ],
+   "defaultOwner": 0,
+   "startLocked": false,
+   "group": 0,
+   "hidden": false,
+   "captureAreas": [
+    0
+   ]
+  }
+ ],
+ "captureAreas": [
+  {
+   "name": null,
+   "capPoint": "cp_koth",
+   "timeToCap": 5.5,
+   "canCap": {
+    "2": true,
+    "3": true
+   },
+   "numCappers": {
+    "2": 1,
+    "3": 1
+   },
+   "parent": null,
+   "startDisabled": false,
+   "bspModelIndex": 35,
+   "node": null,
+   "mins": [
+    -368,
+    -208,
+    -63
+   ],
+   "maxs": [
+    368,
+    208,
+    64.8
+   ]
+  }
+ ],
+ "koth": {
+  "timerLength": 180,
+  "unlockPoint": 30
+ },
+ "roundTimers": [],
+ "payload": [],
+ "doors": [
+  {
+   "name": "red_exitdoor_1_col",
+   "classname": "func_door",
+   "origin": [
+    640,
+    3276,
+    -48
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 650,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 1,
+   "node": "model_1_func_door_red_exitdoor_1_col",
+   "mins": [
+    680,
+    3272,
+    -112
+   ],
+   "maxs": [
+    856,
+    3280,
+    16
+   ]
+  },
+  {
+   "name": "red_exitdoor_3_col",
+   "classname": "func_door",
+   "origin": [
+    12,
+    3328,
+    32
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 1000,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 13,
+   "node": "model_13_func_door_red_exitdoor_3_col",
+   "mins": [
+    8,
+    3112,
+    -32
+   ],
+   "maxs": [
+    16,
+    3288,
+    96
+   ]
+  },
+  {
+   "name": "blu_exitdoor_3_col",
+   "classname": "func_door",
+   "origin": [
+    12,
+    -3072,
+    32
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 1000,
+   "spawnflags": 0,
+   "props": [],
+   "bspModelIndex": 37,
+   "node": "model_37_func_door_blu_exitdoor_3_col",
+   "mins": [
+    8,
+    -3288,
+    -32
+   ],
+   "maxs": [
+    16,
+    -3112,
+    96
+   ]
+  },
+  {
+   "name": "red_exitdoor_2_col",
+   "classname": "func_door",
+   "origin": [
+    288,
+    3084,
+    -128
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 650,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 44,
+   "node": "model_44_func_door_red_exitdoor_2_col",
+   "mins": [
+    328,
+    3080,
+    -192
+   ],
+   "maxs": [
+    504,
+    3088,
+    -64
+   ]
+  },
+  {
+   "name": "blu_exitdoor_1_col",
+   "classname": "func_door",
+   "origin": [
+    640,
+    -3276,
+    -48
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 650,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 50,
+   "node": "model_50_func_door_blu_exitdoor_1_col",
+   "mins": [
+    680,
+    -3280,
+    -112
+   ],
+   "maxs": [
+    856,
+    -3272,
+    16
+   ]
+  },
+  {
+   "name": "blu_exitdoor_2_col",
+   "classname": "func_door",
+   "origin": [
+    416,
+    -2989,
+    -128
+   ],
+   "moveDir": [
+    0,
+    0,
+    1
+   ],
+   "lip": 0,
+   "speed": 650,
+   "spawnflags": 0,
+   "props": [
+    "models/props_gameplay/windowed_door.mdl"
+   ],
+   "bspModelIndex": 54,
+   "node": "model_54_func_door_blu_exitdoor_2_col",
+   "mins": [
+    328,
+    -3088,
+    -192
+   ],
+   "maxs": [
+    504,
+    -3082,
+    -64
+   ]
+  }
+ ],
+ "respawnRooms": [
+  {
+   "name": "red_respawn_trigger",
+   "team": 2,
+   "bspModelIndex": 17,
+   "node": null,
+   "mins": [
+    0,
+    3072,
+    -192
+   ],
+   "maxs": [
+    944,
+    3968,
+    128
+   ]
+  },
+  {
+   "name": "blu_respawn_trigger",
+   "team": 3,
+   "bspModelIndex": 45,
+   "node": null,
+   "mins": [
+    0,
+    -3968,
+    -192
+   ],
+   "maxs": [
+    944,
+    -3072,
+    128
+   ]
+  }
+ ],
+ "respawnVisualizers": [
+  {
+   "room": "red_respawn_trigger",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 2,
+   "node": "model_2_func_respawnroomvisualizer",
+   "mins": [
+    328,
+    3072,
+    -192
+   ],
+   "maxs": [
+    504,
+    3088,
+    -64
+   ]
+  },
+  {
+   "room": "red_respawn_trigger",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 3,
+   "node": "model_3_func_respawnroomvisualizer",
+   "mins": [
+    680,
+    3264,
+    -112
+   ],
+   "maxs": [
+    856,
+    3280,
+    16
+   ]
+  },
+  {
+   "room": "blu_respawn_trigger",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 14,
+   "node": "model_14_func_respawnroomvisualizer",
+   "mins": [
+    0,
+    -3288,
+    -32
+   ],
+   "maxs": [
+    16,
+    -3112,
+    96
+   ]
+  },
+  {
+   "room": "blu_respawn_trigger",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 34,
+   "node": "model_34_func_respawnroomvisualizer",
+   "mins": [
+    680,
+    -3280,
+    -112
+   ],
+   "maxs": [
+    856,
+    -3264,
+    16
+   ]
+  },
+  {
+   "room": "blu_respawn_trigger",
+   "team": 3,
+   "solidToEnemies": true,
+   "bspModelIndex": 48,
+   "node": "model_48_func_respawnroomvisualizer",
+   "mins": [
+    328,
+    -3088,
+    -192
+   ],
+   "maxs": [
+    504,
+    -3072,
+    -64
+   ]
+  },
+  {
+   "room": "red_respawn_trigger",
+   "team": 2,
+   "solidToEnemies": true,
+   "bspModelIndex": 69,
+   "node": "model_69_func_respawnroomvisualizer",
+   "mins": [
+    0,
+    3112,
+    -32
+   ],
+   "maxs": [
+    16,
+    3288,
+    96
+   ]
+  }
+ ],
+ "resupply": [
+  {
+   "team": 0,
+   "locker": "prop_locker_red_2",
+   "bspModelIndex": 5,
+   "node": null,
+   "mins": [
+    565.3,
+    3277.4,
+    -112
+   ],
+   "maxs": [
+    661.3,
+    3373.4,
+    16
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "prop_locker_red_1",
+   "bspModelIndex": 6,
+   "node": null,
+   "mins": [
+    206.7,
+    3161,
+    -192
+   ],
+   "maxs": [
+    302.7,
+    3257,
+    -64
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "prop_locker_blu_2",
+   "bspModelIndex": 7,
+   "node": null,
+   "mins": [
+    566.9,
+    -3377.1,
+    -112
+   ],
+   "maxs": [
+    662.9,
+    -3281.1,
+    16
+   ]
+  },
+  {
+   "team": 0,
+   "locker": "prop_locker_blu_1",
+   "bspModelIndex": 8,
+   "node": null,
+   "mins": [
+    208.3,
+    -3260.6,
+    -192
+   ],
+   "maxs": [
+    304.3,
+    -3164.6,
+    -64
+   ]
+  }
+ ],
+ "items": [
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -928,
+    -912,
+    -60
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    20,
+    -1624,
+    -184
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -928,
+    864,
+    -60
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    360,
+    0,
+    -53.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    20,
+    1624,
+    -184
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    -1060,
+    0,
+    7.7
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    216,
+    1312,
+    -54.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    780,
+    864,
+    -188
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    60,
+    1624,
+    -188
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    -928,
+    912,
+    -60
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    60,
+    -1624,
+    -188
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    -928,
+    -864,
+    -60
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "medium",
+   "origin": [
+    780,
+    -864,
+    -184.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    820,
+    -864,
+    -184.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "medium",
+   "origin": [
+    820,
+    864,
+    -188
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    216,
+    -1344,
+    -54.3
+   ]
+  },
+  {
+   "kind": "ammo",
+   "size": "small",
+   "origin": [
+    216,
+    1344,
+    -54.3
+   ]
+  },
+  {
+   "kind": "health",
+   "size": "small",
+   "origin": [
+    216,
+    -1312,
+    -54.3
+   ]
+  }
+ ],
+ "teleports": [],
+ "gameplayProps": [
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "red_exitdoor_3",
+   "origin": [
+    32,
+    3200,
+    32
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_2",
+   "origin": [
+    613.3,
+    3293.4,
+    -111.8
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_red_1",
+   "origin": [
+    222.7,
+    3209,
+    -191.8
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_2",
+   "origin": [
+    614.9,
+    -3297.1,
+    -111.8
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/resupply_locker.mdl",
+   "name": "prop_locker_blu_1",
+   "origin": [
+    224.3,
+    -3212.6,
+    -191.8
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "model": "models/props_gameplay/cap_point_base.mdl",
+   "name": "cp_koth_prop",
+   "origin": [
+    0,
+    0,
+    -63.8
+   ],
+   "angles": [
+    0,
+    0,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "blu_exitdoor_1_col",
+   "origin": [
+    768,
+    -3272,
+    -112
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "red_exitdoor_2_col",
+   "origin": [
+    416,
+    3080,
+    -192
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/door_slide_large_dynamic.mdl",
+   "name": "blu_exitdoor_3",
+   "origin": [
+    32,
+    -3200,
+    32
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "blu_exitdoor_2_col",
+   "origin": [
+    416,
+    -3078,
+    -192
+   ],
+   "angles": [
+    0,
+    90,
+    0
+   ],
+   "skin": 0
+  },
+  {
+   "model": "models/props_gameplay/windowed_door.mdl",
+   "parent": "red_exitdoor_1_col",
+   "origin": [
+    768,
+    3272,
+    -112
+   ],
+   "angles": [
+    0,
+    270,
+    0
+   ],
+   "skin": 0
+  }
+ ],
+ "light": {
+  "environment": {
+   "sun": {
+    "color": [
+     248,
+     197,
+     177
+    ],
+    "brightness": 400
+   },
+   "sunHDR": {
+    "color": [
+     0,
+     0,
+     0
+    ],
+    "brightness": 1
+   },
+   "ambient": {
+    "color": [
+     139,
+     136,
+     168
+    ],
+    "brightness": 375
+   },
+   "ambientHDR": {
+    "color": [
+     0,
+     0,
+     0
+    ],
+    "brightness": 1
+   },
+   "pitch": -35,
+   "yaw": 131,
+   "sunSpreadAngle": 5,
+   "direction": [
+    -0.5374,
+    0.6182,
+    -0.5736
+   ]
+  },
+  "shadow": {
+   "direction": [
+    -0.5374,
+    0.6182,
+    -0.5736
+   ],
+   "color": [
+    197,
+    123,
+    98
+   ],
+   "distance": 100
+  },
+  "sunSprite": null
+ },
+ "sky": {
+  "name": "sky_eveningtoast_01",
+  "camera": {
+   "origin": [
+    3072,
+    0,
+    -2610
+   ],
+   "scale": 16
+  }
+ },
+ "fog": {
+  "enabled": true,
+  "color": [
+   187,
+   131,
+   102
+  ],
+  "start": 0,
+  "end": 12000,
+  "maxDensity": 1,
+  "farZ": -1
+ },
+ "water": []
+}

@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from 'react'
 
 import * as THREE from 'three'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { GLTF, GLTFLoader } from 'three/examples/jsm/Addons.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
 import { ActorDimensions } from '@components/Scene/Actors'
 
@@ -10,7 +11,24 @@ import mapChunkingConfig from '@constants/mapChunking.json'
 import { MapVisibilityMetadata } from '@constants/types'
 import { addDownloadAction, updateDownloadAction } from '@zus/actions'
 import { getState, useInstance, useStore } from '@zus/store'
-import { getMapModelUrls, getMapVisibilityUrl } from '@utils/game'
+import { getMapVisibilityUrl } from '@utils/game'
+import {
+  MapConversion,
+  fetchMapConversion,
+  getMapFileUrl,
+  getMapFolder,
+  getMapModelUrl,
+} from '@utils/mapAssets'
+import { useHlSetting } from '@highlander/extras/hooks'
+import {
+  BspMaterialInfo,
+  BspMaterials,
+  MAP_WIREFRAME_MATERIAL,
+  applyBspMaterials,
+  isSharedMapMaterial,
+} from '@highlander/map/bspMaterials'
+import { collectMapNodes } from '@highlander/map/mapNodes'
+import '@highlander/map/probes'
 
 const INVISIBLE_TOOL_MATERIALS = new Set([
   'toolsnodraw',
@@ -43,17 +61,21 @@ function isInvisibleEntityNode(nodeName: string): boolean {
   return INVISIBLE_NODE_PREFIXES.some(prefix => name.startsWith(prefix))
 }
 
-const MAP_WIREFRAME_MATERIAL = new THREE.MeshStandardMaterial({
-  color: '#333333',
-  opacity: 0.1,
-  transparent: true,
-  wireframe: true,
-})
-
 const MAP_UNTEXTURED_MATERIAL = new THREE.MeshStandardMaterial({
   color: 'white',
 })
+
 const MAP_CHUNKING_ENABLED = mapChunkingConfig.enabled
+
+type MapPipeline = 'bsp-to-glb' | 'textured'
+
+interface LoadedMap {
+  root: THREE.Group
+  pipeline: MapPipeline
+  folder: string
+  conversion: MapConversion | null
+  lightmap: THREE.Texture | null
+}
 
 export interface WorldProps {
   map: string
@@ -68,26 +90,39 @@ export const World = (props: WorldProps) => {
   const currentClusterRef = useRef<number | null>(null)
   const mapLoadRequestIdRef = useRef(0)
   const visibilityRequestIdRef = useRef(0)
-  const [mapModel, setMapModel] = useState<THREE.Group | null>()
+  const bspMaterialsRef = useRef<BspMaterials | null>(null)
+  const [loadedMap, setLoadedMap] = useState<LoadedMap | null>(null)
   const [mapOverlay, setMapOverlay] = useState<THREE.Group | null>()
   const [mapVisibility, setMapVisibility] = useState<MapVisibilityMetadata | null>(null)
   const { map, mode } = props
+  const mapModel = loadedMap?.root ?? null
+  const scene = useThree(state => state.scene)
 
   const bounds = useStore(state => state.scene.bounds)
+  const brightness = useHlSetting<number>('map.brightness') ?? 1
+  const showRespawnVisualizers = useHlSetting<boolean>('map.respawnVisualizers') ?? false
+  const fogSetting = useHlSetting<boolean>('map.fog') ?? false
+  const brightnessRef = useRef(brightness)
+  brightnessRef.current = brightness
 
   // Briefly ensure the map is cleared when the map changes
   // to prevent lingering of the previous map
   useEffect(() => {
-    setMapModel(null)
+    setLoadedMap(null)
     setMapOverlay(null)
     chunkRootsByNameRef.current = new Map()
     visibilityCullingEnabledRef.current = false
     currentClusterRef.current = null
+    useInstance.getState().setMapNodes(undefined)
     useInstance.getState().setRuntimePerf({
       visibleChunkCount: 0,
       currentCluster: null,
     })
     setMapVisibility(null)
+
+    return () => {
+      useInstance.getState().setMapNodes(undefined)
+    }
   }, [map])
 
   useEffect(() => {
@@ -128,28 +163,55 @@ export const World = (props: WorldProps) => {
     }
   }, [map])
 
+  // Load the map model. bsp-to-glb maps (conversion.json pipeline) load files.model with the meshopt
+  // decoder plus the lightmap atlas; older maps load textured_compressed.glb. Failures end in
+  // mapStatus 'missing' or 'error', which MapNotice shows (no blocking alerts).
   useEffect(() => {
     const requestId = ++mapLoadRequestIdRef.current
+    const isStale = () => requestId !== mapLoadRequestIdRef.current
+    const { setMapStatus } = useInstance.getState()
+    const folder = getMapFolder(map)
 
-    try {
-      const mapModelFileUrls = getMapModelUrls(map)
+    if (!folder) {
+      setMapStatus({ state: 'missing', message: `No converted geometry for ${map}` })
+      return
+    }
+    setMapStatus({ state: 'loading', folder })
 
-      if (!mapModelFileUrls) {
-        alert('Unable to load map model. It may not be available on dribble.tf.')
+    let pipeline: MapPipeline | undefined
+    const load = async () => {
+      const conversion = await fetchMapConversion(map)
+      if (isStale()) return
+      pipeline = conversion?.pipeline === 'bsp-to-glb' ? 'bsp-to-glb' : 'textured'
+      const modelUrl = getMapModelUrl(map, conversion)
+      if (!modelUrl) throw new Error(`No model file for ${map}`)
+
+      const lightmapFile = pipeline === 'bsp-to-glb' ? conversion?.lightmap?.file : undefined
+      const lightmapUrl = lightmapFile ? getMapFileUrl(map, lightmapFile) : undefined
+      const [gltf, lightmap] = await Promise.all([
+        loadGLTF(
+          modelUrl,
+          `${map} (${pipeline === 'bsp-to-glb' ? 'geometry' : 'textured'})`,
+          pipeline === 'bsp-to-glb'
+        ),
+        lightmapUrl
+          ? loadLightmap(lightmapUrl, conversion?.lightmap?.uvChannel ?? 0)
+          : Promise.resolve(null),
+      ])
+      if (isStale() || !gltf?.scene) {
+        lightmap?.dispose()
         return
       }
-
-      loadGLTF(mapModelFileUrls.textured, `${map} (textured)`).then(gltf => {
-        if (requestId === mapLoadRequestIdRef.current && gltf && gltf.scene) {
-          setMapModel(gltf.scene)
-        }
-      })
-    } catch (error) {
-      alert(
-        `Unable to load map: ${map} (${mode})\nThe project is probably missing the necessary files.`
-      )
-      console.error(error)
+      setLoadedMap({ root: gltf.scene, pipeline, folder, conversion, lightmap })
     }
+
+    load().catch(error => {
+      if (isStale()) return
+      const status = (error as { response?: Response })?.response?.status
+      const message = error instanceof Error ? error.message : String(error)
+      setMapStatus({ state: status === 404 ? 'missing' : 'error', folder, pipeline, message })
+      console.error(`Unable to load map: ${map} (${mode})`, error)
+    })
 
     return () => {
       if (mapLoadRequestIdRef.current === requestId) {
@@ -157,6 +219,12 @@ export const World = (props: WorldProps) => {
       }
     }
   }, [map, mode])
+
+  // Free the GPU resources of a replaced map (module-level shared materials stay).
+  useEffect(() => {
+    if (!loadedMap) return
+    return () => disposeLoadedMap(loadedMap)
+  }, [loadedMap])
 
   useEffect(() => {
     if (!mapModel || !MAP_CHUNKING_ENABLED) {
@@ -281,50 +349,109 @@ export const World = (props: WorldProps) => {
     }
   }, [mapOverlay, mode])
 
+  // Freeze the static map, then publish the brush-entity nodes (F6 moves and toggles them) and the
+  // ready status. bsp-to-glb nodes start with their converter visibility first: the 3D skybox is
+  // hidden, brush entities that start hidden (initiallyVisible false) wait for runtime code.
   useEffect(() => {
-    if (mapModel) {
-      freezeStaticMapSubtree(mapModel)
+    if (loadedMap) {
+      if (loadedMap.pipeline === 'bsp-to-glb') applyBspInitialVisibility(loadedMap.root)
+      freezeStaticMapSubtree(loadedMap.root)
     }
 
     if (mapOverlay) {
       freezeStaticMapSubtree(mapOverlay)
     }
-  }, [mapModel, mapOverlay])
+
+    if (loadedMap) {
+      const { setMapNodes, setMapStatus } = useInstance.getState()
+      setMapNodes(loadedMap.pipeline === 'bsp-to-glb' ? collectMapNodes(loadedMap.root) : new Map())
+      setMapStatus({ state: 'ready', folder: loadedMap.folder, pipeline: loadedMap.pipeline })
+    }
+  }, [loadedMap, mapOverlay])
 
   // Update map model materials
   useEffect(() => {
-    if (mapModel) {
-      mapModel.traverse((child: THREE.Object3D) => {
-        // Hide invisible game-logic entity nodes (e.g. team_control_point brushes)
-        if (isInvisibleEntityNode(child.name)) {
-          child.visible = false
+    if (!loadedMap) return
+    const mapModel = loadedMap.root
+
+    if (loadedMap.pipeline === 'bsp-to-glb') {
+      // One shared material per kind (src/highlander/map/bspMaterials.ts). Vertex colours are the
+      // albedo (texdata reflectivity) and the lightmap lights them, so none of the textured-GLB fixes
+      // below apply.
+      const materials = applyBspMaterials(mapModel, {
+        mode: mode ?? 'textured',
+        lightmap: loadedMap.lightmap,
+        lightmapRange: loadedMap.conversion?.lightmap?.range ?? 1,
+        brightness: brightnessRef.current,
+      })
+      bspMaterialsRef.current = materials
+
+      return () => {
+        if (bspMaterialsRef.current === materials) bspMaterialsRef.current = null
+        materials.dispose()
+      }
+    }
+
+    mapModel.traverse((child: THREE.Object3D) => {
+      // Hide invisible game-logic entity nodes (e.g. team_control_point brushes)
+      if (isInvisibleEntityNode(child.name)) {
+        child.visible = false
+        return
+      }
+
+      traverseMaterials(child, (material: any, node: any) => {
+        // Hide invisible tool materials (nodraw, clip, trigger, etc.)
+        if (isInvisibleToolMaterial(material.name)) {
+          node.visible = false
           return
         }
 
-        traverseMaterials(child, (material: any, node: any) => {
-          // Hide invisible tool materials (nodraw, clip, trigger, etc.)
-          if (isInvisibleToolMaterial(material.name)) {
-            node.visible = false
-            return
-          }
+        // if (material.map) material.map.encoding = THREE.sRGBEncoding
+        // if (material.emissiveMap) material.emissiveMap.encoding = THREE.sRGBEncoding
+        material.depthWrite = true
+        material.vertexColors = false
+        material.needsUpdate = true
 
-          // if (material.map) material.map.encoding = THREE.sRGBEncoding
-          // if (material.emissiveMap) material.emissiveMap.encoding = THREE.sRGBEncoding
-          material.depthWrite = true
-          material.vertexColors = false
-          material.needsUpdate = true
+        if (mode === 'untextured') {
+          node.material = MAP_UNTEXTURED_MATERIAL
+        }
 
-          if (mode === 'untextured') {
-            node.material = MAP_UNTEXTURED_MATERIAL
-          }
-
-          if (mode === 'wireframe') {
-            node.material = MAP_WIREFRAME_MATERIAL
-          }
-        })
+        if (mode === 'wireframe') {
+          node.material = MAP_WIREFRAME_MATERIAL
+        }
       })
+    })
+  }, [loadedMap, mode])
+
+  // Map brightness (settings.highlander.map.brightness) scales the lightmap without a reload.
+  useEffect(() => {
+    bspMaterialsRef.current?.setBrightness(brightness)
+  }, [brightness, loadedMap, mode])
+
+  // Respawn-room visualizer meshes (material hiddenByDefault) follow map.respawnVisualizers.
+  useEffect(() => {
+    if (loadedMap?.pipeline !== 'bsp-to-glb') return
+    loadedMap.root.traverse(node => {
+      const info = node.userData.dribbleMaterial as BspMaterialInfo | undefined
+      if (info?.hiddenByDefault) node.visible = showRespawnVisualizers
+    })
+  }, [loadedMap, mode, showRespawnVisualizers])
+
+  // Fog from the map's env_fog_controller (bsp-to-glb maps, setting map.fog).
+  useEffect(() => {
+    const fog = loadedMap?.pipeline === 'bsp-to-glb' ? loadedMap.conversion?.fog : null
+    if (!fogSetting || !fog?.enabled || !Array.isArray(fog.color)) return
+    const [r, g, b] = fog.color.map(value => Math.min(255, Math.max(0, Number(value) || 0)) / 255)
+    const sceneFog = new THREE.Fog(
+      new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace),
+      fog.start,
+      fog.end
+    )
+    scene.fog = sceneFog
+    return () => {
+      if (scene.fog === sceneFog) scene.fog = null
     }
-  }, [mapModel, mode])
+  }, [scene, loadedMap, fogSetting])
 
   // Reposition the world to the center of the scene bounds
   useEffect(() => {
@@ -393,6 +520,21 @@ function setChunkVisibilityForCluster(
   })
 }
 
+// bsp-to-glb node visibility at load: the 3D skybox (drawn x16 around sky_camera in game) stays hidden,
+// and brush-entity parents start as the converter marked them (initiallyVisible false: func_brush
+// StartDisabled, rendermode 6/10 collision brushes).
+function applyBspInitialVisibility(root: THREE.Object3D) {
+  root.traverse(node => {
+    const info = node.userData?.dribble
+    if (!info) return
+    if (info.kind === 'skybox3d' || info.hiddenByDefault === true) {
+      node.visible = false
+    } else if (info.kind === 'brushEntity' || info.kind === 'respawnVisualizer') {
+      node.visible = info.initiallyVisible !== false
+    }
+  })
+}
+
 function freezeStaticMapSubtree(root: THREE.Object3D) {
   root.traverse(node => {
     node.matrixAutoUpdate = false
@@ -410,6 +552,27 @@ function freezeStaticMapSubtree(root: THREE.Object3D) {
   })
 
   root.updateMatrixWorld(true)
+}
+
+const SHARED_MATERIALS = new Set<THREE.Material>([MAP_UNTEXTURED_MATERIAL])
+
+function disposeLoadedMap(loaded: LoadedMap) {
+  const textures = new Set<THREE.Texture>()
+  loaded.root.traverse(node => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    mesh.geometry?.dispose()
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    materials.forEach(material => {
+      if (!material || SHARED_MATERIALS.has(material) || isSharedMapMaterial(material)) return
+      Object.values(material).forEach(value => {
+        if (value instanceof THREE.Texture) textures.add(value)
+      })
+      material.dispose()
+    })
+  })
+  if (loaded.lightmap) textures.add(loaded.lightmap)
+  textures.forEach(texture => texture.dispose())
 }
 
 function getMapLocalPoint(worldPoint: THREE.Vector3, mapRoot: THREE.Object3D): THREE.Vector3 | null {
@@ -482,10 +645,12 @@ function getClusterIndexForWorldPoint(
 
 // Useful resource: https://github.com/donmccurdy/three-gltf-viewer/blob/master/src/viewer.js
 
-function loadGLTF(url: string, name?: string) {
+function loadGLTF(url: string, name?: string, meshopt = false) {
   return new Promise<GLTF>((resolve, reject) => {
     try {
       const gltfLoader = new GLTFLoader().setCrossOrigin('anonymous')
+      // bsp-to-glb maps are EXT_meshopt_compression + KHR_mesh_quantization
+      if (meshopt) gltfLoader.setMeshoptDecoder(MeshoptDecoder)
 
       const onLoad = (gltf: GLTF) => {
         resolve(gltf)
@@ -506,7 +671,7 @@ function loadGLTF(url: string, name?: string) {
       }
 
       const onError = (error: unknown) => {
-        throw error
+        reject(error)
       }
 
       gltfLoader.load(url, onLoad, onProgress, onError)
@@ -515,6 +680,25 @@ function loadGLTF(url: string, name?: string) {
       reject(error)
     }
   })
+}
+
+// The atlas has no padding between faces, so no mipmaps (they would bleed) and linear filtering.
+async function loadLightmap(url: string, uvChannel: number): Promise<THREE.Texture | null> {
+  try {
+    const texture = await new THREE.TextureLoader().setCrossOrigin('anonymous').loadAsync(url)
+    texture.flipY = false
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.channel = uvChannel
+    texture.generateMipmaps = false
+    texture.minFilter = THREE.LinearFilter
+    texture.magFilter = THREE.LinearFilter
+    texture.needsUpdate = true
+    return texture
+  } catch (error) {
+    // The geometry still renders with its flat albedo colours.
+    console.warn(`Map lightmap unavailable: ${url}`, error)
+    return null
+  }
 }
 
 function traverseMaterials(

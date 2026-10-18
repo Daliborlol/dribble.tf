@@ -6,6 +6,12 @@ import { addEventHistoryAction, goToTickAction } from '@zus/actions'
 import { getState, useInstance } from '@zus/store'
 import { enabledTimelineMarkers, type TimelineMarker } from '@highlander/objectives/timelineModel'
 
+/**
+ * Render count of PlaybackPanel's marker strip, for the `timeline.markers` probe: it should change only when the
+ * marker list does (extras, toggles), not with the playback tick.
+ */
+export const timelineStripStats = { renders: 0 }
+
 /** The markers `[` / `]` step through right now (empty while Highlander, the markers or the extras are off). */
 export function activeTimelineMarkers(): TimelineMarker[] {
   const hl = getState().settings.highlander

@@ -7,7 +7,7 @@
 //   hud.snapshotStats()    { computes, lastHudTick } of the shared HUD snapshot
 //   hud.rows(tick)         the player-list rows and medic rows the snapshot holds at the tick
 //   killfeed.lines(tick)   the killfeed lines shown at the tick with the current settings, and the feign counts
-//   timeline.markers()     every timeline marker and the enabled ones
+//   timeline.markers()     every timeline marker, the enabled ones and the marker strip's render count
 //   stopwatch.games()      roundWin events with their stopwatch half, decided flag and the games-won rule
 
 import { getState, useInstance } from '@zus/store'
@@ -15,7 +15,7 @@ import { registerHlProbe } from '@highlander/debug'
 import { getLoadedMapMeta } from '@highlander/map/mapMeta'
 import { computeHudSnapshot, hudSnapshotStats } from '@highlander/hud/hudSnapshot'
 import { killfeedLinesAt, killfeedModel } from '@highlander/hud/killfeedModel'
-import { activeTimelineMarkers } from '@highlander/hud/timeline'
+import { activeTimelineMarkers, timelineStripStats } from '@highlander/hud/timeline'
 
 import { bannerAt } from './banner'
 import { deathIndex } from './deaths'
@@ -107,7 +107,12 @@ registerHlProbe('timeline.markers', () => {
   const all = timelineMarkers(demo, x)
   const counts: Record<string, number> = {}
   for (const m of all) counts[`${m.category}.${m.shape}`] = (counts[`${m.category}.${m.shape}`] ?? 0) + 1
-  return jsonSafe({ total: all.length, counts, enabled: activeTimelineMarkers().map(m => ({ tick: m.tick, shape: m.shape, text: m.text })) })
+  return jsonSafe({
+    total: all.length,
+    counts,
+    enabled: activeTimelineMarkers().map(m => ({ tick: m.tick, shape: m.shape, text: m.text })),
+    stripRenders: timelineStripStats.renders,
+  })
 })
 
 registerHlProbe('stopwatch.games', () => {

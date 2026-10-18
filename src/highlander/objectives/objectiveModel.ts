@@ -365,8 +365,11 @@ export function objectiveViewAt(x: HighlanderExtras, meta: MapMeta | null | unde
   const mode = objectiveModeOf(x, meta)
   const rules = rulesAt(x, tick)
   const flags = rules?.flags ?? 0
-  // m_bInOvertime stays set through the win screen; TF2 shows OVERTIME only while the round runs
-  const overtime = (flags & RULES.IN_OVERTIME) !== 0 && rules?.roundState === ROUND_STATE.RUNNING
+  // m_bInOvertime stays set through the win screen and after the match: TF2 shows OVERTIME only while a round
+  // runs. After the game ends the server goes back to waiting for players with the round state RUNNING again
+  // (1438891 from the gameOver tick 54347: flags 902), so that state is excluded as well.
+  const overtime =
+    (flags & RULES.IN_OVERTIME) !== 0 && (flags & RULES.WAITING_FOR_PLAYERS) === 0 && rules?.roundState === ROUND_STATE.RUNNING
   const attackTeam = attackTeamAt(x, tick)
   const available = x.meta.available
   const view: ObjectiveView = {

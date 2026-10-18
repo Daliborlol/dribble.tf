@@ -213,7 +213,8 @@ function resourceAt(x: HighlanderExtras, p: number, tick: number): { damage: num
 
 const ROSTER_STEP = 33
 const ROSTER_LOOKBACK = 66 * 300
-let rosterMemo: { demo: AsyncParser; tick: number; rosterTick: number } | null = null
+// Keyed by the demo, so a replaced demo (and the caches it holds) is never kept alive by this memo.
+const rosterMemo = new WeakMap<AsyncParser, { tick: number; rosterTick: number }>()
 
 const connectedPlayersAt = (demo: AsyncParser, tick: number): CachedPlayer[] =>
   demo.getPlayersAtTick(tick).filter(p => p.connected && (p.teamId === 2 || p.teamId === 3))
@@ -226,9 +227,8 @@ const connectedPlayersAt = (demo: AsyncParser, tick: number): CachedPlayer[] =>
 export function rosterAt(demo: AsyncParser, tick: number): { players: CachedPlayer[]; tick: number } {
   const players = connectedPlayersAt(demo, tick)
   if (players.length > 0) return { players, tick }
-  if (rosterMemo && rosterMemo.demo === demo && rosterMemo.tick === tick) {
-    return { players: connectedPlayersAt(demo, rosterMemo.rosterTick), tick: rosterMemo.rosterTick }
-  }
+  const memo = rosterMemo.get(demo)
+  if (memo && memo.tick === tick) return { players: connectedPlayersAt(demo, memo.rosterTick), tick: memo.rosterTick }
   let found = tick
   let roster: CachedPlayer[] = []
   for (let t = tick - ROSTER_STEP; t >= Math.max(0, tick - ROSTER_LOOKBACK); t -= ROSTER_STEP) {
@@ -238,7 +238,7 @@ export function rosterAt(demo: AsyncParser, tick: number): { players: CachedPlay
       found = t
     }
   }
-  rosterMemo = { demo, tick, rosterTick: found }
+  rosterMemo.set(demo, { tick, rosterTick: found })
   return { players: roster, tick: found }
 }
 

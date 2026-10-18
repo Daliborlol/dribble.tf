@@ -31,6 +31,7 @@ import { useIsMobile } from '@utils/hooks'
 
 import { TEAM_HUD } from '@highlander/constants'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
+import { timelineStripStats } from '@highlander/hud/timeline'
 import { enabledTimelineMarkers, type TimelineMarker } from '@highlander/objectives/timelineModel'
 
 // Since parser only returns round ends (not round starts) we need to
@@ -424,7 +425,7 @@ export const PlaybackPanel = () => {
           </Slider.Root>
 
           {/* Highlander timeline markers ([ and ] step through them) */}
-          {!isMobile && <HlTimelineMarkers maxTicks={maxTicks} onSeek={goToTick} />}
+          {!isMobile && <HlTimelineMarkers maxTicks={maxTicks} />}
 
           {/* Bookmark markers */}
           {bookmarks.map(bookmarkTick => (
@@ -483,9 +484,16 @@ export const PlaybackPanel = () => {
 // Markers by category, each with its own setting: medic (uber pops, medic drops), objective (captures, round
 // wins, overtime, setup end), spy (backstabs, Dead Ringer feigns, sappers, decloaks) and engineer (sentries built
 // and destroyed). They sit just above the slider at playback tick = cache tick + 2; hovering shows the clock
-// time and what happened, clicking seeks there. Memoized: the list only changes with the extras or the toggles.
+// time and what happened, clicking seeks there. Memoized: the list only changes with the extras or the toggles,
+// and PlaybackPanel re-renders on every playback tick, so both components are React.memo with primitive or
+// stable props (the seek callback lives at module level) and the strip renders only when its list changes.
 
 const MARKER_SIZE = 9
+
+const seekToMarker = (tick: number) => {
+  goToTickAction(tick)
+  focusMainCanvas()
+}
 
 const markerColor = (m: TimelineMarker) =>
   m.team === 2 ? TEAM_HUD.red : m.team === 3 ? TEAM_HUD.blue : m.shape === 'overtime' ? '#ffd23f' : '#e5e7eb'
@@ -522,7 +530,7 @@ const MarkerShape = ({ m }: { m: TimelineMarker }) => {
   }
 }
 
-const HlTimelineMarkers = ({ maxTicks, onSeek }: { maxTicks: number; onSeek: (tick: number) => void }) => {
+const HlTimelineMarkers = React.memo(({ maxTicks }: { maxTicks: number }) => {
   const enabled = useHlSetting<boolean>('enabled')
   const on = useHlSetting<boolean>('hud.timelineMarkers')
   const medic = useHlSetting<boolean>('hud.timelineMedic')
@@ -536,23 +544,26 @@ const HlTimelineMarkers = ({ maxTicks, onSeek }: { maxTicks: number; onSeek: (ti
     [enabled, on, x, demo, medic, objective, spy, engineer]
   )
   if (markers.length === 0 || maxTicks <= 1) return null
-  return <MarkerStrip markers={markers} maxTicks={maxTicks} onSeek={onSeek} />
-}
+  return <MarkerStrip markers={markers} maxTicks={maxTicks} onSeek={seekToMarker} />
+})
 
 const MarkerStrip = React.memo(
-  ({ markers, maxTicks, onSeek }: { markers: TimelineMarker[]; maxTicks: number; onSeek: (tick: number) => void }) => (
-    <div className="pointer-events-none absolute inset-x-0 bottom-[calc(50%+6px)] h-[18px]" data-hl-layout="timeline">
-      {markers.map((m, i) => (
-        <div
-          key={`${m.tick}-${m.shape}-${i}`}
-          title={m.text}
-          className="pointer-events-auto absolute bottom-0 flex -translate-x-1/2 cursor-pointer items-end opacity-90 hover:scale-150 hover:opacity-100"
-          style={{ left: `${((Math.min(maxTicks, m.tick) - 1) / (maxTicks - 1)) * 100}%`, transformOrigin: 'bottom center' }}
-          onClick={() => onSeek(m.tick)}
-        >
-          <MarkerShape m={m} />
-        </div>
-      ))}
-    </div>
-  )
+  ({ markers, maxTicks, onSeek }: { markers: TimelineMarker[]; maxTicks: number; onSeek: (tick: number) => void }) => {
+    timelineStripStats.renders++
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-[calc(50%+6px)] h-[18px]" data-hl-layout="timeline">
+        {markers.map((m, i) => (
+          <div
+            key={`${m.tick}-${m.shape}-${i}`}
+            title={m.text}
+            className="pointer-events-auto absolute bottom-0 flex -translate-x-1/2 cursor-pointer items-end opacity-90 hover:scale-150 hover:opacity-100"
+            style={{ left: `${((Math.min(maxTicks, m.tick) - 1) / (maxTicks - 1)) * 100}%`, transformOrigin: 'bottom center' }}
+            onClick={() => onSeek(m.tick)}
+          >
+            <MarkerShape m={m} />
+          </div>
+        ))}
+      </div>
+    )
+  }
 )

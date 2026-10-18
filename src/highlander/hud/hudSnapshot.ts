@@ -6,8 +6,9 @@
 // getter. hudTick = renderTick while paused and renderTick - renderTick % HUD_TICK_STEP while playing, so the
 // numbers are a pure function of the tick and seeking stays deterministic.
 //
-// Memoized at module level by (demo, extras, map-meta, hudTick): every widget of a render pass shares one
-// compute. Rows whose values did not change keep their previous object, so memoized rows skip re-rendering.
+// Memoized at module level by (demo, extras, map-meta, hudTick) in a WeakMap: every widget of a render pass
+// shares one compute, and the memo never keeps an unloaded demo alive. Rows whose values did not change keep
+// their previous object, so memoized rows skip re-rendering.
 
 import { useMemo } from 'react'
 
@@ -412,14 +413,21 @@ export function computeHudSnapshot(
 
 // ─── memo + hook ───────────────────────────────────────────────────────────────
 
-let last: { demo: AsyncParser; x: HighlanderExtras | undefined; meta: MapMeta | null; tick: number; snap: HudSnapshot } | null = null
+interface SnapshotMemo { demo: AsyncParser; x: HighlanderExtras | undefined; meta: MapMeta | null; tick: number; snap: HudSnapshot }
+
+// The last snapshot per data set, keyed by the extras object when there is one, else by the demo. Either key
+// belongs to one loaded demo, so a replaced demo or a replaced extras object (and the caches behind them) is
+// never kept alive by this memo, even when no snapshot is computed afterwards (Highlander turned off).
+const memo = new WeakMap<AsyncParser | HighlanderExtras, SnapshotMemo>()
 const stats = { computes: 0, lastHudTick: -1 }
 
 export function getHudSnapshot(demo: AsyncParser, x: HighlanderExtras | undefined, meta: MapMeta | null, hudTick: number): HudSnapshot {
-  if (last && last.demo === demo && last.x === x && last.meta === meta && last.tick === hudTick) return last.snap
-  const prev = last && last.demo === demo && last.x === x ? last.snap : null
-  const snap = computeHudSnapshot(demo, x, meta, hudTick, prev)
-  last = { demo, x, meta, tick: hudTick, snap }
+  const key = x ?? demo
+  const last = memo.get(key)
+  const same = !!last && last.demo === demo && last.x === x
+  if (same && last.meta === meta && last.tick === hudTick) return last.snap
+  const snap = computeHudSnapshot(demo, x, meta, hudTick, same ? last.snap : null)
+  memo.set(key, { demo, x, meta, tick: hudTick, snap })
   stats.computes++
   stats.lastHudTick = hudTick
   return snap

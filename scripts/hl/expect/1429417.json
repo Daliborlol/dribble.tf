@@ -1,6 +1,6 @@
 {
   "demo": "1429417.dem",
-  "about": "tow_tetsudo_b10c, 130 079 ticks, 122 MB. The base viewer cannot load it (world bounds stay 0, so the lib.rs start rule never fires); run it with the relaxed native options 1429417.noworld.options.json. Memory run with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "about": "tow_tetsudo_b10c, 130 079 ticks, 122 MB. parser2 never starts it (world bounds stay 0), so the viewer loads it through the fork's fallback cache builder (B1, route no-timeline); scripts/hl/check-fallback.mjs checks that route and the extras alignment on it. lib.rs's start rule never fires either, so the options for this file come from hl_extras 1429417.dem --start-without-world --print-options <file> (1429417.noworld.options.json). Memory run with --options-from; the native --self-check covers alignment.",
   "checks": [
     {
       "stat": "localTables.stale",

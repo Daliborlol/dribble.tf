@@ -1,6 +1,6 @@
 {
   "demo": "1428628.dem",
-  "about": "tow_tetsudo_b10c, 94 378 ticks, tug of war. Too large for parser2 in Node on this machine, so it runs with --options-from (native hl_extras --print-options); the native --self-check covers alignment.",
+  "about": "tow_tetsudo_b10c, 94 378 ticks, tug of war. parser2 starts it 55.2 s late, so the viewer loads it through the fork's fallback cache builder from demo tick 94 (B2, route delayed-start); scripts/hl/check-fallback.mjs checks that route and the extras alignment on it. These checks run with --options-from (native hl_extras --print-options), which follows parser2's start rule, not the viewer's route; the native --self-check covers alignment.",
   "checks": [
     {
       "stat": "pd.entries",

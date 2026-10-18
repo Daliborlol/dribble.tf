@@ -6,7 +6,7 @@
 // Loads the committed base parser (src/libs/parser2) with initSync, parses the demo, applies the same map boundary
 // override shift as ParseWorker.ts, and writes (to --out, or stdout):
 //   startTick, startDemoTick, tickBase, ticks, intervalPerTick, nextMappedPlayer, playerEntityIds, playerNames,
-//   sceneOrigin (the boundaryMin after any override shift),
+//   worldBoundaryMin, worldBoundaryMax (the bounds parser2 reports), sceneOrigin (the boundaryMin after any override shift),
 //   samples: for k = 0..15, the base position (scene space) and health of every player at each tick from
 //     round(ticks * (k + 0.5) / 16) to 64 ticks later (the window in which the extras pick their sample tick),
 //     as one base64 Float32Array,
@@ -142,6 +142,7 @@ const out = {
   playerNames,
   positionScale,
   worldBoundaryMin: world.boundaryMin,
+  worldBoundaryMax: world.boundaryMax,
   boundaryOverride: !!override,
   sceneOrigin,
   deaths: Object.values(result.deaths ?? {}).reduce((n, list) => n + list.length, 0),

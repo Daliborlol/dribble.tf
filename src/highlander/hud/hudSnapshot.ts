@@ -56,6 +56,8 @@ export interface BuildingGlyph {
   sapped: boolean
   building: boolean
   mini: boolean
+  /** the engineer is carrying it */
+  carried: boolean
 }
 
 export interface HudBadges {
@@ -199,6 +201,7 @@ function badgesOf(x: HighlanderExtras, p: number, classId: number, alive: boolea
         sapped: b.sapped,
         building: b.building,
         mini: b.mini,
+        carried: b.carried,
       })
     }
     badges.buildings.sort((u, v) => u.type - v.type || u.mode - v.mode)

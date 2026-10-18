@@ -38,7 +38,7 @@ const BannerBox = React.memo(({ banner, opacity, mobile }: { banner: BannerView;
         height: HUD_LAYOUT.bannerHeight,
         opacity,
         // on mobile the reduced objective HUD sits lower (below the toolbar row)
-        transform: mobile ? 'translateY(32px)' : undefined,
+        transform: mobile ? `translateY(${HUD_LAYOUT.mobileBannerShift}px)` : undefined,
         background: `linear-gradient(180deg, ${color}, ${color}e8)`,
         boxShadow: '0 0 0 1px rgb(0 0 0 / 0.5), 0 6px 16px rgb(0 0 0 / 0.35)',
       }}

@@ -69,6 +69,9 @@ export interface KillfeedLine {
   iconName: string
   /** 2 crit, 1 mini-crit */
   crit: number
+  /** customKill 1 / 2 of the matched kill event */
+  headshot: boolean
+  backstab: boolean
   /** "HS" text badge: a headshot whose weapon has no headshot icon */
   hsBadge: boolean
   dom: boolean
@@ -121,7 +124,7 @@ export function killfeedModel(demo: AsyncParser, x: HighlanderExtras | undefined
     }
     const d = row.death
     const kill = row.kill
-    let icon = weaponIcon(d.weapon)
+    const icon = weaponIcon(d.weapon)
     let url = icon.url
     let hsBadge = false
     if (kill?.customKill === 1) {
@@ -143,6 +146,8 @@ export function killfeedModel(demo: AsyncParser, x: HighlanderExtras | undefined
       icon: url,
       iconName: icon.name,
       crit: kill?.critType ?? 0,
+      headshot: kill?.customKill === 1,
+      backstab: kill?.customKill === 2,
       hsBadge,
       dom: (flags & DEATH_FLAG.DOMINATION) !== 0,
       rev: (flags & DEATH_FLAG.REVENGE) !== 0,
@@ -168,6 +173,8 @@ export function killfeedModel(demo: AsyncParser, x: HighlanderExtras | undefined
         icon: icon.url,
         iconName: icon.name,
         crit: 0,
+        headshot: false,
+        backstab: false,
         hsBadge: false,
         dom: false,
         rev: false,
@@ -193,6 +200,8 @@ export function killfeedModel(demo: AsyncParser, x: HighlanderExtras | undefined
         icon: '',
         iconName: '',
         crit: 0,
+        headshot: false,
+        backstab: false,
         hsBadge: false,
         dom: false,
         rev: false,

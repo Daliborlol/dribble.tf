@@ -458,15 +458,32 @@ const PlayerRow = React.memo(({ row, side, badges, focused }: PlayerRowProps) =>
       <div
         className={cn(
           'relative flex h-full w-[34px] shrink-0 items-center justify-center font-bold [text-shadow:0_1px_1px_rgb(0_0_0_/_0.7)]',
-          row.alive ? 'text-[15px]' : 'text-[17px] text-white/85'
+          row.alive ? 'text-[15px]' : 'gap-[2px] text-[17px] text-white/85',
+          !row.alive && mirrored && 'flex-row-reverse'
         )}
         style={row.alive && share > 1.001 ? { color: '#9dff80' } : row.alive && share < 0.4 ? { color: '#ffb0a8' } : undefined}
+        title={row.alive ? undefined : row.respawn !== null ? `respawns in ${row.respawn} s` : 'dead'}
       >
-        {row.alive ? row.health : row.respawn ?? ''}
+        {row.alive ? (
+          row.health
+        ) : (
+          <>
+            <DeadGlyph />
+            {row.respawn ?? ''}
+          </>
+        )}
       </div>
     </div>
   )
 })
+
+/** A small respawn arrow in front of a dead player's respawn seconds (not a skull: that glyph means marked for death). */
+const DeadGlyph = () => (
+  <svg width={11} height={11} viewBox="0 0 12 12" className="shrink-0 opacity-60" aria-hidden="true">
+    <path d="M9.6 4.2 A4.2 4.2 0 1 0 10.1 7.2" stroke="#e5e5e5" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+    <path d="M10.8 1.4 L10.4 5 L6.9 4.3 Z" fill="#e5e5e5" />
+  </svg>
+)
 
 // ─── badges ─────────────────────────────────────────────────────────────────────
 

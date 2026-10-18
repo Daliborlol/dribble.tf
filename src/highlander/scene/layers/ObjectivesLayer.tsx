@@ -11,7 +11,8 @@
 //               linked distances in the owner's colour
 //   points      KOTH and control-point maps: a disc r 48 h 3 at cp.pos (map-meta origin as fallback) in the
 //               owner's TEAM_DARK or NEUTRAL, a progress arc (r 36, 6 wide) at z 6 in the capping team's
-//               TEAM_FX, angle = progress x 2 pi; locked: a #3a3a3a disc and a dashed ring
+//               TEAM_FX, angle = progress x 2 pi; locked (m_bCPLocked): a #3a3a3a disc; a dashed ring whenever
+//               the HUD icon shows a padlock (pointLockedAt: also a captured attack/defend point nobody can retake)
 //
 // Everything is placed in useFrame from (extras, renderTick + frameProgress); nothing accumulates across frames.
 
@@ -29,7 +30,14 @@ import { trackIndexAt, xformAt } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { useDemoMapMeta } from '@highlander/hud/hudSnapshot'
 import { getLoadedMapMeta, sourceToScene, type MapMeta } from '@highlander/map/mapMeta'
-import { aliveInstanceAt, attackTeamAt, metaPointMap, objectiveModeOf, type ObjectiveMode } from '@highlander/objectives/objectiveModel'
+import {
+  aliveInstanceAt,
+  attackTeamAt,
+  metaPointMap,
+  objectiveModeOf,
+  pointLockedAt,
+  type ObjectiveMode,
+} from '@highlander/objectives/objectiveModel'
 
 const TRAIN_TO_CART_Z = 48
 const BLINK_TICKS = 20
@@ -480,9 +488,9 @@ const ControlPointDisc = ({ index, pos, renderTick }: { index: number; pos: THRE
     const e = trackIndexAt(st, index, tick)
     const owner = e >= 0 ? st.owner[e] : 0
     const capping = e >= 0 ? st.capping[e] : 0
-    const locked = e >= 0 && (st.flags[e] & CPF.LOCKED) !== 0
-    materials.disc.color.set(locked ? '#3a3a3a' : owner > 1 ? darkColor(owner) : NEUTRAL)
-    if (dashed.current) dashed.current.visible = locked
+    const flags = e >= 0 ? st.flags[e] : 0
+    materials.disc.color.set((flags & CPF.LOCKED) !== 0 ? '#3a3a3a' : owner > 1 ? darkColor(owner) : NEUTRAL)
+    if (dashed.current) dashed.current.visible = e >= 0 && pointLockedAt(x, flags, owner)
     const progress = capping > 1 ? capProgressAt(x, index, tickF) : 0
     const segments = Math.round(progress * ARC_SEGMENTS)
     arcGeometry.setDrawRange(0, segments * 6)
@@ -554,6 +562,7 @@ registerHlProbe('objectives.scene', (tickArg?: number) => {
         owner: e >= 0 ? st.owner[e] : null,
         capping: e >= 0 ? st.capping[e] : null,
         locked: e >= 0 ? (st.flags[e] & CPF.LOCKED) !== 0 : null,
+        padlock: e >= 0 ? pointLockedAt(x, st.flags[e], st.owner[e]) : null,
         progress: Math.round(capProgressAt(x, i, tick) * 1000) / 1000,
       }
     }),

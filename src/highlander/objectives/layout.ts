@@ -27,6 +27,15 @@ export const HUD_LAYOUT = {
   bannerHeight: 56,
   /** while the banner shows, the killfeed starts below it */
   killfeedBelowBanner: 84 + 56 + 8,
+  /**
+   * mobile (below 768 px): the reduced objective HUD sits below the toolbar row (top 60), the killfeed below it
+   * (top 104); the banner moves down 32 px to clear the objective HUD, and while it shows the killfeed goes below
+   * it
+   */
+  mobileObjectiveTop: 60,
+  mobileKillfeedTop: 104,
+  mobileBannerShift: 32,
+  mobileKillfeedBelowBanner: 84 + 32 + 56 + 8,
 } as const
 
 export type HudLayoutName = 'objective' | 'blu-column' | 'red-column' | 'killfeed' | 'banner' | 'scoreboard'

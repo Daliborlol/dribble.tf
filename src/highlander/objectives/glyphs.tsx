@@ -1,9 +1,34 @@
 // Small inline SVG glyphs for the Highlander HUD: condition badges, engineer building badges, objective icons and
-// timeline marker shapes. No emoji, no network requests; every glyph scales with its `size` prop.
+// timeline marker shapes, plus the killfeed's weapon icon with its crit glow. No emoji, no network requests; every
+// glyph scales with its `size` prop.
 
 import React from 'react'
 
+import { cn } from '@utils/styling'
 import type { BuildingGlyph, CondGlyph } from '@highlander/hud/hudSnapshot'
+import { CRIT_ICON } from '@highlander/hud/killfeedModel'
+
+// ─── kill icon ─────────────────────────────────────────────────────────────────
+
+/**
+ * A killfeed weapon icon. A crit (2) puts TF2's red crit glow (crit.png) behind the icon, stretched to its size, as
+ * the game's killfeed does; a mini-crit (1) the same glow at 60 % opacity. `bright` turns the dark icon white for
+ * dark backgrounds.
+ */
+export const KillIcon = ({ src, alt, crit, bright, className }: { src: string; alt: string; crit: number; bright: boolean; className: string }) => (
+  <span className="relative inline-flex shrink-0 items-center" title={crit === 2 ? 'Critical hit' : crit === 1 ? 'Mini-crit' : undefined}>
+    {crit > 0 && CRIT_ICON && (
+      <img
+        src={CRIT_ICON}
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-[9px] -top-[5px] h-[calc(100%+10px)] w-[calc(100%+18px)] max-w-none"
+        style={{ opacity: crit === 1 ? 0.6 : 1 }}
+      />
+    )}
+    <img src={src} alt={alt} className={cn('relative', className, bright && 'brightness-[600%]')} />
+  </span>
+)
 
 type SvgProps = { size?: number; className?: string; title?: string }
 
@@ -86,20 +111,22 @@ export const BuildingIcon = React.memo(({ b, size = 14 }: { b: BuildingGlyph; si
   const patternId = `hl-stripes-${color.slice(1)}`
   const fill = b.building ? `url(#${patternId})` : color
   const kind = b.type === 1 ? (b.mode === 1 ? 'Teleporter Exit' : 'Teleporter Entrance') : BUILDING_TITLES[b.type] ?? 'Building'
-  const title = `${b.mini ? 'Mini ' : ''}${kind}${b.type !== 1 && !b.mini ? ` level ${b.level}` : ''}, ${Math.round(b.health * 100)} %${b.sapped ? ', sapped' : ''}${b.building ? ', building' : ''}`
+  const title = `${b.mini ? 'Mini ' : ''}${kind}${b.type !== 1 && !b.mini ? ` level ${b.level}` : ''}, ${Math.round(b.health * 100)} %${b.sapped ? ', sapped' : ''}${b.building ? ', building' : ''}${b.carried ? ', carried' : ''}`
+  // a carried building (the engineer holds it) is a dimmed glyph with a dashed outline
+  const dash = b.carried ? '2 1.5' : undefined
   let shape: React.ReactNode
-  if (b.type === 2) shape = <path d="M8 1.5 L14.5 14 H1.5 Z" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
-  else if (b.type === 0) shape = <rect x="2" y="2" width="12" height="12" rx="1" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+  if (b.type === 2) shape = <path d="M8 1.5 L14.5 14 H1.5 Z" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} strokeLinejoin="round" />
+  else if (b.type === 0) shape = <rect x="2" y="2" width="12" height="12" rx="1" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
   else
     shape = (
       <>
-        <circle cx="8" cy="8" r="6.3" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+        <circle cx="8" cy="8" r="6.3" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} />
         {b.mode !== 1 && <path d="M5 8 H10.5 M8.5 5.6 L11 8 L8.5 10.4" stroke="#1a1a1a" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
       </>
     )
   const showLevel = b.type !== 1 && !b.mini && b.level > 0
   return (
-    <Svg size={size} title={title}>
+    <Svg size={size} title={title} className={b.carried ? 'opacity-50' : undefined}>
       <defs>
         <pattern id={patternId} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="4" height="4" fill={color} />
@@ -163,8 +190,9 @@ export const ResistIcon = ({ resist, size = 12 }: { resist: number; size?: numbe
 }
 
 /**
- * Circular capture icon: owner fill, progress arc in the capping team's colour, a lock while locked.
- * `size` is the outer diameter in px.
+ * Circular capture icon: owner fill, progress arc in the capping team's colour. With a `label` (the point letter
+ * or number) the letter stays and a locked point gets a padlock badge in the lower left corner; without one (the
+ * KOTH point) a locked point shows a padlock in the middle. `size` is the outer diameter in px.
  */
 export const PointIcon = ({
   size,
@@ -184,7 +212,7 @@ export const PointIcon = ({
   const r = 15
   const circumference = 2 * Math.PI * r
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden="true" overflow="visible">
       <circle cx="18" cy="18" r="15.5" fill={fill} stroke="#000" strokeOpacity="0.55" strokeWidth="1.2" />
       {arcColor && progress > 0 && (
         <circle
@@ -198,16 +226,25 @@ export const PointIcon = ({
           transform="rotate(-90 18 18)"
         />
       )}
-      {locked ? (
-        <g transform="translate(10 9) scale(1)">
-          <rect x="2" y="7" width="12" height="9" rx="1.5" fill="#f2f2f2" />
-          <path d="M4.6 7 V4.8 A3.4 3.4 0 0 1 11.4 4.8 V7" stroke="#f2f2f2" strokeWidth="2" fill="none" />
-        </g>
-      ) : (
-        label && (
+      {label ? (
+        <>
           <text x="18" y="23" textAnchor="middle" fontSize="14" fontWeight="800" fill="#f2f2f2" stroke="#000" strokeOpacity="0.4" strokeWidth="0.6">
             {label}
           </text>
+          {locked && (
+            <g transform="translate(-3 21)">
+              <circle cx="7.5" cy="7.5" r="7.5" fill="#1b1b1b" stroke="#f2f2f2" strokeOpacity="0.55" strokeWidth="0.8" />
+              <rect x="3.6" y="6.8" width="7.8" height="5.6" rx="1" fill="#f2f2f2" />
+              <path d="M5.3 6.8 V5.4 A2.2 2.2 0 0 1 9.7 5.4 V6.8" stroke="#f2f2f2" strokeWidth="1.4" fill="none" />
+            </g>
+          )}
+        </>
+      ) : (
+        locked && (
+          <g transform="translate(10 9)">
+            <rect x="2" y="7" width="12" height="9" rx="1.5" fill="#f2f2f2" />
+            <path d="M4.6 7 V4.8 A3.4 3.4 0 0 1 11.4 4.8 V7" stroke="#f2f2f2" strokeWidth="2" fill="none" />
+          </g>
         )
       )}
     </svg>

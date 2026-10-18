@@ -4,7 +4,7 @@
 // directly.
 
 import { capProgressAt, rulesAt, teamAt, timerSecondsAt } from '@highlander/extras/getters'
-import { CPF, RULES, STOPWATCH_STATE, TEAM_ROLE, TIMER } from '@highlander/extras/enums'
+import { CPF, ROUND_STATE, RULES, STOPWATCH_STATE, TEAM_ROLE, TIMER } from '@highlander/extras/enums'
 import { trackIndexAt } from '@highlander/extras/track'
 import type { HighlanderExtras, Instances } from '@highlander/extras/types'
 import type { MapMeta, MapMetaControlPoint } from '@highlander/map/mapMeta'
@@ -213,6 +213,40 @@ function pointName(x: HighlanderExtras, meta: MapMeta | null | undefined, index:
   return cp?.printName || cp?.name || ''
 }
 
+const canCapKnownCache = new WeakMap<HighlanderExtras, boolean>()
+
+/** True when some cp.state entry of the demo has a team-can-cap bit (m_bTeamCanCap reached the demo). */
+function canCapKnown(x: HighlanderExtras): boolean {
+  let known = canCapKnownCache.get(x)
+  if (known === undefined) {
+    known = false
+    const flags = x.objectives.cp.state.flags
+    for (let k = 0; k < flags.length; k++) {
+      if ((flags[k] & (CPF.RED_CAN_CAP | CPF.BLU_CAN_CAP)) !== 0) {
+        known = true
+        break
+      }
+    }
+    canCapKnownCache.set(x, known)
+  }
+  return known
+}
+
+/**
+ * The lock of TF2's control point icon (CControlPointIcon::IsPointLocked, hud_controlpointicons.cpp:414-433): the
+ * point is locked (m_bCPLocked, as on KOTH before it unlocks), or no team other than its owner may capture it
+ * (m_bTeamCanCap), so on attack/defend maps a captured point keeps its owner's colour under a padlock. The points a
+ * team must own first (m_iPreviousPoints) are not in the extras, so a point that waits for an earlier capture is
+ * not marked.
+ */
+export function pointLockedAt(x: HighlanderExtras, flags: number, owner: number): boolean {
+  if ((flags & CPF.LOCKED) !== 0) return true
+  if (!canCapKnown(x)) return false
+  const redCan = owner !== RED && (flags & CPF.RED_CAN_CAP) !== 0
+  const bluCan = owner !== BLU && (flags & CPF.BLU_CAN_CAP) !== 0
+  return !redCan && !bluCan
+}
+
 export function pointViewAt(x: HighlanderExtras, meta: MapMeta | null | undefined, i: number, tick: number): PointView {
   const s = x.objectives.cp.state
   const k = trackIndexAt(s, i, tick)
@@ -221,18 +255,20 @@ export function pointViewAt(x: HighlanderExtras, meta: MapMeta | null | undefine
     return { index: i, owner: 0, capping: 0, progress: 0, cappers: 0, locked: false, unlockIn: null, blocked: false, name }
   }
   const flags = s.flags[k]
+  const owner = s.owner[k]
   const capping = s.capping[k]
   const unlockTick = s.unlockTick[k]
-  const locked = (flags & CPF.LOCKED) !== 0
   const unlockIn =
-    locked && Number.isFinite(unlockTick) && unlockTick > tick ? (unlockTick - tick) * x.meta.intervalPerTick : null
+    (flags & CPF.LOCKED) !== 0 && Number.isFinite(unlockTick) && unlockTick > tick
+      ? (unlockTick - tick) * x.meta.intervalPerTick
+      : null
   return {
     index: i,
-    owner: s.owner[k],
+    owner,
     capping,
     progress: capping > 1 ? capProgressAt(x, i, tick) : 0,
     cappers: capping === RED ? s.numRed[k] : capping === BLU ? s.numBlu[k] : 0,
-    locked,
+    locked: pointLockedAt(x, flags, owner),
     unlockIn,
     blocked: (flags & CPF.BLOCKED) !== 0,
     name,
@@ -329,7 +365,8 @@ export function objectiveViewAt(x: HighlanderExtras, meta: MapMeta | null | unde
   const mode = objectiveModeOf(x, meta)
   const rules = rulesAt(x, tick)
   const flags = rules?.flags ?? 0
-  const overtime = (flags & RULES.IN_OVERTIME) !== 0
+  // m_bInOvertime stays set through the win screen; TF2 shows OVERTIME only while the round runs
+  const overtime = (flags & RULES.IN_OVERTIME) !== 0 && rules?.roundState === ROUND_STATE.RUNNING
   const attackTeam = attackTeamAt(x, tick)
   const available = x.meta.available
   const view: ObjectiveView = {

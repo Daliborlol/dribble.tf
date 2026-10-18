@@ -47,12 +47,19 @@ const cellText = (row: ScoreRow, key: ColumnKey): string => {
   return String(v)
 }
 
+/** K, A and D stand out; zeros and missing values fade, so the numbers that matter are easy to find. */
+const cellClass = (row: ScoreRow, key: ColumnKey): string => {
+  const v = row[key as keyof ScoreRow]
+  if (v === null || v === undefined || v === 0) return 'text-white/25'
+  return key === 'kills' || key === 'assists' || key === 'deaths' ? 'font-bold text-white' : 'text-white/85'
+}
+
 const ScoreboardBox = React.memo(({ board, header }: { board: ScoreboardView; header: HeaderView | null }) => {
   const columns = COLUMNS.filter(c => c.key === 'kills' || c.key === 'assists' || c.key === 'deaths' || board.columns[c.key as keyof ScoreColumns])
   return (
     <div
       data-hl-layout="scoreboard"
-      className="pointer-events-auto flex select-none flex-col gap-2 rounded-xl bg-pp-panel/90 p-3 text-white shadow-2xl"
+      className="pointer-events-auto flex select-none flex-col gap-2 rounded-xl bg-pp-panel/95 p-3 text-white shadow-2xl"
       style={{ width: SCOREBOARD_WIDTH, maxWidth: 'calc(100vw - 16px)' }}
     >
       <div className="flex gap-2">
@@ -61,7 +68,8 @@ const ScoreboardBox = React.memo(({ board, header }: { board: ScoreboardView; he
         ))}
       </div>
       <div className="text-center text-[10px] text-white/50">
-        K and D from the demo's deaths without Dead Ringer feigns; damage {board.sources.damage === 'scoring' ? 'and heals from the scoreboard' : 'and heals from the player resource'}
+        K and D without Dead Ringer feigns · damage and heals from the {board.sources.damage === 'scoring' ? "game's scoreboard" : 'player resource'}
+        {board.rosterTick !== board.tick && ' · players who finished the match'}
       </div>
     </div>
   )
@@ -94,16 +102,18 @@ const TeamTable = ({ team, rows, columns, header }: { team: number; rows: ScoreR
       {rows.map(row => (
         <div
           key={row.entityId}
-          className={cn('flex h-[22px] items-center rounded-[3px] px-1 text-[11.5px] odd:bg-white/[0.05]', !row.alive && 'text-white/45')}
+          className="flex h-[24px] items-center rounded-[3px] px-1 text-[12px] odd:bg-white/[0.06]"
+          style={row.alive ? undefined : { opacity: 0.5 }}
+          title={row.alive ? undefined : `${row.name} (dead)`}
         >
-          <span className="flex w-[19px] shrink-0 items-center" style={{ opacity: row.alive ? 1 : 0.5 }}>
+          <span className="flex w-[19px] shrink-0 items-center">
             <ClassIcon classId={row.classId} size={16} />
           </span>
           <span className="min-w-0 flex-1 truncate font-semibold" title={row.name}>
             {row.name}
           </span>
           {columns.map(c => (
-            <span key={c.key} className="shrink-0 text-center tabular-nums" style={{ width: c.width }}>
+            <span key={c.key} className={cn('shrink-0 text-center tabular-nums', cellClass(row, c.key))} style={{ width: c.width }}>
               {cellText(row, c.key)}
             </span>
           ))}

@@ -101,7 +101,7 @@ const ObjectiveHudView = React.memo(({ view, mobile }: { view: ObjectiveView; mo
       <div
         data-hl-layout="objective"
         className="flex origin-top scale-75 flex-col items-center rounded-lg px-2 py-1"
-        style={{ marginTop: 60, background: 'rgb(18 18 18 / 0.86)' }}
+        style={{ marginTop: HUD_LAYOUT.mobileObjectiveTop, background: 'rgb(18 18 18 / 0.97)' }}
       >
         {progress}
       </div>
@@ -117,7 +117,7 @@ const ObjectiveHudView = React.memo(({ view, mobile }: { view: ObjectiveView; mo
         width: HUD_LAYOUT.objectiveWidth,
         maxWidth: 'calc(100vw - 16px)',
         maxHeight: HUD_LAYOUT.objectiveHeight,
-        background: 'rgb(18 18 18 / 0.86)',
+        background: 'rgb(18 18 18 / 0.97)',
         boxShadow: '0 0 0 1px rgb(255 255 255 / 0.06)',
       }}
     >
@@ -276,16 +276,38 @@ const ScoreBar = ({ value, max, team }: { value: number; max: number; team: numb
   </div>
 )
 
+/**
+ * The cart between the BLU end (left) and the RED end (right). The watcher progress rises while BLU pushes
+ * (speed > 0, checked on tow_tetsudo: 883 of 885 one-second steps with speed 2 or 3 moved toward RED) and falls
+ * at speed -1 while RED pushes, so the chevrons point the way the cart goes in the pushing team's colour.
+ */
 const TowRow = ({ tow }: { tow: TowView }) => {
   const width = 220
+  const x = tow.progress !== null ? Math.round(tow.progress * width) : null
+  const push =
+    tow.speed > 0 ? (
+      <span className="flex">
+        {Array.from({ length: Math.min(3, tow.speed) }, (_, i) => (
+          <Chevron key={i} size={10} color={TEAM_HUD.blue} />
+        ))}
+      </span>
+    ) : tow.speed < 0 ? (
+      <Chevron size={10} color={TEAM_HUD.red} reverse />
+    ) : null
   return (
     <div className="flex h-[30px] items-center gap-[10px]">
       <ScoreBar value={tow.blu} max={tow.max} team={3} />
       <div className="relative h-[30px]" style={{ width }} title="cart position: BLU end left, RED end right">
-        <div className="absolute left-0 right-0 top-[18px] h-[6px] rounded-full ring-1 ring-white/20" style={{ background: `linear-gradient(90deg, ${TEAM_HUD.blue}, #555 50%, ${TEAM_HUD.red})` }} />
-        {tow.progress !== null && (
-          <div className="absolute top-0" style={{ left: Math.round(tow.progress * width) - 9 }}>
-            <CartIcon size={18} color="#8a8a8a" />
+        <div className="absolute left-0 right-0 top-[19px] h-[6px] rounded-full ring-1 ring-white/20" style={{ background: `linear-gradient(90deg, ${TEAM_HUD.blue}, #555 50%, ${TEAM_HUD.red})` }} />
+        {x !== null && (
+          <div
+            className="absolute -top-[1px] flex items-center gap-[2px]"
+            // on the right half the badge and chevrons go to the cart's left, so they stay over the track
+            style={x > width * 0.6 ? { right: width - x - 9, flexDirection: 'row-reverse' } : { left: x - 9 }}
+          >
+            <CartIcon size={18} color="#d6d6d6" />
+            {tow.cappers > 0 && <span className={`text-[11px] font-black leading-none text-white ${SHADOW}`}>x{tow.cappers}</span>}
+            {push}
           </div>
         )}
       </div>

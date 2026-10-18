@@ -12,15 +12,9 @@ import { useIsMobile } from '@utils/hooks'
 
 import { TEAM_HUD } from '@highlander/constants'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
-import {
-  CRIT_ICON,
-  KILLFEED_LINGER_TICKS,
-  killfeedModel,
-  SKULL_ICON,
-  type FeedActor,
-  type KillfeedLine,
-} from '@highlander/hud/killfeedModel'
+import { KILLFEED_LINGER_TICKS, killfeedModel, SKULL_ICON, type FeedActor, type KillfeedLine } from '@highlander/hud/killfeedModel'
 import { lowerBoundOf } from '@highlander/objectives/deaths'
+import { KillIcon } from '@highlander/objectives/glyphs'
 import { HUD_LAYOUT } from '@highlander/objectives/layout'
 import { bannerOpacity } from '@highlander/objectives/banner'
 import { useHudSnapshot } from '@highlander/hud/hudSnapshot'
@@ -202,9 +196,9 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   const bannerShown = !!bannerOn && !!banner && bannerOpacity(banner.eventTick, renderTick) > 0
   const top = bannerShown ? HUD_LAYOUT.killfeedBelowBanner : narrow ? HUD_LAYOUT.killfeedNarrowTop : HUD_LAYOUT.killfeedTop
 
-  // mobile: below the toolbar row and the reduced objective HUD
+  // mobile: below the toolbar row and the reduced objective HUD (and below the banner while it shows)
   const style: React.CSSProperties = isMobile
-    ? { right: 8, top: 104, maxWidth: 'calc(100vw - 16px)' }
+    ? { right: 8, top: bannerShown ? HUD_LAYOUT.mobileKillfeedBelowBanner : HUD_LAYOUT.mobileKillfeedTop, maxWidth: 'calc(100vw - 16px)' }
     : narrow
       ? { top, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100vw - ${2 * (HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8)}px)` }
       : { top, right: HUD_LAYOUT.killfeedRight, maxWidth: `calc(100vw - ${HUD_LAYOUT.killfeedRight + HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8}px)` }
@@ -272,10 +266,7 @@ const FeedLine = React.memo(({ line, highlighted }: { line: KillfeedLine; highli
         </>
       )}
       <span className="inline-flex shrink-0 items-center px-3">
-        {line.crit > 0 && CRIT_ICON && (
-          <img src={CRIT_ICON} alt="crit" className={cn('mr-1 h-[1.1rem]', highlighted ? '' : 'brightness-[600%]')} style={{ opacity: line.crit === 1 ? 0.6 : 1 }} />
-        )}
-        <img src={line.icon || SKULL_ICON} alt={line.iconName} className={cn('h-[1.1rem]', highlighted ? '' : 'brightness-[600%]')} />
+        <KillIcon src={line.icon || SKULL_ICON} alt={line.iconName} crit={line.crit} bright={!highlighted} className="h-[1.1rem]" />
         {line.hsBadge && <Badge text="HS" title="Headshot" />}
         {line.dom && <Badge text="DOM" title="Domination" />}
         {line.rev && <Badge text="REV" title="Revenge" />}

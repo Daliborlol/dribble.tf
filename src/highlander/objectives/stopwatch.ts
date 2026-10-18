@@ -146,6 +146,8 @@ export function stopwatchIndex(x: HighlanderExtras): StopwatchIndex {
       count++
       w.decided = count % 2 === 0
     }
+    // a demo that ends before its first game is decided (one half) used neither rule
+    if (!wins.some(w => w.decided)) rule = 'none'
   }
 
   let decidedCount = 0

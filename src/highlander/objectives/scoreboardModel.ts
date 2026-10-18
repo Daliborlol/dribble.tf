@@ -11,9 +11,11 @@
 //   CAP scoring.caps, else captured events listing the player
 //   BLD destroyed events with that attacker
 //   classes played: class icons in order of first play, from the base meta cache (64-tick resolution)
-// Columns whose source has no data in this demo hide (section 3.9).
+// Columns whose source has no data in this demo hide (section 3.9). The rows are the players connected at the tick;
+// at the end of a demo, after everyone left the finished match, the players of the last tick that had any.
 
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
+import type { CachedPlayer } from '@components/Analyse/Data/PlayerCache'
 import { CLASS_ORDER_MAP } from '@constants/mappings'
 import { hasLocalTables, scoringAt } from '@highlander/extras/getters'
 import { HL } from '@highlander/extras/enums'
@@ -194,7 +196,14 @@ export interface ScoreColumns {
 }
 
 export interface ScoreTeam { team: number; rows: ScoreRow[] }
-export interface ScoreboardView { tick: number; columns: ScoreColumns; teams: ScoreTeam[]; sources: Record<string, string> }
+export interface ScoreboardView {
+  tick: number
+  /** tick whose connected players the rows list: `tick`, or an earlier one at the end of a demo (rosterAt) */
+  rosterTick: number
+  columns: ScoreColumns
+  teams: ScoreTeam[]
+  sources: Record<string, string>
+}
 
 function resourceAt(x: HighlanderExtras, p: number, tick: number): { damage: number; healing: number } | null {
   const t = x.players.resource
@@ -202,7 +211,38 @@ function resourceAt(x: HighlanderExtras, p: number, tick: number): { damage: num
   return i < 0 ? null : { damage: t.damage[i], healing: t.healing[i] }
 }
 
-/** Player stats at the tick for every connected RED/BLU player; BLU table first. */
+const ROSTER_STEP = 33
+const ROSTER_LOOKBACK = 66 * 300
+let rosterMemo: { demo: AsyncParser; tick: number; rosterTick: number } | null = null
+
+const connectedPlayersAt = (demo: AsyncParser, tick: number): CachedPlayer[] =>
+  demo.getPlayersAtTick(tick).filter(p => p.connected && (p.teamId === 2 || p.teamId === 3))
+
+/**
+ * The connected RED/BLU players at the tick. Where nobody is (the last ticks of a demo, after the players left the
+ * finished match), the fullest roster of the five minutes before: the latest tick with the most connected players,
+ * so the board still lists everyone who finished the match.
+ */
+export function rosterAt(demo: AsyncParser, tick: number): { players: CachedPlayer[]; tick: number } {
+  const players = connectedPlayersAt(demo, tick)
+  if (players.length > 0) return { players, tick }
+  if (rosterMemo && rosterMemo.demo === demo && rosterMemo.tick === tick) {
+    return { players: connectedPlayersAt(demo, rosterMemo.rosterTick), tick: rosterMemo.rosterTick }
+  }
+  let found = tick
+  let roster: CachedPlayer[] = []
+  for (let t = tick - ROSTER_STEP; t >= Math.max(0, tick - ROSTER_LOOKBACK); t -= ROSTER_STEP) {
+    const candidate = connectedPlayersAt(demo, t)
+    if (candidate.length > roster.length) {
+      roster = candidate
+      found = t
+    }
+  }
+  rosterMemo = { demo, tick, rosterTick: found }
+  return { players: roster, tick: found }
+}
+
+/** Player stats at the tick for every connected RED/BLU player (rosterAt); BLU table first. */
 export function scoreboardAt(demo: AsyncParser, x: HighlanderExtras | undefined, tick: number): ScoreboardView {
   const index = scoreIndex(demo, x)
   const scoringOk = !!x && x.meta.available.scoring
@@ -222,8 +262,8 @@ export function scoreboardAt(demo: AsyncParser, x: HighlanderExtras | undefined,
     { team: 2, rows: [] },
   ]
   const at = (list: number[]) => countAtOrBefore(list, tick)
-  for (const player of demo.getPlayersAtTick(tick)) {
-    if (!player.connected || (player.teamId !== 2 && player.teamId !== 3)) continue
+  const roster = rosterAt(demo, tick)
+  for (const player of roster.players) {
     const p = demo.playerIndexOfEntity(player.user.entityId)
     if (p < 0) continue
     const scoring = x && scoringOk && hasLocalTables(x, p) ? scoringAt(x, p, tick) : null
@@ -233,7 +273,8 @@ export function scoreboardAt(demo: AsyncParser, x: HighlanderExtras | undefined,
       p,
       name: player.user.name,
       classId: player.classId,
-      alive: player.health > 0,
+      // the end-of-demo roster (rosterAt) lists a finished match: nobody is shown as dead there
+      alive: roster.tick !== tick || player.health > 0,
       kills: at(index.kills[p] ?? []),
       assists: at(index.assists[p] ?? []),
       deaths: at(index.deaths[p] ?? []),
@@ -258,6 +299,7 @@ export function scoreboardAt(demo: AsyncParser, x: HighlanderExtras | undefined,
   }
   return {
     tick,
+    rosterTick: roster.tick,
     columns,
     teams,
     sources: {

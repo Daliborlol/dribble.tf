@@ -66,11 +66,22 @@ registerHlProbe('killfeed.lines', (tickArg?: number) => {
   const tick = tickOf(tickArg)
   const model = killfeedModel(demo, x, { feign: !!hl?.hud.killfeedFeignDeaths, objectives: !!hl?.hud.killfeedObjectives })
   const lines = killfeedLinesAt(model, tick, hl?.hud.killfeedMaxLines ?? 6)
+  const count = (test: (l: (typeof model.lines)[number]) => boolean) => model.lines.reduce((n, l) => n + (test(l) ? 1 : 0), 0)
   return jsonSafe({
     tick,
     total: model.lines.length,
     feigns: model.feigns,
     hiddenFeigns: model.hiddenFeigns,
+    // over the whole demo, with the current settings: lines a viewer can see
+    feignLines: count(l => l.feign),
+    critLines: count(l => l.crit === 2),
+    miniCritLines: count(l => l.crit === 1),
+    headshotLines: count(l => l.headshot),
+    backstabLines: count(l => l.backstab),
+    domLines: count(l => l.dom),
+    revLines: count(l => l.rev),
+    buildingLines: count(l => l.kind === 'building'),
+    captureLines: count(l => l.kind === 'capture'),
     lines: lines.map(l => ({
       tick: l.tick,
       kind: l.kind,

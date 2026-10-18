@@ -20,7 +20,8 @@ import { cn } from '@utils/styling'
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
-import { backstabIcon, CRIT_ICON, headshotIcon, weaponIcon } from '@highlander/hud/killfeedModel'
+import { backstabIcon, headshotIcon, weaponIcon } from '@highlander/hud/killfeedModel'
+import { KillIcon } from '@highlander/objectives/glyphs'
 
 // The match feed: every kill and uber of the demo, plus captures, building kills, medic drops and spy moments
 // when the Highlander extras are ready. The panel stays mounted while closed (TogglePanel), so it is memoized
@@ -355,10 +356,7 @@ const KillRow = React.memo(({ event, timestamp, onSeek, onFilter }: KillRowProps
         )}
 
         <div className="mx-2 inline-flex flex-shrink-0 items-center">
-          {!!event.crit && CRIT_ICON && (
-            <img src={CRIT_ICON} className="mr-0.5 h-[0.9rem] brightness-[600%]" alt="crit" style={{ opacity: event.crit === 1 ? 0.6 : 1 }} />
-          )}
-          <img src={iconUrl} className="h-[0.9rem] brightness-[600%]" alt={weapon} />
+          <KillIcon src={iconUrl} alt={weapon} crit={event.crit ?? 0} bright className="h-[0.9rem]" />
           {hsBadge && <span className="ml-1 rounded-sm bg-white/15 px-[2px] text-[8px] font-black">HS</span>}
         </div>
 

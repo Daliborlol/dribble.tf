@@ -18,6 +18,7 @@ import { KillIcon } from '@highlander/objectives/glyphs'
 import { HUD_LAYOUT } from '@highlander/objectives/layout'
 import { bannerOpacity } from '@highlander/objectives/banner'
 import { useHudSnapshot } from '@highlander/hud/hudSnapshot'
+import { BOTTOM_CONTROLS_CLEARANCE, columnsBottom, KILLFEED_SQUEEZE_BELOW, useViewport } from '@highlander/hud/responsive'
 
 //
 // ─── LEGACY KILLFEED (Highlander disabled) ──────────────────────────────────────
@@ -156,7 +157,10 @@ export const KillfeedItem = (props: KillfeedItemProps) => {
 // badges, Dead Ringer feigns hidden unless hud.killfeedFeignDeaths), plus building and capture lines with
 // hud.killfeedObjectives. Newest hud.killfeedMaxLines lines (3 on mobile), 30 px each, linger 200 ticks.
 // Desktop: top 96 px, right 248 px (between the player columns); below 1280 px wide: top 88 px, centred. While
-// the round banner shows, the killfeed starts below it. Name colours are the team at the kill tick.
+// the round banner shows, the killfeed starts below it. From 768 to 943 px wide the gap between the columns is
+// under 320 px: the killfeed goes below the taller column at full width when the viewport has room for it, else it
+// stays between the columns with 3 compact lines (hud/responsive.ts). A line never grows wider than the killfeed;
+// its names truncate instead. Name colours are the team at the kill tick.
 
 const TEAM_TEXT: Record<number, string> = { 2: 'text-pp-killfeed-text-red', 3: 'text-pp-killfeed-text-blue' }
 
@@ -175,13 +179,21 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   const focusedEntityId = useInstance(s => s.focusedObject?.userData?.entityId as number | undefined)
   const isMobile = useIsMobile()
   const narrow = useIsMobile(HUD_LAYOUT.killfeedNarrowBelow)
+  const medicPanels = useHlSetting<boolean>('hud.medicPanel')
+  const vp = useViewport()
   const snap = useHudSnapshot(renderTick)
 
   const model = useMemo(
     () => (demo ? killfeedModel(demo, x, { feign: !!feign, objectives: !!objectives }) : null),
     [demo, x, feign, objectives]
   )
-  const lineCount = isMobile ? 3 : Math.max(1, maxLines)
+  // 768 to 943 px wide: below the columns when there is room for every line, else 3 compact lines between them
+  const squeezed = !isMobile && vp.w < KILLFEED_SQUEEZE_BELOW
+  const desktopLines = Math.max(1, maxLines)
+  const belowTop = squeezed ? columnsBottom(snap, !!medicPanels) + 8 : 0
+  const below = squeezed && vp.h - BOTTOM_CONTROLS_CLEARANCE - belowTop >= desktopLines * (HUD_LAYOUT.killfeedLineHeight + HUD_LAYOUT.killfeedLineGap)
+  const compactFeed = squeezed && !below
+  const lineCount = isMobile || compactFeed ? 3 : desktopLines
   // the visible window [start, end) only changes when a line enters or leaves it (same rule as killfeedLinesAt)
   const end = model ? lowerBoundOf(model.ticks, renderTick + 1) : 0
   const start = model ? lowerBoundOf(model.ticks, renderTick - KILLFEED_LINGER_TICKS + 1) : 0
@@ -199,6 +211,8 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   // mobile: below the toolbar row and the reduced objective HUD (and below the banner while it shows)
   const style: React.CSSProperties = isMobile
     ? { right: 8, top: bannerShown ? HUD_LAYOUT.mobileKillfeedBelowBanner : HUD_LAYOUT.mobileKillfeedTop, maxWidth: 'calc(100vw - 16px)' }
+    : below
+      ? { top: belowTop, left: '50%', transform: 'translateX(-50%)', width: 'max-content', maxWidth: 'calc(100vw - 16px)' }
     : narrow
       ? { top, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100vw - ${2 * (HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8)}px)` }
       : { top, right: HUD_LAYOUT.killfeedRight, maxWidth: `calc(100vw - ${HUD_LAYOUT.killfeedRight + HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8}px)` }
@@ -206,11 +220,11 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   return (
     <div
       data-hl-layout="killfeed"
-      className={cn('absolute flex select-none flex-col', narrow && !isMobile ? 'items-center' : 'items-end', isMobile && 'text-xs')}
+      className={cn('absolute flex select-none flex-col', narrow && !isMobile ? 'items-center' : 'items-end', (isMobile || compactFeed) && 'text-xs')}
       style={{ ...style, gap: HUD_LAYOUT.killfeedLineGap }}
     >
       {lines.map(line => (
-        <FeedLine key={line.key} line={line} highlighted={focusedEntityId !== undefined && isInvolved(line, focusedEntityId)} />
+        <FeedLine key={line.key} line={line} compact={compactFeed} highlighted={focusedEntityId !== undefined && isInvolved(line, focusedEntityId)} />
       ))}
     </div>
   )
@@ -235,9 +249,10 @@ const Badge = ({ text, title }: { text: string; title: string }) => (
   </span>
 )
 
-const FeedLine = React.memo(({ line, highlighted }: { line: KillfeedLine; highlighted: boolean }) => {
+const FeedLine = React.memo(({ line, highlighted, compact }: { line: KillfeedLine; highlighted: boolean; compact?: boolean }) => {
   const base = cn(
-    'pointer-events-auto flex shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-[13px] font-bold leading-none',
+    'pointer-events-auto flex max-w-full shrink-0 items-center whitespace-nowrap rounded-lg font-bold leading-none',
+    compact ? 'px-2 text-[11px]' : 'px-3 text-[13px]',
     highlighted ? 'bg-white/90' : 'bg-pp-panel/75',
     line.feign && 'opacity-60'
   )
@@ -265,7 +280,7 @@ const FeedLine = React.memo(({ line, highlighted }: { line: KillfeedLine; highli
           <Name actor={line.assister} />
         </>
       )}
-      <span className="inline-flex shrink-0 items-center px-3">
+      <span className={cn('inline-flex shrink-0 items-center', compact ? 'px-1.5' : 'px-3')}>
         <KillIcon src={line.icon || SKULL_ICON} alt={line.iconName} crit={line.crit} bright={!highlighted} className="h-[1.1rem]" />
         {line.hsBadge && <Badge text="HS" title="Headshot" />}
         {line.dom && <Badge text="DOM" title="Domination" />}

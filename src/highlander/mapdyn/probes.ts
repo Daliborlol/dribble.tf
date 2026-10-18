@@ -4,10 +4,16 @@
 //                                        nodeFound, node: { visible, pos } | null }
 //   hl.probe('mapdyn.pickups', tick?)  kit spots that draw at the tick, one row per spot (its current
 //                                      instance): { instance, spot, kind, size, visible, respawnIn, progress,
-//                                      takenTick, nextTick, estimated, pos, floor, baked }
+//                                      takenTick, nextTick, estimated, pos, floor, baked }, then one row per
+//                                      moving pickup (thrown or dropped item, P2) drawn at the tick:
+//                                      { instance, spot: null, moving: true, kind, size, visible, inFlight, pos }
 //   hl.probe('mapdyn.kits', tick?)     which pickups are map kits: spots, the instances skipped (reason
-//                                      'model': plates and props; 'dropped': thrown or dropped kits) and,
-//                                      with a tick, the stale or skipped instances alive then
+//                                      'moving': thrown or dropped items, drawn along their motion; 'model':
+//                                      other models; 'dropped': kit models on no map spot) and, with a tick,
+//                                      the stale or skipped instances alive then
+//   hl.probe('mapdyn.moving', tick?, floors?) moving pickups (P2): every thrown or dropped item with its
+//                                      lifetime, track and, at the tick, whether and where it draws; with floors
+//                                      the visible floor under each rest position (surface.ts, debug only)
 //   hl.probe('mapdyn.surface', remeasure?) the floor analyses of the kit spots and of the mid-air death
 //                                      markers (surface.ts); remeasure re-runs both in one call and times them
 //   hl.probe('mapdyn.slabs', tick?)    prop-door slabs: { bspModel, name, visible, center }
@@ -38,8 +44,17 @@ import {
   sampleMover,
   type MoverSample,
 } from './movers'
-import { getActiveKits, kitSurfaceOptions } from './Pickups'
-import { PICKUP_KIND_NAMES, PICKUP_SIZE_NAMES, newPickupSample, sampleKitSpot, samplePickup } from './pickups'
+import { getActiveKits, getMovingDrawn, kitSurfaceOptions } from './Pickups'
+import {
+  PICKUP_KIND_NAMES,
+  PICKUP_SIZE_NAMES,
+  newMovingSample,
+  newPickupSample,
+  pickupModel,
+  sampleKitSpot,
+  sampleMovingPickup,
+  samplePickup,
+} from './pickups'
 import { slabMatrixAt } from './slabs'
 import { analyzeSpots, type SpotSurface } from './surface'
 import { getSurfaceJobStats, getWorldGroup, movingMapNodes } from './useMapSurface'
@@ -62,6 +77,7 @@ const _world = new THREE.Vector3()
 const _matrix = new THREE.Matrix4()
 const _mover: MoverSample = { instance: -1, vis: false, hasXform: false }
 const _pickup = newPickupSample()
+const _moving = newMovingSample()
 
 registerHlProbe('mapdyn.movers', (tick?: number) => {
   const x = readyExtras()
@@ -139,7 +155,92 @@ registerHlProbe('mapdyn.pickups', (tick?: number) => {
       baked: bakedOf(k),
     })
   })
+  for (const m of kits.moving) {
+    const s = sampleMovingPickup(x, m, t, _moving)
+    if (!s.drawn) continue
+    rows.push({
+      instance: m.instance,
+      spot: null,
+      moving: true,
+      kind: PICKUP_KIND_NAMES[m.kind] ?? m.kind,
+      size: PICKUP_SIZE_NAMES[m.size] ?? m.size,
+      visible: true,
+      inFlight: s.inFlight,
+      pos: [r2(s.x), r2(s.y), r2(s.z)],
+      bottom: r2(s.bottomZ),
+    })
+  }
   return rows
+})
+
+// Moving pickups (P2): thrown lunchbox items and dropped kits, drawn along their xform track.
+registerHlProbe('mapdyn.moving', (tick?: number, floors?: boolean) => {
+  const x = readyExtras()
+  if (!x) return null
+  const t = tickArg(tick)
+  const kits = getActiveKits()
+  const p = x.pickups
+  const xf = p.xform
+  const rows = kits.moving.map(m => {
+    const j = m.instance
+    const a = xf.offsets[j], b = xf.offsets[j + 1]
+    const s = sampleMovingPickup(x, m, t, _moving)
+    return {
+      instance: j,
+      model: pickupModel(x, j),
+      kind: PICKUP_KIND_NAMES[m.kind] ?? m.kind,
+      size: PICKUP_SIZE_NAMES[m.size] ?? m.size,
+      bottomOffset: m.bottom,
+      created: p.created[j],
+      deleted: p.deleted[j] === 0xffffffff ? null : p.deleted[j],
+      entries: b - a,
+      firstTick: xf.ticks[a],
+      restTick: xf.ticks[b - 1],
+      start: [r2(xf.x[a]), r2(xf.y[a]), r2(xf.z[a])],
+      rest: [r2(xf.x[b - 1]), r2(xf.y[b - 1]), r2(xf.z[b - 1])],
+      drawn: s.drawn,
+      inFlight: s.drawn ? s.inFlight : null,
+      pos: s.drawn ? [r2(s.x), r2(s.y), r2(s.z)] : null,
+      bottom: s.drawn ? r2(s.bottomZ) : null,
+    }
+  })
+  const out: Record<string, unknown> = { tick: t, mode: kits.mode, count: rows.length, drawnLastFrame: getMovingDrawn(), rows }
+  const world = getWorldGroup()
+  if (floors && world && rows.length) {
+    // The visible floor under each rest position, within 120 units below and 4 above the collision box bottom:
+    // under the centre and on a 5 x 5 grid over the box footprint (a thrown plate's box is 34 x 34 units,
+    // LUNCHBOX_DROPPED_MINS/MAXS). On a slope the box rests on the highest floor point under it, so `bottom -
+    // floorMax` is about 0 when the track ends on the floor; the centre floor then lies lower.
+    const HALF = 17
+    const grid = [-HALF, -HALF / 2, 0, HALF / 2, HALF]
+    const spots: { x: number; y: number; z: number }[] = []
+    for (const r of rows) {
+      const z = r.rest[2] - (r.bottomOffset as number)
+      for (const dx of grid) for (const dy of grid) spots.push({ x: r.rest[0] + dx, y: r.rest[1] + dy, z })
+    }
+    const surface = analyzeSpots(world, spots, { below: 120, above: 4, upwardOnly: true, detectBaked: false }, movingMapNodes())
+    const per = grid.length * grid.length
+    out.floors = rows.map((r, k) => {
+      const bottom = r.rest[2] - (r.bottomOffset as number)
+      const values: number[] = []
+      for (let i = 0; i < per; i++) {
+        const f = surface.floor[k * per + i]
+        if (!Number.isNaN(f)) values.push(f)
+      }
+      const center = surface.floor[k * per + (per >> 1)]
+      const max = values.length ? Math.max(...values) : NaN
+      const min = values.length ? Math.min(...values) : NaN
+      return {
+        instance: r.instance,
+        bottom: r2(bottom),
+        floor: Number.isNaN(center) ? null : r2(center),
+        bottomAboveFloor: Number.isNaN(center) ? null : r2(bottom - center),
+        footprint: { samples: values.length, floorMin: Number.isNaN(min) ? null : r2(min), floorMax: Number.isNaN(max) ? null : r2(max) },
+        bottomAboveFloorMax: Number.isNaN(max) ? null : r2(bottom - max),
+      }
+    })
+  }
+  return out
 })
 
 registerHlProbe('mapdyn.kits', (tick?: number) => {
@@ -155,6 +256,7 @@ registerHlProbe('mapdyn.kits', (tick?: number) => {
     pickups: p.count,
     spots: kits.entries.length,
     kitInstances: kits.entries.reduce((n, e) => n + e.instances.length, 0),
+    moving: kits.moving.length,
     skipped: reasons,
     skippedList: kits.skipped.slice(0, 40).map(s => ({
       instance: s.instance,
@@ -175,7 +277,8 @@ registerHlProbe('mapdyn.kits', (tick?: number) => {
     }
     const hidden: unknown[] = []
     for (const s of kits.skipped) {
-      if (isAlive(p.created, p.deleted, s.instance, t)) hidden.push({ instance: s.instance, reason: s.reason })
+      // moving items draw through their own path (mapdyn.moving)
+      if (s.reason !== 'moving' && isAlive(p.created, p.deleted, s.instance, t)) hidden.push({ instance: s.instance, reason: s.reason })
     }
     kits.entries.forEach((e, k) => {
       for (const j of e.instances) {
@@ -357,6 +460,7 @@ registerHlProbe('mapdyn.summary', () => {
       .map(l => ({ name: l.name, team: l.team, source: l.source })),
     pickups: x.pickups.count,
     kitSpots: kits.entries.length,
+    movingPickups: kits.moving.length,
     kitsSkipped: reasons,
     ragdolls: x.ragdolls.count,
     drops: x.drops.count,

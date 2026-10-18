@@ -61,6 +61,97 @@
     {
       "stat": "available.carts",
       "eq": false
+    },
+    {
+      "stat": "pickups.badTracks",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.getterMismatch",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.wrongPlateSize",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.notPickupModel",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.kitModelsMoving",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.moving",
+      "eq": 7,
+      "name": "pickups with an xform track (thrown plates)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.staticPlates",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.prevRed",
+      "eq": "0,-1,-1,1,-1,-1,2,-1,-1,3,-1,-1,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.prevBlu",
+      "eq": "0,-1,-1,0,-1,-1,1,-1,-1,2,-1,-1,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.baseRed",
+      "eq": 4,
+      "p2": true
+    },
+    {
+      "stat": "cp.baseBlu",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.miniRounds",
+      "eq": false,
+      "p2": true
+    },
+    {
+      "stat": "cpMay.blu@574",
+      "eq": "10001",
+      "name": "BLU may capture A and E at the round start (B, C, D wait on A, B, C)",
+      "p2": true
+    },
+    {
+      "stat": "cpMay.blu@5650",
+      "eq": "11001",
+      "name": "B opens for BLU once A is captured",
+      "p2": true
+    },
+    {
+      "stat": "cpMay.blu@16981",
+      "eq": "11101",
+      "name": "C opens once B is captured",
+      "p2": true
+    },
+    {
+      "stat": "cpMay.blu@18493",
+      "eq": "11111",
+      "name": "D opens once C is captured",
+      "p2": true
+    },
+    {
+      "stat": "cpMay.blu@24565",
+      "eq": "10001",
+      "name": "round 2 starts over",
+      "p2": true
     }
   ]
 }

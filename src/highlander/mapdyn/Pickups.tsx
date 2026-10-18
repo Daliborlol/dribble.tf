@@ -3,8 +3,13 @@
 // Placeholders: white health boxes with a red cross and olive ammo boxes with a gold band, bobbing and
 // turning slowly on the floor. While taken: a faint wire box where the kit rests plus a ring on the floor
 // that fills until the kit returns. Where the map GLB already draws the kit (a baked kit on an old textured
-// GLB, see surface.ts) only the taken state is drawn over it, so no kit is ever drawn twice. Only map kits
-// draw, one per kit spot (pickups.ts): thrown lunchbox plates and dropped kits have no motion data.
+// GLB, see surface.ts) only the taken state is drawn over it, so no kit is ever drawn twice. Map kits draw
+// one per kit spot (pickups.ts).
+//
+// Thrown lunchbox items and dropped kits (P2) draw with the same placeholder of their size along their xform
+// track, then at rest where the track ends, until they are picked up or deleted. They sit on the bottom of
+// their collision box, do not bob or turn (a thrown item does not spin in TF2) and are never baked into a GLB,
+// so they draw on every map pipeline.
 
 import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -28,7 +33,15 @@ import {
 } from './constants'
 import { drawn, kitModeOf, tickFOf, useRenderTickRef, type KitMode } from './frame'
 import { MATERIALS, RING_MATERIAL, UNIT_BOX, UNIT_BOX_FRAME, createRingGeometry } from './geometry'
-import { buildKitEntries, newPickupSample, sampleKitSpot, type KitEntries, type KitEntry } from './pickups'
+import {
+  buildKitEntries,
+  newMovingSample,
+  newPickupSample,
+  sampleKitSpot,
+  sampleMovingPickup,
+  type KitEntries,
+  type KitEntry,
+} from './pickups'
 import type { SpotSurface, SurfaceOptions } from './surface'
 import { useMapSurface } from './useMapSurface'
 
@@ -46,13 +59,18 @@ const COLORS = {
   healthRing: new THREE.Color(HEALTH_RING_COLOR),
   ammoRing: new THREE.Color(AMMO_RING_COLOR),
 }
-const NO_KITS: KitEntries = { source: 'none', entries: [], skipped: [] }
+const NO_KITS: KitEntries = { source: 'none', entries: [], skipped: [], moving: [] }
 
 const _m = new THREE.Matrix4()
 const _p = new THREE.Vector3()
 const _s = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const _sample = newPickupSample()
+const _moving = newMovingSample()
+
+/** Moving pickups (thrown and dropped items) drawn in the last frame, for the probes. */
+let movingDrawn = 0
+export const getMovingDrawn = () => movingDrawn
 
 export const ringRadius = (width: number) => width * 0.75 + 6
 
@@ -89,13 +107,17 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
     [x, enabled, mode, meta]
   )
   const entries = kits.entries
-  const capacity = entries.length
-  const ringGeometry = useMemo(() => createRingGeometry(capacity), [capacity])
+  const moving = kits.moving
+  const spotCount = entries.length
+  // kit bodies hold the spots and the moving items; wires and rings only the spots
+  const capacity = spotCount + moving.length
+  const spotCapacity = Math.max(1, spotCount)
+  const ringGeometry = useMemo(() => createRingGeometry(spotCapacity), [spotCapacity])
   useEffect(() => () => ringGeometry.dispose(), [ringGeometry])
 
   // Floor heights and baked kits, re-analysed whenever the static map geometry changes (useMapSurface).
   const surfaceOptions = useMemo(() => kitSurfaceOptions(mode), [mode])
-  const surface = useMapSurface(capacity > 0 ? entries : null, surfaceOptions)
+  const surface = useMapSurface(spotCount > 0 ? entries : null, surfaceOptions)
 
   const healthBody = useRef<THREE.InstancedMesh>(null)
   const healthCross = useRef<THREE.InstancedMesh>(null)
@@ -113,6 +135,7 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       if (active.entries === kits.entries) active = { ...NO_KITS, mode: 'none', surface: null }
       drawn.kits = drawn.wires = drawn.rings = 0
       drawn.pickupSource = 'none'
+      movingDrawn = 0
     }
   }, [kits, mode, surface])
 
@@ -186,6 +209,33 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       }
     }
 
+    // Thrown and dropped items along their motion, then at rest, until picked up or deleted.
+    let mv = 0
+    for (let k = 0; k < moving.length; k++) {
+      const m = moving[k]
+      const s = sampleMovingPickup(x, m, tickF, _moving)
+      if (!s.drawn) continue
+      const [width, height] = (m.kind === 0 ? HEALTH_SIZE : AMMO_SIZE)[m.size] ?? HEALTH_SIZE[1]
+      _p.set(s.x, s.y, s.bottomZ + height / 2)
+      _m.compose(_p, NO_ROTATION, _s.set(width, width, height))
+      if (m.kind === 0) {
+        healthBody.current?.setMatrixAt(hb++, _m)
+        const arm = width * 0.72, thick = width * 0.24
+        _p.set(s.x, s.y, s.bottomZ + height + 0.6)
+        _m.compose(_p, NO_ROTATION, _s.set(arm, thick, 1.2))
+        healthCross.current?.setMatrixAt(hc++, _m)
+        _m.compose(_p, NO_ROTATION, _s.set(thick, arm, 1.2))
+        healthCross.current?.setMatrixAt(hc++, _m)
+      } else {
+        ammoBody.current?.setMatrixAt(ab++, _m)
+        _p.set(s.x, s.y, s.bottomZ + height * 0.55)
+        _m.compose(_p, NO_ROTATION, _s.set(width + 0.8, width + 0.8, height * 0.3))
+        ammoBand.current?.setMatrixAt(an++, _m)
+      }
+      mv++
+    }
+    movingDrawn = mv
+
     const finish = (mesh: THREE.InstancedMesh | null, count: number) => {
       if (!mesh) return
       mesh.count = count
@@ -199,7 +249,7 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
     finish(wire.current, w)
     finish(ring.current, r)
     if (progress) progress.needsUpdate = true
-    drawn.kits = hb + ab
+    drawn.kits = hb + ab - mv
     drawn.wires = w
     drawn.rings = r
     drawn.tickF = tickF
@@ -212,8 +262,8 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       <instancedMesh ref={healthCross} args={[UNIT_BOX, MATERIALS.healthCross, capacity * 2]} count={0} frustumCulled={false} />
       <instancedMesh ref={ammoBody} args={[UNIT_BOX, MATERIALS.ammoBody, capacity]} count={0} frustumCulled={false} />
       <instancedMesh ref={ammoBand} args={[UNIT_BOX, MATERIALS.ammoBand, capacity]} count={0} frustumCulled={false} />
-      <instancedMesh ref={wire} args={[UNIT_BOX_FRAME, MATERIALS.wire, capacity]} count={0} frustumCulled={false} />
-      <instancedMesh ref={ring} args={[ringGeometry, RING_MATERIAL, capacity]} count={0} frustumCulled={false} renderOrder={2} />
+      <instancedMesh ref={wire} args={[UNIT_BOX_FRAME, MATERIALS.wire, spotCapacity]} count={0} frustumCulled={false} />
+      <instancedMesh ref={ring} args={[ringGeometry, RING_MATERIAL, spotCapacity]} count={0} frustumCulled={false} renderOrder={2} />
     </group>
   )
 })

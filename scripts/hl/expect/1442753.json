@@ -62,6 +62,73 @@
     {
       "stat": "available.scoring",
       "eq": true
+    },
+    {
+      "stat": "pickups.badTracks",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.getterMismatch",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.wrongPlateSize",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.notPickupModel",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.kitModelsMoving",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.moving",
+      "eq": 10,
+      "name": "pickups with an xform track (thrown plates)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.staticPlates",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.prevRed",
+      "eq": "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.prevBlu",
+      "eq": "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.baseRed",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.baseBlu",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.miniRounds",
+      "eq": false,
+      "p2": true
+    },
+    {
+      "stat": "pickups.platesSmall",
+      "eq": 2,
+      "name": "the chocolate and banana plates are small kits (12.2 item 4)",
+      "p2": true
     }
   ]
 }

@@ -345,6 +345,65 @@ set('pickups.count', x.pickups.count)
 set('ragdolls.count', x.ragdolls.count)
 set('drops.count', x.drops.count)
 
+// pickups (P2, contract 12.4 items 1 and 2): moving pickups (xform tracks), the plate rule and sizes, track
+// invariants (static pickups have no entries, a moving one has at least two, inside [created, deleted)) and the
+// position getter at the first and last entry
+{
+  const pk = x.pickups
+  const xf = pk.xform
+  const PLATE = /(^|\/)models\/(items|workshop)\/(.*\/)?plate[^/]*\.mdl$/
+  const KIT = /(^|\/)models\/items\/(medkit|ammopack)_(small|medium|large)\.mdl$/
+  const SMALL_PLATE = /\/plate_(chocolate|banana|fishcake)\.mdl$/
+  let moving = 0, movingPlates = 0, staticPlates = 0, kitModelsMoving = 0, platesSmall = 0, platesMedium = 0
+  let notPickupModel = 0, floorplates = 0, wrongPlateSize = 0, badTracks = 0, getterMismatch = 0
+  const pos = { x: 0, y: 0, z: 0 }
+  for (let j = 0; j < pk.count; j++) {
+    const model = (x.strings.models[pk.model[j]] ?? '').replace(/\\/g, '/')
+    const plate = PLATE.test(model)
+    if (!plate && !KIT.test(model)) notPickupModel++
+    if (/floorplate/.test(model)) floorplates++
+    if (plate) {
+      if (pk.size[j] === 0) platesSmall++
+      else platesMedium++
+      if (pk.kind[j] !== 0 || pk.size[j] !== (SMALL_PLATE.test(model) ? 0 : 1)) wrongPlateSize++
+    }
+    const a = xf.offsets[j], b = xf.offsets[j + 1]
+    if (b === a) {
+      if (plate) staticPlates++
+      continue
+    }
+    moving++
+    if (plate) movingPlates++
+    if (KIT.test(model)) kitModelsMoving++
+    const end = pk.deleted[j] === 0xffffffff ? x.meta.ticks : pk.deleted[j]
+    if (b - a < 2 || xf.ticks[a] < pk.created[j] || xf.ticks[b - 1] >= end) badTracks++
+    getters.pickupPositionAt(x, j, xf.ticks[b - 1], pos)
+    if (pos.x !== xf.x[b - 1] || pos.y !== xf.y[b - 1] || pos.z !== xf.z[b - 1]) getterMismatch++
+    getters.pickupPositionAt(x, j, xf.ticks[a], pos)
+    if (pos.x !== xf.x[a] || pos.y !== xf.y[a] || pos.z !== xf.z[a]) getterMismatch++
+    set(`pickupTrack.${j}.model`, model)
+    set(`pickupTrack.${j}.created`, pk.created[j])
+    set(`pickupTrack.${j}.entries`, b - a)
+    set(`pickupTrack.${j}.lastTick`, xf.ticks[b - 1])
+    set(`pickupTrack.${j}.dropZ`, Math.round((xf.z[a] - xf.z[b - 1]) * 100) / 100)
+  }
+  set('pickups.moving', moving)
+  set('pickups.xformEntries', xf.ticks.length)
+  set('pickups.movingPlates', movingPlates)
+  set('pickups.staticPlates', staticPlates)
+  set('pickups.kitModelsMoving', kitModelsMoving)
+  set('pickups.platesSmall', platesSmall)
+  set('pickups.platesMedium', platesMedium)
+  set('pickups.notPickupModel', notPickupModel)
+  set('pickups.floorplates', floorplates)
+  set('pickups.wrongPlateSize', wrongPlateSize)
+  set('pickups.badTracks', badTracks)
+  set('pickups.getterMismatch', getterMismatch)
+  if (badTracks) fail(`pickups.xform: ${badTracks} moving pickups with fewer than 2 entries or entries outside [created, deleted)`)
+  if (getterMismatch) fail(`pickupPositionAt differs from the xform entries ${getterMismatch} times`)
+  if (wrongPlateSize) fail(`${wrongPlateSize} plates with a kind or size other than the 12.2 item 4 rule`)
+}
+
 // events
 {
   const byType = {}
@@ -395,6 +454,27 @@ set('drops.count', x.drops.count)
   set('pd.max', pdMax)
   set('pd.redMax', pdRed)
   set('pd.bluMax', pdBlu)
+  // previous points, base points and mini rounds (P2, contract 12.4 item 3), and CTFGameRules::TeamMayCapturePoint
+  // per team and point at the round starts and right after each capture (one digit per point, 1 = may capture)
+  set('cp.prevRed', Array.from(ob.cp.prevRed).join(','))
+  set('cp.prevBlu', Array.from(ob.cp.prevBlu).join(','))
+  set('cp.baseRed', ob.cp.baseRed)
+  set('cp.baseBlu', ob.cp.baseBlu)
+  set('cp.miniRounds', ob.cp.miniRounds)
+  if (ob.cp.count > 0) {
+    const ticks = []
+    for (const e of x.events) {
+      if (e.t === 'roundActive') ticks.push(e.tick + 1)
+      if (e.t === 'captured') ticks.push(e.tick + 1)
+    }
+    for (const t of ticks.slice(0, 16)) {
+      for (const [name, team] of [['red', 2], ['blu', 3]]) {
+        let digits = ''
+        for (let i = 0; i < ob.cp.count; i++) digits += getters.teamMayCapturePointAt(x, team, i, t) ? '1' : '0'
+        set(`cpMay.${name}@${t}`, digits)
+      }
+    }
+  }
 }
 
 // scoring
@@ -493,8 +573,9 @@ stage('stats')
 const fileMB = fileBytes / 1e6
 const hwmTotalMB = vmHwmKB() / 1024
 const hwmMB = memStages.hydrated?.hwm ?? hwmTotalMB
-const hwmLimitMB = 2.6 * fileMB + 100
-if (hwmMB > hwmLimitMB) fail(`VmHWM ${hwmMB.toFixed(1)} MB above 2.6 x file + 100 = ${hwmLimitMB.toFixed(1)} MB`)
+// contract 11.1 A9: max(2.6 x file + 100, 140) MB (the 6v6 sample's 117 to 127 MB are fixed Node and V8 overhead)
+const hwmLimitMB = Math.max(2.6 * fileMB + 100, 140)
+if (hwmMB > hwmLimitMB) fail(`VmHWM ${hwmMB.toFixed(1)} MB above max(2.6 x file + 100, 140) = ${hwmLimitMB.toFixed(1)} MB`)
 
 let expect = null
 if (flags.expect) {

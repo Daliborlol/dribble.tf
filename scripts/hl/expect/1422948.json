@@ -1,0 +1,79 @@
+{
+  "demo": "1422948.dem",
+  "about": "pl_divulgence_b4b, 1429 s. P2 checks only (contract 12.4 item 2): the plate rule of 12.2 item 4 leaves out models/props_gameplay/door_grate002_floorplate.mdl, which the old rule counted as 4 health kits (pickups 65/66 and 105/106).",
+  "checks": [
+    {
+      "stat": "pickups.badTracks",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.getterMismatch",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.wrongPlateSize",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.notPickupModel",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.kitModelsMoving",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.moving",
+      "eq": 2,
+      "name": "pickups with an xform track (thrown plates)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.staticPlates",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.prevRed",
+      "eq": "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.prevBlu",
+      "eq": "0,-1,-1,0,-1,-1,1,-1,-1,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.baseRed",
+      "eq": 3,
+      "p2": true
+    },
+    {
+      "stat": "cp.baseBlu",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.miniRounds",
+      "eq": false,
+      "p2": true
+    },
+    {
+      "stat": "pickups.floorplates",
+      "eq": 0,
+      "name": "door_grate002_floorplate is not a pickup (12.2 item 4)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.count",
+      "eq": 113,
+      "name": "pickups without the 4 floor-plate props (117 before P2)",
+      "p2": true
+    }
+  ]
+}

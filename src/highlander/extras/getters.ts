@@ -10,7 +10,7 @@
 
 import { itemInfo, itemKind, itemName, itemSlot } from '../items'
 
-import { condSet, HL, TIMER } from './enums'
+import { condSet, CPF, HL, RULES, ROUND_STATE, TIMER } from './enums'
 import { byPlayerRange, lerpField, sinceTick, trackIndexAt } from './track'
 import type { HighlanderExtras } from './types'
 
@@ -486,4 +486,131 @@ export function convarAt(x: HighlanderExtras, key: string, tick: number): string
   if (!entry) return undefined
   const i = lastAtOrBefore(entry.ticks, tick)
   return i < 0 ? undefined : entry.values[i]
+}
+
+// ─── pickups that move (P2, contract 12.4 item 1) ────────────────────────────────────────────────────────────
+
+/** A position written by the getters below (a THREE.Vector3 fits). */
+export interface PositionOut { x: number; y: number; z: number }
+
+/** True when pickup instance j moves after creation (thrown lunchbox items, dropped kits): its xform track has entries. */
+export function pickupMoves(x: HighlanderExtras, j: number): boolean {
+  const t = x.pickups.xform
+  return !!t && j >= 0 && j < x.pickups.count && t.offsets[j + 1] > t.offsets[j]
+}
+
+/**
+ * Scene position of pickup instance j at tickF. A pickup that moves follows its xform track, interpolated linearly
+ * between two entries at most `maxGap` ticks apart (default meta.snapshotInterval: a flying item updates every
+ * snapshot, and a longer gap means it lay still in between); before its first entry and for static pickups the
+ * creation origin (x, y, z) holds. Pure: the same tickF always gives the same position.
+ */
+export function pickupPositionAt<T extends PositionOut>(x: HighlanderExtras, j: number, tickF: number, out: T, maxGap = x.meta.snapshotInterval || 1): T {
+  const p = x.pickups
+  const t = p.xform
+  const i = t ? trackIndexAt(t, j, Math.floor(tickF)) : -1
+  if (i < 0) {
+    out.x = p.x[j]
+    out.y = p.y[j]
+    out.z = p.z[j]
+    return out
+  }
+  out.x = t.x[i]
+  out.y = t.y[i]
+  out.z = t.z[i]
+  const k = i + 1
+  if (k >= t.offsets[j + 1]) return out
+  const gap = t.ticks[k] - t.ticks[i]
+  if (!(gap > 0) || gap > maxGap) return out
+  const a = Math.min(1, (tickF - t.ticks[i]) / gap)
+  if (!(a > 0)) return out
+  out.x += (t.x[k] - out.x) * a
+  out.y += (t.y[k] - out.y) * a
+  out.z += (t.z[k] - out.z) * a
+  return out
+}
+
+/** Tick of the last xform entry of a moving pickup (where it came to rest), or -1 for static pickups. */
+export function pickupRestTick(x: HighlanderExtras, j: number): number {
+  if (!pickupMoves(x, j)) return -1
+  const t = x.pickups.xform
+  return t.ticks[t.offsets[j + 1] - 1]
+}
+
+// ─── linear capture rules (P2, contract 12.2 item 2 and 12.4 item 3) ─────────────────────────────────────────
+
+/** m_nGameType of arena mode (TF_GAMETYPE_ARENA, tf_shareddefs.h). */
+const GAMETYPE_ARENA = 4
+const RED = 2
+const BLU = 3
+
+/** Owner of control point `point` at the tick, 0 without data (C_BaseTeamObjectiveResource::GetOwningTeam). */
+export function cpOwnerAt(x: HighlanderExtras, point: number, tick: number): number {
+  const s = x.objectives.cp.state
+  const i = trackIndexAt(s, point, tick)
+  return i < 0 ? 0 : s.owner[i]
+}
+
+/**
+ * The points `team` (2 RED, 3 BLU) must own before it may capture `point`: m_iPreviousPoints slots 0..2 of that
+ * point and team (team_objectiveresource.cpp:424-441), -1 for an empty slot. Static per demo (133-demo survey).
+ */
+export function previousPointsOf(x: HighlanderExtras, point: number, team: number): number[] {
+  const prev = team === RED ? x.objectives.cp.prevRed : team === BLU ? x.objectives.cp.prevBlu : undefined
+  if (!prev || !(point >= 0 && point < 8)) return [-1, -1, -1]
+  return [prev[point * 3], prev[point * 3 + 1], prev[point * 3 + 2]]
+}
+
+/**
+ * CTFGameRules::GetFarthestOwnedControlPoint(team, false) (tf_gamerules.cpp:16734-16764): walking from the team's base
+ * point (m_iBaseControlPoints) toward the other end, the last point the team owns before the first one it does
+ * not; -1 when the team has no base point.
+ */
+export function farthestOwnedPointAt(x: HighlanderExtras, team: number, tick: number): number {
+  const cp = x.objectives.cp
+  const base = team === RED ? cp.baseRed : team === BLU ? cp.baseBlu : -1
+  if (base === undefined || base < 0) return -1
+  const n = cp.count
+  let walk = 1
+  let enemyEnd = n - 1
+  if (base !== 0) {
+    walk = -1
+    enemyEnd = 0
+  }
+  let farthest = base
+  for (let point = base; point !== enemyEnd && point >= 0 && point < 8; point += walk) {
+    if (cpOwnerAt(x, point, tick) !== team) break
+    farthest = point
+  }
+  return farthest
+}
+
+/**
+ * CTFGameRules::TeamMayCapturePoint(team, point) (tf_gamerules.cpp:16769-16830) at the tick:
+ * - tf_caplinear 0 (convar, default 1): always;
+ * - a point whose first previous point is itself: always (even while m_bCPLocked);
+ * - KOTH while waiting for players, or the point is locked (m_bCPLocked): never;
+ * - no previous point: arena needs the stalemate (the enable time is not networked to STV, so a stalemate counts),
+ *   mini rounds allow it, otherwise the team must own every point up to this one (farthest owned point at most
+ *   one away);
+ * - else the team must own every previous point it lists.
+ */
+export function teamMayCapturePointAt(x: HighlanderExtras, team: number, point: number, tick: number): boolean {
+  const linear = convarAt(x, 'tf_caplinear', tick)
+  if (linear !== undefined && Number(linear) === 0) return true
+  const needed = previousPointsOf(x, point, team)
+  if (needed[0] === point) return true
+  const rules = rulesAt(x, tick)
+  const koth = rules ? (rules.flags & RULES.PLAYING_KOTH) !== 0 : x.objectives.koth
+  if (koth && rules && (rules.flags & RULES.WAITING_FOR_PLAYERS) !== 0) return false
+  const st = x.objectives.cp.state
+  const i = trackIndexAt(st, point, tick)
+  if (i >= 0 && (st.flags[i] & CPF.LOCKED) !== 0) return false
+  if (needed[0] === -1) {
+    if (x.objectives.gameType === GAMETYPE_ARENA) return rules?.roundState === ROUND_STATE.STALEMATE
+    if (!x.objectives.cp.miniRounds) return Math.abs(farthestOwnedPointAt(x, team, tick) - point) <= 1
+    return true
+  }
+  for (const need of needed) if (need !== -1 && cpOwnerAt(x, need, tick) !== team) return false
+  return true
 }

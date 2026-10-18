@@ -590,9 +590,9 @@ export function farthestOwnedPointAt(x: HighlanderExtras, team: number, tick: nu
  * - tf_caplinear 0 (convar, default 1): always;
  * - a point whose first previous point is itself: always (even while m_bCPLocked);
  * - KOTH while waiting for players, or the point is locked (m_bCPLocked): never;
- * - no previous point: arena needs the stalemate (the enable time is not networked to STV, so a stalemate counts),
- *   mini rounds allow it, otherwise the team must own every point up to this one (farthest owned point at most
- *   one away);
+ * - no previous point: arena needs the stalemate (the extras do not export m_flCapturePointEnableTime, and no local
+ *   demo is an arena demo, so a stalemate counts), mini rounds allow it, otherwise the team must own every point up
+ *   to this one (farthest owned point at most one away);
  * - else the team must own every previous point it lists.
  */
 export function teamMayCapturePointAt(x: HighlanderExtras, team: number, point: number, tick: number): boolean {

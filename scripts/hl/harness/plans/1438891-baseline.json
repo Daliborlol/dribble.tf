@@ -1,0 +1,21 @@
+[
+  { "name": "overview-rts", "tick": "10%", "mode": "rts" },
+  { "name": "uber-red-medic-pov", "tick": 7700, "mode": "pov", "player": "medic@red" },
+  { "name": "double-uber-rts", "tick": 12560, "mode": "rts" },
+  { "name": "max-projectiles-rts", "tick": 21896, "mode": "rts" },
+  { "name": "max-projectiles-demo-pov", "tick": 21896, "mode": "pov", "player": "demoman@blue" },
+  { "name": "killfeed-peak-rts", "tick": 24902, "mode": "rts" },
+  { "name": "killfeed-peak-sniper-pov", "tick": 24902, "mode": "pov", "player": "sniper@red" },
+  { "name": "spy-blue-pov", "tick": 30000, "mode": "pov", "player": "spy@blue" },
+  { "name": "engineer-red-pov", "tick": 30000, "mode": "pov", "player": "engineer@red" },
+  { "name": "pyro-blue-pov", "tick": 30000, "mode": "pov", "player": "pyro@blue" },
+  { "name": "spectator-default", "tick": 30000, "mode": "spectator" },
+  { "name": "heavy-blue-pov", "tick": 40000, "mode": "pov", "player": "heavy@blue" },
+  { "name": "match-killfeed-panel", "tick": 40000, "mode": "rts",
+    "eval": "(window.__dribble.stores.useStore.dispatch({ type: 'SET_UI_PANEL_ACTIVE', payload: { name: 'MatchKillfeed' } }), true)" },
+  { "name": "scene-only-no-nameplates", "tick": 47990, "mode": "rts", "hideHud": true,
+    "settings": { "ui.nameplate.enabled": false },
+    "eval": "(window.__dribble.stores.useStore.dispatch({ type: 'SET_UI_PANEL_INACTIVE', payload: { name: 'MatchKillfeed' } }), true)" },
+  { "name": "late-uber-blue-medic-pov", "tick": 51950, "mode": "pov", "player": "medic@blue",
+    "settings": { "ui.nameplate.enabled": true } }
+]

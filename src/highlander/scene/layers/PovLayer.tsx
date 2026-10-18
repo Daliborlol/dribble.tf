@@ -17,6 +17,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 
 import { HealBeam } from '@components/Scene/HealBeam'
 import { cameraQuaternionFromSourceAnglesDeg } from '@utils/geometry'
+import { isDrawnUnder } from '@utils/raycast'
 import { useInstance, useStore } from '@zus/store'
 import { HEAL_BEAM_OFFSET } from '@highlander/constants'
 import { registerHlProbe } from '@highlander/debug'
@@ -70,15 +71,6 @@ function mapWorld(): THREE.Object3D | null {
   return useInstance.getState().threeScene?.getObjectByName('world') ?? null
 }
 
-/** Raycaster ignores `visible`; hidden map nodes (render-mode-10 brushes, the 3D skybox) must not block. */
-function drawnUnder(object: THREE.Object3D, root: THREE.Object3D): boolean {
-  for (let n: THREE.Object3D | null = object; n; n = n.parent) {
-    if (!n.visible) return false
-    if (n === root) return true
-  }
-  return true
-}
-
 /** Distance from `origin` along the unit `dir` to the first drawn map surface within `far`, or null. */
 function mapHitDistance(origin: THREE.Vector3, dir: THREE.Vector3, far: number): number | null {
   const world = mapWorld()
@@ -86,7 +78,7 @@ function mapHitDistance(origin: THREE.Vector3, dir: THREE.Vector3, far: number):
   _ray.set(origin, dir)
   _ray.near = 0
   _ray.far = far
-  for (const hit of _ray.intersectObject(world, true)) if (drawnUnder(hit.object, world)) return hit.distance
+  for (const hit of _ray.intersectObject(world, true)) if (isDrawnUnder(hit.object, world)) return hit.distance
   return null
 }
 

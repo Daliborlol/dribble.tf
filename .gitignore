@@ -13,6 +13,7 @@
 /dist
 
 /scripts/temp
+/scripts/hl/harness/node_modules
 
 # misc
 /blender

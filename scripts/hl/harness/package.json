@@ -1,0 +1,12 @@
+{
+  "name": "dribble-harness",
+  "private": true,
+  "type": "module",
+  "description": "Headless validation harness for dribble.tf, see README.md. Install: npm install --prefix scripts/hl/harness --no-package-lock",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright-core": "1.64.0"
+  }
+}

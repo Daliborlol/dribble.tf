@@ -3375,9 +3375,8 @@ above where they differ. The wave-3 final reports are in `$S/handoff/wave3-resul
 The final verification of 14.3 is done. Its two fix rounds and the follow-up `hl/fix-ticksync2` are merged on
 `hl/merge-w3`, which then became `highlander`. `specs/highlander/STATUS.md` ("Final verification") lists every
 finding, branch, merge commit and measurement; reports and reviews are in
-`../dribble.tf-wt/_scratch/final/{fixes.json,gapfixes.json}`. The parser's `highlander` stays at `41fe9f3`;
-`src/libs/hlextras` is built from the parser branch `hl/fix-parser` (`dd178d2`, one commit on `41fe9f3`), which
-the parser's `highlander` should take next.
+`../dribble.tf-wt/_scratch/final/{fixes.json,gapfixes.json}`. The parser's `highlander` was fast-forwarded to
+`dd178d2` (`hl/fix-parser`, one commit on `41fe9f3`), which `src/libs/hlextras` is built from.
 
 ### 15.1 Accepted deviations of the final verification
 

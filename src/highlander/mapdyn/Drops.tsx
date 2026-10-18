@@ -22,7 +22,7 @@ const _m = new THREE.Matrix4()
 const _c = new THREE.Vector3()
 const _up = new THREE.Vector3()
 
-export const Drops = React.memo((_props: { renderTick: number }) => {
+export const Drops = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.drops') !== false
   const lastTickF = useRef(NaN)

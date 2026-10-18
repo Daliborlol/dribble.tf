@@ -18,7 +18,7 @@ const _matrix = new THREE.Matrix4()
 let activeSlabs: Slab[] = []
 export const getActiveSlabs = () => activeSlabs
 
-export const DoorSlabs = React.memo((_props: { renderTick: number }) => {
+export const DoorSlabs = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.movers') !== false
   const mapNodes = useInstance(s => s.mapNodes)

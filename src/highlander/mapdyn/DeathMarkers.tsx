@@ -38,7 +38,7 @@ const _markers: DeathMarker[] = []
 let activeGround: { airborne: number; dropped: number; analysed: boolean; ground: Float32Array } | null = null
 export const getActiveMarkerGround = () => activeGround
 
-export const DeathMarkers = React.memo((_props: { renderTick: number }) => {
+export const DeathMarkers = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.deathMarkers') !== false
   const lastTickF = useRef(NaN)

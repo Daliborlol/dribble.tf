@@ -56,11 +56,6 @@ const SAPPER_SPARK = 30
 
 export interface BuildingObjectProps {
   instance: number
-  /**
-   * BuildingsLayer's copy of the renderTick prop. Unused: the frame reads the tick and frameProgress together from
-   * the store (frameTime), because the prop lags playback.tick by a frame and stepped back at tick boundaries.
-   */
-  tickRef?: MutableRefObject<number>
 }
 
 const _time: FrameTime = { tick: 0, tickF: 0 }

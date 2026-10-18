@@ -108,7 +108,7 @@ export interface ActiveKits extends KitEntries {
 let active: ActiveKits = { ...NO_KITS, mode: 'none', surface: null }
 export const getActiveKits = () => active
 
-export const Pickups = React.memo((_props: { renderTick: number }) => {
+export const Pickups = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.pickups') !== false
   const mapState = useInstance(s => s.mapStatus.state)

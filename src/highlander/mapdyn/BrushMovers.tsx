@@ -11,7 +11,7 @@ import { useInstance } from '@zus/store'
 import { frameTickF } from './frame'
 import { MoverNodeDriver, getActiveMoverDriver, setActiveMoverDriver } from './movers'
 
-export const BrushMovers = React.memo((_props: { renderTick: number }) => {
+export const BrushMovers = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.movers') !== false
   // World replaces the node map on every GLB reload, map change and scene-mode change (section 11.2).

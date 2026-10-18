@@ -4,9 +4,11 @@
 //
 // The only React state that changes per tick is the list of mounted instances (alive, not map-placed, not
 // sappers, which draw on their building). Everything else is applied in useFrame from the pure functions of
-// src/highlander/buildings/render.ts at tickF = renderTick + frameProgress, so seeking stays deterministic (D12).
+// src/highlander/buildings/render.ts at the tick and frameProgress the store holds in that frame (frameTime() in
+// src/highlander/combat/time.ts; the renderTick prop lags a frame), so seeking stays deterministic (D12). The
+// prop only picks the mounted instances.
 
-import React, { useLayoutEffect, useMemo, useRef } from 'react'
+import React, { useMemo } from 'react'
 
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { BuildingObject } from '@highlander/buildings/BuildingObject'
@@ -30,12 +32,6 @@ export const BuildingsLayer = React.memo(({ renderTick }: { renderTick: number }
   const enabled = useHlSetting<boolean>('buildings.enabled')
   const blueprints = useHlSetting<boolean>('buildings.blueprints')
 
-  // Children read the tick in useFrame through this ref, so they render once instead of every tick.
-  const tickRef = useRef(renderTick)
-  useLayoutEffect(() => {
-    tickRef.current = renderTick
-  }, [renderTick])
-
   const active = !!extras && enabled !== false && !!extras.meta.available.buildings
   const key = active ? drawnInstancesAt(extras, renderTick).join(',') : ''
   const instances = useMemo(() => (key ? key.split(',').map(Number) : []), [key])
@@ -45,12 +41,12 @@ export const BuildingsLayer = React.memo(({ renderTick }: { renderTick: number }
   return (
     <group name="buildings">
       {instances.map(j => (
-        <BuildingObject key={`${xid}:${j}`} instance={j} tickRef={tickRef} />
+        <BuildingObject key={`${xid}:${j}`} instance={j} />
       ))}
-      <DispenserBeams tickRef={tickRef} />
-      <CarryBoxes tickRef={tickRef} />
-      {blueprints !== false && <Blueprints tickRef={tickRef} />}
-      <Destructions tickRef={tickRef} />
+      <DispenserBeams />
+      <CarryBoxes />
+      {blueprints !== false && <Blueprints />}
+      <Destructions />
     </group>
   )
 })

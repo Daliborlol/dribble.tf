@@ -72,6 +72,10 @@ export const Stickers = () => {
     [classIconsAtlas.image]
   )
   const ringTexture = useMemo(() => createStickerRingTexture(), [])
+  // The canvas textures are this component's own: freed when replaced and on unmount. Before the isMobile return,
+  // so these hooks run on every render.
+  useEffect(() => () => Object.values(stickerTextures).forEach(texture => texture.dispose()), [stickerTextures])
+  useEffect(() => () => ringTexture.dispose(), [ringTexture])
   const dragCursorRef = useRef<{ screenX: number; screenY: number } | null>(null)
   const dragPreviewPositionRef = useRef<THREE.Vector3 | null>(null)
   const dragPlaneRef = useRef<THREE.Plane | null>(null)
@@ -371,6 +375,12 @@ const SceneSticker = ({
   const basePositionRef = useRef(new THREE.Vector3(...position))
   const targetPositionRef = useRef(new THREE.Vector3(...position))
   const ringSelectionProgressRef = useRef(selected ? 1 : 0)
+
+  // The JSX sprite materials stay the same objects while mounted; r3f's own dispose of them never runs here
+  useEffect(() => {
+    const materials = [markerMaterialRef.current, ringMaterialRef.current, hitMaterialRef.current]
+    return () => materials.forEach(material => material?.dispose())
+  }, [])
 
   useEffect(() => {
     basePositionRef.current.set(position[0], position[1], position[2])

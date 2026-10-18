@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
@@ -119,25 +119,35 @@ export interface HealBeamProps {
 // Half player height (83 * 0.5) — beam connects at midsection
 const BEAM_HEIGHT_OFFSET = 41.5
 
+// One strip for every beam: the vertex shader places it from uniforms, so the geometry never changes.
+const BEAM_GEOMETRY = new THREE.PlaneGeometry(1, 1, 100, 1)
+
 export const HealBeam = ({ origin, target, color, width = 20 }: HealBeamProps) => {
-  const materialRef = useRef<THREE.ShaderMaterial>(null)
-
-  const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1, 100, 1), [])
-
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uOrigin: { value: new THREE.Vector3() },
-      uTarget: { value: new THREE.Vector3() },
-      uColor: { value: new THREE.Color(color || '#ffffff') },
-      uWidth: { value: width },
-    }),
+  // Created and disposed here: react-three-fiber's own dispose of a JSX material runs from an idle-priority task
+  // that never gets a turn in this app, so a JSX <shaderMaterial> would stay allocated after every unmount.
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uOrigin: { value: new THREE.Vector3() },
+          uTarget: { value: new THREE.Vector3() },
+          uColor: { value: new THREE.Color(color || '#ffffff') },
+          uWidth: { value: width },
+        },
+        vertexShader,
+        fragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
     []
   )
+  useEffect(() => () => material.dispose(), [material])
 
   useFrame(state => {
-    if (!materialRef.current) return
-    const u = materialRef.current.uniforms
+    const u = material.uniforms
     u.uTime.value = state.clock.elapsedTime
     u.uOrigin.value.set(origin.x, origin.y, origin.z + BEAM_HEIGHT_OFFSET)
     u.uTarget.value.set(target.x, target.y, target.z + BEAM_HEIGHT_OFFSET)
@@ -145,17 +155,6 @@ export const HealBeam = ({ origin, target, color, width = 20 }: HealBeamProps) =
   })
 
   return (
-    <mesh name="healBeam" frustumCulled={false} geometry={geometry}>
-      <shaderMaterial
-        ref={materialRef}
-        uniforms={uniforms}
-        vertexShader={vertexShader}
-        fragmentShader={fragmentShader}
-        transparent
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+    <mesh name="healBeam" frustumCulled={false} geometry={BEAM_GEOMETRY} material={material} />
   )
 }

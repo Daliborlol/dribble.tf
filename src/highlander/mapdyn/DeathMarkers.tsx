@@ -10,7 +10,7 @@ import { useFrame } from '@react-three/fiber'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 
 import { DEATH_MARKER_BAR } from './constants'
-import { drawn, tickFOf, useRenderTickRef } from './frame'
+import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import {
   MARKER_SURFACE,
@@ -42,11 +42,11 @@ export const DeathMarkers = React.memo(({ renderTick }: { renderTick: number }) 
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.deathMarkers') !== false
   const tickRef = useRenderTickRef(renderTick)
-  const meshRef = useRef<THREE.InstancedMesh>(null)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.ragdolls
   const capacity = useMemo(() => (active && x ? maxConcurrentMarkers(x) * 2 : 0), [active, x])
+  const mesh = useInstancedMesh(UNIT_BOX, MATERIALS.marker, capacity, { name: 'mapdyn-death-markers', count: 0 })
   const airborne = useMemo(() => (active && x ? airborneMarkerSpots(x) : null), [active, x])
   const surface = useMapSurface(airborne && airborne.spots.length > 0 ? airborne.spots : null, MARKER_SURFACE)
   const ground = useMemo(() => (x && airborne ? markerGround(x, airborne, surface) : null), [x, airborne, surface])
@@ -69,7 +69,6 @@ export const DeathMarkers = React.memo(({ renderTick }: { renderTick: number }) 
   }, [capacity, x, ground, airborne, surface])
 
   useFrame(() => {
-    const mesh = meshRef.current
     if (!mesh || !x) return
     const tickF = tickFOf(tickRef.current)
     if (tickF === lastTickF.current) return
@@ -93,14 +92,6 @@ export const DeathMarkers = React.memo(({ renderTick }: { renderTick: number }) 
     drawn.markers = n / 2
   })
 
-  if (!active || capacity === 0) return null
-  return (
-    <instancedMesh
-      ref={meshRef}
-      name="mapdyn-death-markers"
-      args={[UNIT_BOX, MATERIALS.marker, capacity]}
-      count={0}
-      frustumCulled={false}
-    />
-  )
+  if (!active || !mesh) return null
+  return <primitive object={mesh} />
 })

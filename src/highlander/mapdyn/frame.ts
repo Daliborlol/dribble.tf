@@ -1,6 +1,7 @@
 // Frame helpers and the drawn-state record the F6 probes report.
 
-import { useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import * as THREE from 'three'
 
 import { useInstance } from '@zus/store'
 
@@ -9,6 +10,44 @@ export function useRenderTickRef(renderTick: number) {
   const ref = useRef(renderTick)
   ref.current = renderTick
   return ref
+}
+
+export interface InstancedMeshOptions {
+  name?: string
+  /** initial draw count (default: the capacity, as three's constructor sets it) */
+  count?: number
+  renderOrder?: number
+}
+
+/**
+ * An InstancedMesh of `capacity` instances (null for 0), never frustum-culled, that this hook disposes when it is
+ * replaced or the component unmounts. Render it with `<primitive object={mesh} />`. The layers do not declare
+ * `<instancedMesh>` in JSX because react-three-fiber frees removed JSX objects only from an idle-priority scheduler
+ * task, which never runs in this app (its scheduler is never idle), so every remount would strand the instance
+ * buffers on the GPU. The geometry and material stay shared: InstancedMesh.dispose() frees only its own buffers.
+ */
+export function useInstancedMesh(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  capacity: number,
+  { name, count, renderOrder }: InstancedMeshOptions = {}
+): THREE.InstancedMesh | null {
+  const mesh = useMemo(() => {
+    if (!(capacity > 0)) return null
+    const m = new THREE.InstancedMesh(geometry, material, capacity)
+    m.frustumCulled = false
+    if (name !== undefined) m.name = name
+    if (count !== undefined) m.count = count
+    if (renderOrder !== undefined) m.renderOrder = renderOrder
+    return m
+  }, [geometry, material, capacity, name, count, renderOrder])
+  useEffect(
+    () => () => {
+      mesh?.dispose()
+    },
+    [mesh]
+  )
+  return mesh
 }
 
 /** tickF = renderTick + frameProgress (contract section 1.2); frameProgress is 0 while paused. */

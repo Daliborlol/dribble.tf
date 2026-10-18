@@ -8,7 +8,7 @@ import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useMapMeta } from '@highlander/map/mapMeta'
 import { useInstance, useStore } from '@zus/store'
 
-import { drawn, tickFOf, useRenderTickRef } from './frame'
+import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { buildSlabs, slabMatrixAt, type Slab } from './slabs'
 
@@ -26,11 +26,11 @@ export const DoorSlabs = React.memo(({ renderTick }: { renderTick: number }) => 
   // Only bsp-to-glb maps have brush-entity nodes (and a map-meta.json); others never request it.
   const meta = useMapMeta(mapNodes && mapNodes.size > 0 ? map : '')
   const tickRef = useRenderTickRef(renderTick)
-  const meshRef = useRef<THREE.InstancedMesh>(null)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.movers
   const slabs = useMemo(() => (active ? buildSlabs(x, meta, mapNodes) : []), [active, x, meta, mapNodes])
+  const mesh = useInstancedMesh(UNIT_BOX, MATERIALS.slab, slabs.length, { name: 'mapdyn-slabs', count: 0 })
 
   useEffect(() => {
     activeSlabs = slabs
@@ -42,7 +42,6 @@ export const DoorSlabs = React.memo(({ renderTick }: { renderTick: number }) => 
   }, [slabs])
 
   useFrame(() => {
-    const mesh = meshRef.current
     if (!mesh || !x) return
     const tickF = tickFOf(tickRef.current)
     if (tickF === lastTickF.current) return
@@ -57,14 +56,6 @@ export const DoorSlabs = React.memo(({ renderTick }: { renderTick: number }) => 
     drawn.slabs = n
   })
 
-  if (!active || slabs.length === 0) return null
-  return (
-    <instancedMesh
-      ref={meshRef}
-      name="mapdyn-slabs"
-      args={[UNIT_BOX, MATERIALS.slab, slabs.length]}
-      count={0}
-      frustumCulled={false}
-    />
-  )
+  if (!active || !mesh) return null
+  return <primitive object={mesh} />
 })

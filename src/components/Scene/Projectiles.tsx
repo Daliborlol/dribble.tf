@@ -150,6 +150,15 @@ export const ProjectileModel = (props: ProjectileModelProps) => {
   // One clone per loaded model. A projectile component stays mounted when its entity id passes to a projectile of
   // the other team (a seek across entity-id reuse), so the clone must follow the model, not the first mount (D12).
   const scene = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene])
+  // The pipebomb and stickybomb models are skinned: each clone gets its own skeleton, whose bone texture three
+  // creates on the first draw. Only Skeleton.dispose() frees it, and r3f never disposes a <primitive>.
+  useEffect(
+    () => () =>
+      scene.traverse(node => {
+        if ((node as THREE.SkinnedMesh).isSkinnedMesh) (node as THREE.SkinnedMesh).skeleton.dispose()
+      }),
+    [scene]
+  )
 
   return (
     <group>
@@ -1001,6 +1010,10 @@ const critGlowMaterials = new Map<string, THREE.ShaderMaterial>()
 const deflectRingMaterials = new Map<string, THREE.MeshBasicMaterial>()
 const critGlowGeometry = new THREE.SphereGeometry(CRIT_GLOW_RADIUS, 16, 12)
 const deflectRingGeometry = new THREE.TorusGeometry(DEFLECT_RING_RADIUS, 1, 8, 28)
+// The extras-drawn healing bolt, shared by every bolt: drei's <Sphere> with a JSX material would leave both
+// allocated after each unmount (r3f's idle-priority dispose never runs here).
+const healingBoltGeometry = new THREE.SphereGeometry(5)
+const healingBoltMaterial = new THREE.MeshLambertMaterial({ color: 'yellow' })
 
 function critGlowMaterial(color: string): THREE.ShaderMaterial {
   let material = critGlowMaterials.get(color)
@@ -1135,9 +1148,7 @@ const ExtrasBaseProjectile = React.memo(({ x, demo, entityId, type, teamNumber }
   return (
     <group name={type} ref={ref} visible={false} userData={{ hlProjectile: 'base', entityId, hlInstance: -1, hlLanded: false }}>
       {type === 'healingBolt' ? (
-        <Sphere args={[5]}>
-          <meshLambertMaterial attach="material" color="yellow" />
-        </Sphere>
+        <mesh geometry={healingBoltGeometry} material={healingBoltMaterial} />
       ) : (
         <Suspense fallback={<ProjectileFallback color={type === 'rocket' ? TRAIL_FALLBACK_COLOR : teamColor} />}>
           {type === 'rocket' && <ProjectileModel type="rocket" team="shared" />}

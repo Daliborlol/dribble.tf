@@ -33,7 +33,14 @@
  * space (mean of each member's light / its mean). A model with one instance gets its exact VHV.
  * Instances whose cluster pattern misses their own VHV by more than BAKE_ERROR keep their exact
  * lighting in one merged, pre-transformed batch (one draw call per material kind) while the per-map
- * vertex budget lasts. Instances without a VHV borrow the light of the nearest lit PAK instances.
+ * vertex budget lasts. When the budget is short, those clusters are first split by lighting pattern
+ * (props in a row along one wall share a shadow); the instances left over after both keep a shared
+ * pattern and are tagged lighting 'shared'.
+ * Instances without a VHV borrow the light of the nearest lit PAK instances.
+ *
+ * Winding. Studio models have clockwise front faces (the VTX order bsp-to-glb's studio export keeps);
+ * every triangle is reversed for glTF, and a check fails the pass when the result does not face along
+ * the vertex normals (WINDING_MIN_AGREEMENT).
  *
  * Materials carry extras.dribble = { kind, lightmap: false } like world.glb, so the runtime applies the
  * same shared bsp-to-glb material rules (src/highlander/map/bspMaterials.ts).
@@ -58,8 +65,13 @@ const SKYBOX_MARGIN = 64
 const CLUSTER_COS = 0.9
 /** Relative RMS error (luminance) of the shared shading above which an instance keeps its exact VHV. */
 const BAKE_ERROR = 0.2
-/** Vertices per map that the merged exact-VHV batch may hold. */
-const BAKE_VERTEX_BUDGET = 200_000
+/**
+ * Vertices per map that the merged exact-VHV batch may hold (about 12 bytes each in props.glb). 250k
+ * bakes every candidate on all maps but tetsudo, whose candidates would need about 560k.
+ */
+const BAKE_VERTEX_BUDGET = 250_000
+/** Most lighting patterns one sun cluster splits into when the bake budget is short (step 4b). */
+const PATTERN_SPLITS = 16
 /** Alpha of see-through prop surfaces (same values as the world converter's cutouts and blends). */
 const ALPHA_CUTOUT = 0.55
 const ALPHA_BLEND = 0.5
@@ -76,6 +88,15 @@ const MIN_CUTOUT_ALPHA = 0.15
 const DEFAULT_ALPHA_REF = 0.7
 /** Alpha range of $translucent prop surfaces whose opacity comes from the texture's mean alpha. */
 const BLEND_ALPHA_RANGE = [0.15, 0.9]
+/**
+ * Triangle winding check. Source draws studio models with clockwise front faces, the reverse of glTF,
+ * so loadStudioModel reverses every triangle. Afterwards, for nearly every drawn triangle, the face
+ * normal of its counter-clockwise order points the same way as its vertex normals. The pass fails when
+ * fewer than this share of the drawn triangles agree (an inside-out props.glb draws the inner faces of
+ * closed props and culls one-sided ones such as cliff faces), and warns about single models below it
+ * (two-sided foliage cards, models authored with inverted normals).
+ */
+const WINDING_MIN_AGREEMENT = 0.9
 /** sprp flags (public/gamebspfile.h). */
 const STATIC_PROP_NO_PER_VERTEX_LIGHTING = 0x40
 /** VTX layout of TF2-era models (studio v44-v48), the sizes bsp-to-glb's own VTX reader uses. */
@@ -376,6 +397,11 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
     if (!identity) boneMatrix = B
   }
 
+  // bsp-to-glb's studio export keeps the VTX triangle order, which is clockwise seen from the front
+  // (Direct3D's front face, the way the engine draws studio models). glTF and three.js take
+  // counter-clockwise as the front, so every triangle is reversed once, here. A mirroring bone matrix
+  // (never seen on a static prop) already reverses the winding itself.
+  const reverse = !boneMatrix || determinant3(boneMatrix) > 0
   const primitives = []
   for (const mesh of doc.getRoot().listMeshes()) {
     const extras = mesh.getExtras() || {}
@@ -387,6 +413,14 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
     if (!position || !normal || !indices || indices.length === 0) continue
     const positions = Float32Array.from(position)
     const normals = Float32Array.from(normal)
+    const triangles = Uint32Array.from(indices)
+    if (reverse) {
+      for (let t = 0; t + 2 < triangles.length; t += 3) {
+        const second = triangles[t + 1]
+        triangles[t + 1] = triangles[t + 2]
+        triangles[t + 2] = second
+      }
+    }
     if (boneMatrix) {
       for (let v = 0; v < positions.length; v += 3) {
         const [x, y, z] = [positions[v], positions[v + 1], positions[v + 2]]
@@ -403,12 +437,42 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
       materialSlot: extras.sourceMaterialSlot,
       positions,
       normals,
-      indices: Uint32Array.from(indices),
+      indices: triangles, // counter-clockwise front faces (glTF)
       vertexCount: positions.length / 3,
     })
   }
   primitives.sort((a, b) => a.bodyPart - b.bodyPart || a.mesh - b.mesh)
   return { manifest, primitives }
+}
+
+function determinant3(m) {
+  return (
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+    m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+    m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+  )
+}
+
+/**
+ * Triangles of a primitive whose counter-clockwise face normal points the same way as the sum of
+ * their three vertex normals (degenerate triangles and ones with cancelling normals are not counted).
+ */
+export function windingAgreement({ positions, normals, indices }) {
+  let agree = 0, counted = 0
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t] * 3, b = indices[t + 1] * 3, c = indices[t + 2] * 3
+    const ux = positions[b] - positions[a], uy = positions[b + 1] - positions[a + 1], uz = positions[b + 2] - positions[a + 2]
+    const vx = positions[c] - positions[a], vy = positions[c + 1] - positions[a + 1], vz = positions[c + 2] - positions[a + 2]
+    const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx
+    const nx = normals[a] + normals[b] + normals[c]
+    const ny = normals[a + 1] + normals[b + 1] + normals[c + 1]
+    const nz = normals[a + 2] + normals[b + 2] + normals[c + 2]
+    const d = fx * nx + fy * ny + fz * nz
+    if (Math.hypot(fx, fy, fz) < 1e-9 || Math.hypot(nx, ny, nz) < 1e-6 || d === 0) continue
+    counted++
+    if (d > 0) agree++
+  }
+  return { agree, counted }
 }
 
 /**
@@ -437,6 +501,12 @@ function vhvLayout(vtx, primitives) {
 }
 
 // ─── materials ───────────────────────────────────────────────────────────────
+
+/** Material info of a surface without a usable VMT: NEUTRAL, opaque, lit. */
+function neutralMaterialInfo(name) {
+  const albedo = [NEUTRAL_LINEAR, NEUTRAL_LINEAR, NEUTRAL_LINEAR]
+  return { name: String(name).toLowerCase(), vmt: null, shader: null, source: 'neutral', albedo, kind: 'opaque', alpha: 1, unlit: false, skip: null, doubleSided: false }
+}
 
 function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
   const vmtCache = new Map()
@@ -509,32 +579,58 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
     let stats = null
     const png = decodeTexture(key)
     if (png) {
-      const sharp = (await import('sharp')).default
-      const { data, info: meta } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
-      const threshold = ref * 255
-      const covered = [0, 0, 0], weighted = [0, 0, 0]
-      let passing = 0, alphaSum = 0, texels = 0
-      for (let i = 0; i < data.length; i += meta.channels, texels++) {
-        const a = data[i + 3] / 255
-        alphaSum += a
-        const rgb = [srgbToLinear(data[i] / 255), srgbToLinear(data[i + 1] / 255), srgbToLinear(data[i + 2] / 255)]
-        for (let c = 0; c < 3; c++) weighted[c] += rgb[c] * a
-        if (data[i + 3] >= threshold) {
-          passing++
-          for (let c = 0; c < 3; c++) covered[c] += rgb[c]
+      try {
+        const sharp = (await import('sharp')).default
+        const { data, info: meta } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+        const threshold = ref * 255
+        const covered = [0, 0, 0], weighted = [0, 0, 0]
+        let passing = 0, alphaSum = 0, texels = 0
+        for (let i = 0; i < data.length; i += meta.channels, texels++) {
+          const a = data[i + 3] / 255
+          alphaSum += a
+          const rgb = [srgbToLinear(data[i] / 255), srgbToLinear(data[i + 1] / 255), srgbToLinear(data[i + 2] / 255)]
+          for (let c = 0; c < 3; c++) weighted[c] += rgb[c] * a
+          if (data[i + 3] >= threshold) {
+            passing++
+            for (let c = 0; c < 3; c++) covered[c] += rgb[c]
+          }
         }
-      }
-      if (texels > 0) {
-        stats = {
-          coverage: passing / texels,
-          meanAlpha: alphaSum / texels,
-          coveredColor: passing > 0 ? covered.map(v => v / passing) : null,
-          weightedColor: alphaSum > 0 ? weighted.map(v => v / alphaSum) : null,
+        if (texels > 0) {
+          stats = {
+            coverage: passing / texels,
+            meanAlpha: alphaSum / texels,
+            coveredColor: passing > 0 ? covered.map(v => v / passing) : null,
+            weightedColor: alphaSum > 0 ? weighted.map(v => v / alphaSum) : null,
+          }
         }
+      } catch (error) {
+        warn(`texture ${key}: alpha decode failed (${error.message}); the material keeps its default alpha`)
+        stats = null
       }
     }
     alphaCache.set(cacheKey, stats)
     return stats
+  }
+
+  // Alpha-weighted mean linear colour of a decoded texture (textures without reflectivity), or null.
+  const pngColor = async (key, png) => {
+    try {
+      const sharp = (await import('sharp')).default
+      const { data, info: meta } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      let r = 0, g = 0, b = 0, w = 0
+      for (let i = 0; i < data.length; i += meta.channels) {
+        const a = data[i + 3] / 255
+        if (a < 0.05) continue
+        r += srgbToLinear(data[i] / 255) * a
+        g += srgbToLinear(data[i + 1] / 255) * a
+        b += srgbToLinear(data[i + 2] / 255) * a
+        w += a
+      }
+      return w > 0 ? [r / w, g / w, b / w] : null
+    } catch (error) {
+      warn(`texture ${key}: colour decode failed (${error.message}); NEUTRAL`)
+      return null
+    }
   }
 
   /** Material info for a model material: { name, source, albedo, kind, alpha, unlit, skip, doubleSided }. */
@@ -548,7 +644,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
       if (vmt) break
     }
     const name = materialName.toLowerCase()
-    const info = { name, vmt: vmt?.file ?? null, shader: vmt?.shader ?? null, source: 'neutral', albedo: [NEUTRAL_LINEAR, NEUTRAL_LINEAR, NEUTRAL_LINEAR], kind: 'opaque', alpha: 1, unlit: false, skip: null, doubleSided: false }
+    const info = { ...neutralMaterialInfo(name), vmt: vmt?.file ?? null, shader: vmt?.shader ?? null }
     if (/(^|\/)tools?nodraw|(^|\/)nodraw/.test(name)) return { ...info, skip: 'nodraw' }
     if (!vmt) return info
     const p = vmt.params
@@ -582,18 +678,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
       }
       let color = info.source === 'pak' ? null : textureColor(texture)
       if (color?.png) {
-        const sharp = (await import('sharp')).default
-        const { data, info: meta } = await sharp(color.png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
-        let r = 0, g = 0, b = 0, w = 0
-        for (let i = 0; i < data.length; i += meta.channels) {
-          const a = data[i + 3] / 255
-          if (a < 0.05) continue
-          r += srgbToLinear(data[i] / 255) * a
-          g += srgbToLinear(data[i + 1] / 255) * a
-          b += srgbToLinear(data[i + 2] / 255) * a
-          w += a
-        }
-        color = w > 0 ? [r / w, g / w, b / w] : null
+        color = await pngColor(texture, color.png)
         textureCache.set(texture, color)
       }
       if (color) Object.assign(info, { source: 'pak', albedo: color.slice(0, 3) })
@@ -623,6 +708,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
  * @param {{ set: string, exposure: number, floor: number }} o.lighting  world lightmap scale
  * @param {number[]|null} [o.sunDirection] light_environment direction (Source, the way light travels)
  * @param {boolean} [o.meshopt]    meshopt + quantization (default true), else quantization only
+ * @param {number} [o.bakeVertexBudget] vertices the merged exact-VHV batch may hold (BAKE_VERTEX_BUDGET)
  * @param {(msg: string) => void} [o.log]
  * @returns {Promise<object>} conversion.json `props` counts plus `stats`
  */
@@ -734,7 +820,11 @@ export async function convertStaticProps(o) {
         })
         if (entry.instances.length === 0) continue
       }
-      models.push({ key, ...entry, ...studio, checksum, layout })
+      const winding = studio.primitives.reduce((sum, prim) => {
+        const { agree, counted } = windingAgreement(prim)
+        return { agree: sum.agree + agree, counted: sum.counted + counted }
+      }, { agree: 0, counted: 0 })
+      models.push({ key, ...entry, ...studio, checksum, layout, winding })
     } catch (error) {
       if (entry.instances.every(prop => prop.dynamic)) {
         entry.instances.forEach(() => skipDynamic('unsupported')) // e.g. a skinned, animated prop_dynamic
@@ -745,8 +835,31 @@ export async function convertStaticProps(o) {
     }
   }
 
+  // 2b. Winding: the reversed triangles must face the way their vertex normals point. The gate counts
+  //     drawn triangles (each model times its instances): a systematic inversion drives it towards 0,
+  //     while a few models authored with inverted normals (eruption's war-room table and lamp, whose
+  //     faces point outwards by ray parity) only lower it slightly and are reported per model.
+  const winding = { agree: 0, counted: 0, drawnAgree: 0, drawnCounted: 0 }
+  for (const model of models) {
+    winding.agree += model.winding.agree
+    winding.counted += model.winding.counted
+    winding.drawnAgree += model.winding.agree * model.instances.length
+    winding.drawnCounted += model.winding.counted * model.instances.length
+  }
+  const windingShare = winding.drawnCounted ? winding.drawnAgree / winding.drawnCounted : 1
+  const windingLow = models
+    .filter(model => model.winding.counted && model.winding.agree / model.winding.counted < WINDING_MIN_AGREEMENT)
+    .map(model => ({ model: model.modelPath, agree: round(model.winding.agree / model.winding.counted, 3), triangles: model.winding.counted, instances: model.instances.length }))
+  for (const low of windingLow) warn(`${low.model}: only ${(low.agree * 100).toFixed(1)} % of ${low.triangles} triangles face along their vertex normals (${low.instances} instance(s))`)
+  if (windingShare < WINDING_MIN_AGREEMENT) {
+    throw new Error(`winding check failed: ${(windingShare * 100).toFixed(1)} % of ${winding.drawnCounted} drawn prop triangles face along their vertex normals (need ${WINDING_MIN_AGREEMENT * 100} %)`)
+  }
+
   // 3. Per-instance vertex lighting from the VHV files (world lightmap scale).
-  const vhvStats = { exact: 0, estimated: 0, mismatched: 0, set: preferHdr ? 'hdr' : 'ldr' }
+  // exact: instances with a valid VHV; of those, baked ones carry it exactly in the merged batch and
+  // shared ones are drawn with a cluster pattern that misses it by more than BAKE_ERROR (worstDrawnError
+  // is the largest such miss). estimated: no usable VHV (mismatched counts invalid files).
+  const vhvStats = { exact: 0, estimated: 0, mismatched: 0, baked: 0, shared: 0, worstDrawnError: 0, bakeVerticesLeft: 0, set: preferHdr ? 'hdr' : 'ldr' }
   const readInstanceLight = (model, prop) => {
     if (prop.dynamic || !model.layout || prop.flags & STATIC_PROP_NO_PER_VERTEX_LIGHTING) return null
     const names = preferHdr ? [`sp_hdr_${prop.staticPropIndex}.vhv`, `sp_${prop.staticPropIndex}.vhv`] : [`sp_${prop.staticPropIndex}.vhv`, `sp_hdr_${prop.staticPropIndex}.vhv`]
@@ -829,7 +942,7 @@ export async function convertStaticProps(o) {
   })()
   const resolveMaterial = createMaterialResolver({ pak, vtfToPng: o.vtfToPng, workDir: o.workDir, warn })
   const materialStats = new Map()
-  const stats = { models: 0, clusters: 0, nodes: 0, instancedNodes: 0, bakedInstances: 0, primitives: 0, vertices: 0, triangles: 0, renderedTriangles: 0, skippedPrimitives: 0, materials: { pak: 0, neutral: 0 }, worstSharedError: 0 }
+  const stats = { models: 0, clusters: 0, patternSplits: 0, bakeDemand: null, nodes: 0, instancedNodes: 0, bakedInstances: 0, primitives: 0, vertices: 0, triangles: 0, renderedTriangles: 0, skippedPrimitives: 0, materials: { pak: 0, neutral: 0 }, worstSharedError: 0 }
   const materialFor = async (model, skin, prim) => {
     const families = model.manifest.skinFamilies ?? []
     const family = families[skin] ?? families[0]
@@ -837,7 +950,14 @@ export async function convertStaticProps(o) {
     const mat = model.manifest.materials[textureIndex] ?? model.manifest.materials[prim.materialSlot]
     if (!mat) return { name: '?', skip: 'material' }
     if (!materialStats.has(mat.name)) {
-      const info = await resolveMaterial(mat.name, mat.searchPaths, mat.candidates)
+      let info
+      try {
+        info = await resolveMaterial(mat.name, mat.searchPaths, mat.candidates)
+      } catch (error) {
+        // A broken VMT or texture must not abort the pass: the surface draws NEUTRAL and opaque.
+        warn(`material ${mat.name}: ${error.message}; drawn NEUTRAL`)
+        info = neutralMaterialInfo(mat.name)
+      }
       materialStats.set(mat.name, info)
       if (!info.skip) stats.materials[info.source === 'pak' ? 'pak' : 'neutral']++
     }
@@ -854,6 +974,17 @@ export async function convertStaticProps(o) {
       }
     })
     return Math.sqrt(se / Math.max(1, n)) / Math.max(1e-4, sl / Math.max(1, n))
+  }
+  // Shared shading of lit instances: the mean of light / instance mean, per vertex and channel.
+  const meanShading = (model, primIndex, members) => {
+    const shading = primIndex.map(pi => new Float32Array(model.primitives[pi].vertexCount * 3))
+    for (const { prop } of members) {
+      primIndex.forEach((pi, p) => {
+        const L = prop.light[pi]
+        for (let v = 0; v < L.length; v++) shading[p][v] += L[v] / Math.max(1e-4, prop.mean[v % 3]) / members.length
+      })
+    }
+    return shading
   }
 
   const groups = []
@@ -901,45 +1032,126 @@ export async function convertStaticProps(o) {
         else clusters.push({ key, members: [entry] })
       }
       for (const cluster of clusters) {
-        // Shared shading: mean over the lit members of light / instance mean, per vertex and channel.
         const lit = cluster.members.filter(entry => entry.prop.light)
-        cluster.shading = primIndex.map(pi => new Float32Array(model.primitives[pi].vertexCount * 3))
         if (lit.length) {
-          for (const { prop } of lit) {
-            primIndex.forEach((pi, p) => {
-              const L = prop.light[pi]
-              for (let v = 0; v < L.length; v++) cluster.shading[p][v] += L[v] / Math.max(1e-4, prop.mean[v % 3]) / lit.length
-            })
-          }
+          cluster.shading = meanShading(model, primIndex, lit)
         } else {
           // No VHV in the cluster: a soft sky term (up-facing surfaces brighter), mean about 1.
-          primIndex.forEach((pi, p) => {
+          cluster.shading = primIndex.map(pi => {
             const normals = model.primitives[pi].normals
-            for (let v = 0; v < normals.length; v += 3) {
-              const s = 0.75 + 0.35 * normals[v + 2]
-              cluster.shading[p][v] = cluster.shading[p][v + 1] = cluster.shading[p][v + 2] = s
-            }
+            const shading = new Float32Array(normals.length)
+            for (let v = 0; v < normals.length; v += 3) shading[v] = shading[v + 1] = shading[v + 2] = 0.75 + 0.35 * normals[v + 2]
+            return shading
           })
         }
-        if (lit.length > 1) {
-          for (const entry of lit) {
-            entry.error = relativeError(entry.prop, primIndex, cluster.shading)
-            stats.worstSharedError = Math.max(stats.worstSharedError, entry.error)
-          }
+        if (lit.length > 1) for (const entry of lit) entry.error = relativeError(entry.prop, primIndex, cluster.shading)
+      }
+      groups.push({ model, skin, parts, primIndex, clusters })
+    }
+  }
+
+  // 4b. When the exact bake of step 5 cannot hold every instance that its cluster's shared pattern
+  //     misses by more than BAKE_ERROR, those clusters are split by lighting pattern first. Props in a
+  //     row along one wall share a shadow, so a few patterns serve many of them (tetsudo's bamboo
+  //     barriers and roof tiles). k-means style: the worst-fitting instance seeds a new pattern, every
+  //     instance moves to the pattern that fits it best, the patterns are recomputed (twice), until all
+  //     fit or PATTERN_SPLITS patterns exist. A pattern must serve two instances or more; a lone
+  //     instance joins its best shared pattern and stays a bake candidate when that misses it.
+  const vertexCost = group => group.parts.reduce((a, part) => a + (part.info.unlit ? 0 : part.prim.vertexCount * (part.info.doubleSided ? 2 : 1)), 0)
+  const bakeBudgetTotal = Number.isFinite(o.bakeVertexBudget) ? o.bakeVertexBudget : BAKE_VERTEX_BUDGET
+  const bakeDemand = () => groups.reduce((sum, group) => sum + vertexCost(group) * group.clusters.reduce((n, cluster) => n + cluster.members.filter(entry => entry.error > BAKE_ERROR).length, 0), 0)
+  const splitByPattern = ({ model, primIndex, clusters }) => {
+    const refined = []
+    for (const cluster of clusters) {
+      const lit = cluster.members.filter(entry => entry.prop.light)
+      if (lit.length < 4 || !lit.some(entry => entry.error > BAKE_ERROR)) {
+        refined.push(cluster)
+        continue
+      }
+      let patterns = [cluster.shading]
+      let assign = lit.map(() => 0)
+      const errors = lit.map(entry => entry.error)
+      const limit = Math.min(PATTERN_SPLITS, Math.floor(lit.length / 2))
+      while (patterns.length < limit) {
+        let worst = -1
+        errors.forEach((error, i) => {
+          if (error > BAKE_ERROR && (worst < 0 || error > errors[worst])) worst = i
+        })
+        if (worst < 0) break
+        patterns.push(meanShading(model, primIndex, [lit[worst]]))
+        for (let pass = 0; pass < 2; pass++) {
+          lit.forEach((entry, i) => {
+            errors[i] = Infinity
+            patterns.forEach((pattern, k) => {
+              const error = relativeError(entry.prop, primIndex, pattern)
+              if (error < errors[i]) {
+                errors[i] = error
+                assign[i] = k
+              }
+            })
+          })
+          const kept = []
+          const remap = new Map()
+          patterns.forEach((_, k) => {
+            const members = lit.filter((_, i) => assign[i] === k)
+            if (members.length === 0) return
+            remap.set(k, kept.length)
+            kept.push(meanShading(model, primIndex, members))
+          })
+          assign = assign.map(k => remap.get(k))
+          patterns = kept
         }
       }
-      stats.clusters += clusters.length
-      groups.push({ model, skin, parts, primIndex, clusters })
+      const sizes = patterns.map((_, k) => assign.filter(a => a === k).length)
+      const shared = patterns.map((_, k) => k).filter(k => sizes[k] > 1)
+      if (shared.length <= 1) {
+        refined.push(cluster)
+        continue
+      }
+      lit.forEach((entry, i) => {
+        if (sizes[assign[i]] > 1) return
+        let bestError = Infinity
+        assign[i] = shared[0]
+        for (const k of shared) {
+          const error = relativeError(entry.prop, primIndex, patterns[k])
+          if (error < bestError) {
+            bestError = error
+            assign[i] = k
+          }
+        }
+      })
+      const subs = shared.map(k => ({ key: cluster.key, members: lit.filter((_, i) => assign[i] === k) }))
+      subs.sort((a, b) => b.members.length - a.members.length)
+      subs[0].members.push(...cluster.members.filter(entry => !entry.prop.light)) // estimated light
+      for (const sub of subs) {
+        const members = sub.members.filter(entry => entry.prop.light)
+        sub.shading = meanShading(model, primIndex, members)
+        for (const entry of members) entry.error = relativeError(entry.prop, primIndex, sub.shading)
+        refined.push(sub)
+      }
+      stats.patternSplits += subs.length - 1
+    }
+    return refined
+  }
+  const demandBefore = bakeDemand()
+  if (demandBefore > bakeBudgetTotal) {
+    for (const group of groups) group.clusters = splitByPattern(group)
+  }
+  stats.bakeDemand = { before: demandBefore, after: bakeDemand(), budget: bakeBudgetTotal }
+  for (const group of groups) {
+    stats.clusters += group.clusters.length
+    for (const cluster of group.clusters) {
+      for (const entry of cluster.members) if (entry.error !== undefined) stats.worstSharedError = Math.max(stats.worstSharedError, entry.error)
     }
   }
 
   // 5. Instances whose cluster shading misses their own VHV by more than BAKE_ERROR keep their exact
   //    lighting in one merged batch, the largest errors on the largest models first, while the vertex
   //    budget lasts.
-  let bakeBudget = BAKE_VERTEX_BUDGET
+  let bakeBudget = bakeBudgetTotal
   const candidates = []
   for (const group of groups) {
-    const cost = group.parts.reduce((a, part) => a + (part.info.unlit ? 0 : part.prim.vertexCount * (part.info.doubleSided ? 2 : 1)), 0)
+    const cost = vertexCost(group)
     for (const cluster of group.clusters) {
       for (const entry of cluster.members) {
         if (entry.error > BAKE_ERROR && cost > 0) candidates.push({ entry, cost, priority: entry.error * entry.radius })
@@ -948,10 +1160,19 @@ export async function convertStaticProps(o) {
   }
   candidates.sort((a, b) => b.priority - a.priority || a.entry.prop.order - b.entry.prop.order)
   for (const { entry, cost } of candidates) {
-    if (cost > bakeBudget) continue
+    if (cost > bakeBudget) {
+      // Out of budget: drawn with its cluster's shared pattern, which misses its own VHV by more than
+      // BAKE_ERROR. Tagged so conversion.json and the map.props probe report it.
+      entry.lighting = 'shared'
+      vhvStats.shared++
+      vhvStats.worstDrawnError = Math.max(vhvStats.worstDrawnError, round(entry.error, 3))
+      continue
+    }
     bakeBudget -= cost
     entry.baked = true
+    vhvStats.baked++
   }
+  vhvStats.bakeVerticesLeft = bakeBudget
 
   // 6. Build the document.
   const doc = new Document()
@@ -1006,6 +1227,7 @@ export async function convertStaticProps(o) {
         if (translucent) colors[slot * stride + 3] = info.alpha
       }
     }
+    // prim.indices are counter-clockwise already (loadStudioModel); the $nocull back copy reverses them.
     const indices = new Uint32Array(info.doubleSided ? prim.indices.length * 2 : prim.indices.length)
     indices.set(prim.indices)
     if (info.doubleSided) {
@@ -1182,7 +1404,12 @@ export async function convertStaticProps(o) {
     const quantizeOptions = { quantizationVolume: 'mesh', quantizePosition: 16, quantizeNormal: 8, quantizeColor: 12 }
     if (o.meshopt !== false) await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'high', ...quantizeOptions }))
     else await doc.transform(quantize(quantizeOptions))
-    await io.write(o.outPath, doc)
+    // Written in the work dir first and renamed into place, so a failure never leaves half a file.
+    const staged = path.join(o.workDir, 'props.glb')
+    await io.write(staged, doc)
+    const partial = `${o.outPath}.partial`
+    fs.copyFileSync(staged, partial)
+    fs.renameSync(partial, o.outPath)
   } else if (fs.existsSync(o.outPath)) {
     fs.rmSync(o.outPath)
   }
@@ -1199,6 +1426,8 @@ export async function convertStaticProps(o) {
       unconvertible: counts.unconvertible,
       models: stats.models,
       clusters: stats.clusters,
+      patternSplits: stats.patternSplits,
+      bakeDemand: stats.bakeDemand,
       nodes: stats.nodes,
       instancedNodes: stats.instancedNodes,
       bakedInstances: stats.bakedInstances,
@@ -1207,6 +1436,7 @@ export async function convertStaticProps(o) {
       triangles: stats.triangles,
       renderedTriangles: stats.renderedTriangles,
       skippedPrimitives: stats.skippedPrimitives,
+      winding: { agree: round(windingShare, 4), drawnTriangles: winding.drawnCounted, modelAgree: round(winding.counted ? winding.agree / winding.counted : 1, 4), modelTriangles: winding.counted, ...(windingLow.length ? { low: windingLow } : {}) },
       lighting: { ...vhvStats, exposure, floor, worstSharedError: round(stats.worstSharedError, 3) },
       materials: {
         ...stats.materials,

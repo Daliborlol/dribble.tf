@@ -897,27 +897,43 @@ if (onlyMeta) {
 // the lightmap's exposure. Stock props are game assets and are only counted (props.stock).
 
 let propsResult = null
+let propsError = null
 if (withProps) {
-  const { convertStaticProps } = await import('./lib/static-props.mjs')
-  propsResult = await convertStaticProps({
-    bspToGlb,
-    vtfToPng,
-    pakDir,
-    props: JSON.parse(fs.readFileSync(path.join(tempDir, 'props.json'), 'utf8')),
-    workDir: path.join(tempDir, 'props'),
-    outPath: path.join(outDir, 'props.glb'),
-    worldMins,
-    worldMaxs,
-    lighting: { set: lightmapInfo?.set ?? 'hdr', exposure: lightmapInfo?.exposure ?? 1, floor: lightmapInfo?.floor ?? 0 },
-    sunDirection: meta.light?.environment?.direction ?? null,
-    meshopt: useMeshopt,
-    log: message => console.log(message),
-  })
-  const p = propsResult.props
-  console.log(`  props.glb ${(propsResult.stats.bytes / 1048576).toFixed(2)} MB: ${p.pak} PAK static props` +
-    `${p.dynamic ? ` and ${p.dynamic} unnamed prop_dynamic` : ''} of ${propsResult.stats.models} models ` +
-    `(${propsResult.stats.lighting.exact} with their VHV, ${propsResult.stats.lighting.estimated} estimated), ${propsResult.stats.skybox} in the 3D skybox skipped; ` +
-    `${p.stock} stock props not rendered (${p.stockSolid} solid)`)
+  // A failing props pass must not leave world.glb next to a stale conversion.json: it is reported,
+  // props.glb is removed (conversion.json would no longer list it) and the conversion goes on.
+  try {
+    const { convertStaticProps } = await import('./lib/static-props.mjs')
+    propsResult = await convertStaticProps({
+      bspToGlb,
+      vtfToPng,
+      pakDir,
+      props: JSON.parse(fs.readFileSync(path.join(tempDir, 'props.json'), 'utf8')),
+      workDir: path.join(tempDir, 'props'),
+      outPath: path.join(outDir, 'props.glb'),
+      worldMins,
+      worldMaxs,
+      lighting: { set: lightmapInfo?.set ?? 'hdr', exposure: lightmapInfo?.exposure ?? 1, floor: lightmapInfo?.floor ?? 0 },
+      sunDirection: meta.light?.environment?.direction ?? null,
+      meshopt: useMeshopt,
+      log: message => console.log(message),
+    })
+    const p = propsResult.props
+    const l = propsResult.stats.lighting
+    console.log(`  props.glb ${(propsResult.stats.bytes / 1048576).toFixed(2)} MB: ${p.pak} PAK static props` +
+      `${p.dynamic ? ` and ${p.dynamic} unnamed prop_dynamic` : ''} of ${propsResult.stats.models} models ` +
+      `(${l.exact} with their VHV, ${l.baked} of them baked exactly and ${l.shared} on a shared pattern that misses theirs; ${l.estimated} estimated), ` +
+      `${propsResult.stats.skybox} in the 3D skybox skipped, winding ${(propsResult.stats.winding.agree * 100).toFixed(2)} %; ` +
+      `${p.stock} stock props not rendered (${p.stockSolid} solid)`)
+  } catch (error) {
+    propsResult = null
+    propsError = error instanceof Error ? error.message : String(error)
+    console.warn(`  WARNING: static props skipped: ${propsError}`)
+    const stale = path.join(outDir, 'props.glb')
+    if (fs.existsSync(stale)) {
+      fs.rmSync(stale)
+      console.warn(`  removed ${stale}; conversion.json lists no props`)
+    }
+  }
 }
 
 // ─── conversion.json ─────────────────────────────────────────────────────────
@@ -981,7 +997,7 @@ const conversion = {
     lightmapBytes: lightmapInfo ? fs.statSync(path.join(outDir, lightmapInfo.file)).size : 0,
     metaBytes: fs.statSync(path.join(outDir, 'map-meta.json')).size,
     visibilityBytes: fs.statSync(path.join(outDir, 'visibility.json')).size,
-    ...(propsResult ? { props: propsResult.stats } : {}),
+    ...(propsResult ? { props: propsResult.stats } : propsError ? { props: { error: propsError } } : {}),
   },
   materials: Object.fromEntries([...materialStats].sort((a, b) => b[1].triangles - a[1].triangles).map(([name, s]) => [name, { kind: s.kind, triangles: s.triangles, albedo: s.albedo.map(v => +v.toFixed(4)) }])),
   success: true,

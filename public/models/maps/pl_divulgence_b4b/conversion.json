@@ -1,6 +1,6 @@
 {
  "mapName": "pl_divulgence_b4b",
- "timestamp": "2026-10-17T20:19:05.142Z",
+ "timestamp": "2026-10-18T01:28:19.830Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 11666
  },
  "stats": {
-  "exportMs": 1877,
+  "exportMs": 1830,
   "sourceFaces": 18515,
   "sourceTriangles": 78156,
   "keptTriangles": 74704,
@@ -151,13 +151,19 @@
   "metaBytes": 52564,
   "visibilityBytes": 911444,
   "props": {
-   "ms": 354,
-   "bytes": 571368,
+   "ms": 352,
+   "bytes": 578752,
    "skybox": 0,
    "dynamicSkipped": {},
    "unconvertible": 0,
    "models": 23,
    "clusters": 52,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 29164,
+    "after": 29164,
+    "budget": 250000
+   },
    "nodes": 30,
    "instancedNodes": 1,
    "bakedInstances": 75,
@@ -166,10 +172,20 @@
    "triangles": 47971,
    "renderedTriangles": 48151,
    "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9995,
+    "drawnTriangles": 48151,
+    "modelAgree": 0.9994,
+    "modelTriangles": 16229
+   },
    "lighting": {
     "exact": 104,
     "estimated": 1,
     "mismatched": 0,
+    "baked": 75,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 220836,
     "set": "hdr",
     "exposure": 1.8624,
     "floor": 0.015,

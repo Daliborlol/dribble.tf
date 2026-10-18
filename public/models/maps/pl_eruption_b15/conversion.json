@@ -1,6 +1,6 @@
 {
  "mapName": "pl_eruption_b15",
- "timestamp": "2026-10-17T20:22:20.133Z",
+ "timestamp": "2026-10-18T01:28:45.158Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -130,7 +130,7 @@
   "leaves": 6198
  },
  "stats": {
-  "exportMs": 2794,
+  "exportMs": 2635,
   "sourceFaces": 16259,
   "sourceTriangles": 243936,
   "keptTriangles": 242066,
@@ -152,8 +152,8 @@
   "metaBytes": 60923,
   "visibilityBytes": 833206,
   "props": {
-   "ms": 490,
-   "bytes": 883388,
+   "ms": 529,
+   "bytes": 882788,
    "skybox": 0,
    "dynamicSkipped": {
     "animated": 1,
@@ -162,6 +162,12 @@
    "unconvertible": 0,
    "models": 30,
    "clusters": 57,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 46058,
+    "after": 46058,
+    "budget": 250000
+   },
    "nodes": 47,
    "instancedNodes": 12,
    "bakedInstances": 113,
@@ -170,10 +176,40 @@
    "triangles": 78276,
    "renderedTriangles": 92080,
    "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9677,
+    "drawnTriangles": 92076,
+    "modelAgree": 0.8621,
+    "modelTriangles": 21529,
+    "low": [
+     {
+      "model": "models/models/props/props_eruption/war_room_hanginglight.mdl",
+      "agree": 0.324,
+      "triangles": 3360,
+      "instances": 1
+     },
+     {
+      "model": "models/models/props/props_eruption/war_room_tablebase.mdl",
+      "agree": 0.05,
+      "triangles": 480,
+      "instances": 1
+     },
+     {
+      "model": "models/models/props/props_eruption/war_room_tabletop.mdl",
+      "agree": 0.718,
+      "triangles": 850,
+      "instances": 1
+     }
+    ]
+   },
    "lighting": {
     "exact": 145,
     "estimated": 54,
     "mismatched": 0,
+    "baked": 113,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 203942,
     "set": "hdr",
     "exposure": 0.9919,
     "floor": 0.015,
@@ -449,7 +485,11 @@
      }
     ]
    },
-   "warnings": []
+   "warnings": [
+    "models/models/props/props_eruption/war_room_hanginglight.mdl: only 32.4 % of 3360 triangles face along their vertex normals (1 instance(s))",
+    "models/models/props/props_eruption/war_room_tablebase.mdl: only 5.0 % of 480 triangles face along their vertex normals (1 instance(s))",
+    "models/models/props/props_eruption/war_room_tabletop.mdl: only 71.8 % of 850 triangles face along their vertex normals (1 instance(s))"
+   ]
   }
  },
  "materials": {

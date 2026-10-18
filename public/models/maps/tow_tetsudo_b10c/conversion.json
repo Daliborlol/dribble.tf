@@ -1,6 +1,6 @@
 {
  "mapName": "tow_tetsudo_b10c",
- "timestamp": "2026-10-17T23:56:56.744Z",
+ "timestamp": "2026-10-18T01:29:53.812Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -130,7 +130,7 @@
   "leaves": 6965
  },
  "stats": {
-  "exportMs": 2115,
+  "exportMs": 2109,
   "sourceFaces": 12274,
   "sourceTriangles": 51764,
   "keptTriangles": 49903,
@@ -152,8 +152,8 @@
   "metaBytes": 42992,
   "visibilityBytes": 417470,
   "props": {
-   "ms": 1632,
-   "bytes": 3490940,
+   "ms": 2521,
+   "bytes": 4485868,
    "skybox": 0,
    "dynamicSkipped": {
     "parented": 4,
@@ -161,19 +161,35 @@
    },
    "unconvertible": 0,
    "models": 38,
-   "clusters": 99,
-   "nodes": 94,
-   "instancedNodes": 50,
-   "bakedInstances": 101,
-   "primitives": 118,
-   "vertices": 331129,
-   "triangles": 303337,
+   "clusters": 128,
+   "patternSplits": 29,
+   "bakeDemand": {
+    "before": 557586,
+    "after": 397809,
+    "budget": 250000
+   },
+   "nodes": 115,
+   "instancedNodes": 69,
+   "bakedInstances": 124,
+   "primitives": 160,
+   "vertices": 438325,
+   "triangles": 396685,
    "renderedTriangles": 861317,
    "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9998,
+    "drawnTriangles": 657193,
+    "modelAgree": 0.9995,
+    "modelTriangles": 40114
+   },
    "lighting": {
     "exact": 346,
     "estimated": 129,
     "mismatched": 0,
+    "baked": 124,
+    "shared": 74,
+    "worstDrawnError": 0.62,
+    "bakeVerticesLeft": 173,
     "set": "hdr",
     "exposure": 0.5,
     "floor": 0.015,

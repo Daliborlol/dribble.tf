@@ -1,6 +1,6 @@
 {
  "mapName": "koth_ashville_final1",
- "timestamp": "2026-10-17T23:46:25.240Z",
+ "timestamp": "2026-10-18T01:27:58.100Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -134,7 +134,7 @@
   "leaves": 4770
  },
  "stats": {
-  "exportMs": 2498,
+  "exportMs": 2482,
   "sourceFaces": 6457,
   "sourceTriangles": 24500,
   "keptTriangles": 23347,
@@ -156,8 +156,8 @@
   "metaBytes": 12801,
   "visibilityBytes": 229932,
   "props": {
-   "ms": 765,
-   "bytes": 2729012,
+   "ms": 769,
+   "bytes": 2884372,
    "skybox": 0,
    "dynamicSkipped": {
     "named": 4,
@@ -166,18 +166,34 @@
    "unconvertible": 0,
    "models": 22,
    "clusters": 73,
-   "nodes": 50,
-   "instancedNodes": 23,
-   "bakedInstances": 96,
-   "primitives": 50,
-   "vertices": 304160,
-   "triangles": 236752,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 233798,
+    "after": 233798,
+    "budget": 250000
+   },
+   "nodes": 38,
+   "instancedNodes": 13,
+   "bakedInstances": 123,
+   "primitives": 38,
+   "vertices": 321456,
+   "triangles": 249951,
    "renderedTriangles": 268100,
    "skippedPrimitives": 2,
+   "winding": {
+    "agree": 0.9956,
+    "drawnTriangles": 236344,
+    "modelAgree": 0.9964,
+    "modelTriangles": 35564
+   },
    "lighting": {
     "exact": 166,
     "estimated": 38,
     "mismatched": 38,
+    "baked": 123,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 16202,
     "set": "hdr",
     "exposure": 2,
     "floor": 0.015,

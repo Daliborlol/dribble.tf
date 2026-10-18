@@ -8,6 +8,9 @@
 // World.tsx mounts this component inside its rotated `world` group, next to world.glb, so the file needs
 // no transform of its own. The same shared bsp-to-glb material rules apply (bspMaterials.ts); the props
 // have no lightmap, so map.brightness scales their material colour instead of lightMapIntensity.
+// Their vertex and instance colours already hold VRAD's baked light, so the untextured mode keeps the
+// unlit textured material (the world's Lambert material would light them a second time), and the
+// wireframe mode drops the instance light so the shared wireframe material is not tinted.
 // Setting map.staticProps shows or hides them; the file loads the first time they are shown.
 // Probe: window.__dribble.hl.probe('map.props')
 
@@ -42,8 +45,10 @@ const current: {
   error: string | null
   root: THREE.Object3D | null
   mode: MapRenderMode | null
+  /** The material rules actually applied: untextured shows the props with their textured material. */
+  materialMode: MapRenderMode | null
   brightness: number | null
-} = { url: undefined, state: 'off', error: null, root: null, mode: null, brightness: null }
+} = { url: undefined, state: 'off', error: null, root: null, mode: null, materialMode: null, brightness: null }
 
 export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
   const enabled = useHlSetting<boolean>('map.staticProps') ?? true
@@ -60,6 +65,7 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
     current.url = url
     if (!url) {
       current.state = 'off'
+      current.error = null
       setLoaded(null)
       return
     }
@@ -107,22 +113,28 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
     }
   }, [loaded])
 
-  // The world.glb material rules, per render mode.
+  // The world.glb material rules. Baked light needs no scene lights: untextured keeps the unlit
+  // textured material, wireframe uses the shared wireframe material without the instance light.
+  const materialMode: MapRenderMode = mode === 'wireframe' ? 'wireframe' : 'textured'
   useEffect(() => {
     if (!loaded) return
     const materials = applyBspMaterials(loaded.root, {
-      mode,
+      mode: materialMode,
       lightmap: null,
       lightmapRange: 1,
       brightness: brightnessRef.current,
     })
     materialsRef.current = materials
-    current.mode = mode
+    setInstanceLight(loaded.root, materialMode !== 'wireframe')
+    current.materialMode = materialMode
     return () => {
       if (materialsRef.current === materials) materialsRef.current = null
       materials.dispose()
     }
-  }, [loaded, mode])
+  }, [loaded, materialMode])
+  useEffect(() => {
+    current.mode = mode
+  }, [mode])
 
   // map.brightness: the vertex colours already hold the baked light, so the colour scales them.
   useEffect(() => {
@@ -132,7 +144,7 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
       if (material instanceof THREE.MeshBasicMaterial) material.color.setScalar(brightness)
     })
     current.brightness = brightness
-  }, [loaded, mode, brightness])
+  }, [loaded, materialMode, brightness])
 
   // Hidden props must also stop catching the world raycasts (RTS centre, stickers), which check each
   // hit object's own `visible` flag, so the meshes are toggled with the root.
@@ -144,8 +156,40 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
     loaded.root.visible = enabled
   }, [loaded, enabled])
 
+  // Unmounted (a map without props.glb): the probe reports nothing loaded, not the last map's file.
+  useEffect(
+    () => () => {
+      current.url = undefined
+      current.state = 'off'
+      current.error = null
+      current.mode = null
+      current.materialMode = null
+      current.brightness = null
+    },
+    []
+  )
+
   return loaded && loaded.url === url ? <primitive object={loaded.root} /> : null
 })
+
+/**
+ * Instance colours carry each instance's baked light. Wireframe mode moves them aside (three tints any
+ * material by instanceColor) and the other modes put them back.
+ */
+function setInstanceLight(root: THREE.Object3D, on: boolean) {
+  root.traverse(node => {
+    const mesh = node as THREE.InstancedMesh
+    if (!mesh.isInstancedMesh) return
+    const stashed = mesh.userData.dribbleInstanceColor as THREE.InstancedBufferAttribute | undefined
+    if (!on && mesh.instanceColor) {
+      mesh.userData.dribbleInstanceColor = mesh.instanceColor
+      mesh.instanceColor = null
+    } else if (on && stashed) {
+      mesh.instanceColor = stashed
+      delete mesh.userData.dribbleInstanceColor
+    }
+  })
+}
 
 /** Static geometry: no per-frame matrix updates, bounds computed once (instances included). */
 function freeze(root: THREE.Object3D) {
@@ -180,12 +224,30 @@ function forEachOwnMaterial(root: THREE.Object3D, callback: (material: THREE.Mat
 }
 
 function disposeProps(root: THREE.Object3D) {
+  // Instance colours moved aside in wireframe mode go back first: three frees the GPU buffer of
+  // `instanceColor` only while it is set.
+  setInstanceLight(root, true)
   root.traverse(node => {
     const mesh = node as THREE.Mesh
     if (!mesh.isMesh) return
     mesh.geometry?.dispose()
     if ((mesh as THREE.InstancedMesh).isInstancedMesh) (mesh as THREE.InstancedMesh).dispose()
   })
+}
+
+/** Instance id of row i of a staticProps node: the static prop index, or the prop_dynamic entity. */
+const instanceIdOf = (info: { staticProps?: number[]; entities?: number[] }, i: number): string => {
+  const index = info.staticProps?.[i] ?? -1
+  return index >= 0 ? `sp:${index}` : `ent:${info.entities?.[i] ?? -1}`
+}
+
+/**
+ * A model with an unlit part (UnlitGeneric) lists its instances twice, on the lit node and on the
+ * `_unlit` node. Probes keep one row per instance, preferring the lit node's.
+ */
+function keepRow<T extends { lighting: string }>(rows: Map<string, T>, id: string, row: T) {
+  const seen = rows.get(id)
+  if (!seen || (seen.lighting === 'unlit' && row.lighting !== 'unlit')) rows.set(id, row)
 }
 
 /**
@@ -195,22 +257,25 @@ function disposeProps(root: THREE.Object3D) {
 registerHlProbe('map.propInstances', (filter?: string) => {
   const origin = useInstance.getState().parsedDemo?.world?.boundaryMin ?? { x: 0, y: 0, z: 0 }
   const needle = filter ? String(filter).toLowerCase() : null
-  const rows: {
-    node: string
-    model: string
-    staticProp: number
-    entity: number
-    source: number[]
-    scene: number[]
-    lighting: string
-  }[] = []
+  const rows = new Map<
+    string,
+    {
+      node: string
+      model: string
+      staticProp: number
+      entity: number
+      source: number[]
+      scene: number[]
+      lighting: string
+    }
+  >()
   current.root?.traverse(node => {
     const info = node.userData?.dribble
     if (info?.kind !== 'staticProps') return
     ;(info.origins ?? []).forEach((source: number[], i: number) => {
       const model: string = info.models?.[i] ?? info.model ?? ''
       if (needle && !`${node.name} ${model}`.toLowerCase().includes(needle)) return
-      rows.push({
+      keepRow(rows, instanceIdOf(info, i), {
         node: node.name,
         model,
         staticProp: info.staticProps?.[i] ?? -1,
@@ -221,7 +286,7 @@ registerHlProbe('map.propInstances', (filter?: string) => {
       })
     })
   })
-  return rows.sort(
+  return [...rows.values()].sort(
     (a, b) => a.staticProp - b.staticProp || a.entity - b.entity || a.node.localeCompare(b.node)
   )
 })
@@ -234,8 +299,7 @@ registerHlProbe('map.props', () => {
   let meshes = 0
   let triangles = 0
   let visibleMeshes = 0
-  const instanceIds = new Set<string>()
-  const lighting: Record<string, number> = {}
+  const instanceLighting = new Map<string, { lighting: string }>()
   const materials = new Set<string>()
   const colorScale = new Set<number>()
   const models: { name: string; instances: number; lighting: string[] }[] = []
@@ -248,12 +312,8 @@ registerHlProbe('map.props', () => {
         instances: info.instances,
         lighting: [...new Set<string>(info.lighting ?? [])],
       })
-      ;(info.staticProps ?? []).forEach((index: number, i: number) => {
-        const id = index >= 0 ? `sp:${index}` : `ent:${info.entities?.[i]}`
-        if (instanceIds.has(id)) return // an unlit part repeats its lit node's instances
-        instanceIds.add(id)
-        const kind = info.lighting?.[i] ?? 'unknown'
-        lighting[kind] = (lighting[kind] ?? 0) + 1
+      ;(info.staticProps ?? []).forEach((_: number, i: number) => {
+        keepRow(instanceLighting, instanceIdOf(info, i), { lighting: info.lighting?.[i] ?? 'unknown' })
       })
     }
     const mesh = node as THREE.Mesh
@@ -278,16 +338,21 @@ registerHlProbe('map.props', () => {
     }
   })
   const rootInfo = root?.children[0]?.userData?.dribble
+  const lighting: Record<string, number> = {}
+  instanceLighting.forEach(({ lighting: kind }) => {
+    lighting[kind] = (lighting[kind] ?? 0) + 1
+  })
   return {
     url: current.url ?? null,
     state: current.state,
     error: current.error,
     mode: current.mode,
+    materialMode: current.materialMode,
     brightness: current.brightness,
     attached: Boolean(root?.parent),
     visible: root ? root.visible : null,
     pak: rootInfo?.pak ?? null,
-    instances: instanceIds.size,
+    instances: instanceLighting.size,
     lighting,
     nodes,
     meshes,

@@ -1,6 +1,6 @@
 {
  "mapName": "koth_proot_b5b",
- "timestamp": "2026-10-17T23:55:44.754Z",
+ "timestamp": "2026-10-18T01:28:04.634Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 3246
  },
  "stats": {
-  "exportMs": 1469,
+  "exportMs": 1468,
   "sourceFaces": 7601,
   "sourceTriangles": 37597,
   "keptTriangles": 36521,
@@ -151,13 +151,19 @@
   "metaBytes": 14456,
   "visibilityBytes": 243119,
   "props": {
-   "ms": 816,
-   "bytes": 1140912,
+   "ms": 808,
+   "bytes": 1143856,
    "skybox": 139,
    "dynamicSkipped": {},
    "unconvertible": 0,
    "models": 19,
    "clusters": 30,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 64963,
+    "after": 64963,
+    "budget": 250000
+   },
    "nodes": 19,
    "instancedNodes": 5,
    "bakedInstances": 32,
@@ -166,10 +172,28 @@
    "triangles": 98300,
    "renderedTriangles": 114288,
    "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9927,
+    "drawnTriangles": 86250,
+    "modelAgree": 0.9887,
+    "modelTriangles": 27800,
+    "low": [
+     {
+      "model": "models/props_frontline/tree_birch_big_leaves_02.mdl",
+      "agree": 0.502,
+      "triangles": 608,
+      "instances": 2
+     }
+    ]
+   },
    "lighting": {
     "exact": 57,
     "estimated": 0,
     "mismatched": 0,
+    "baked": 32,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 185037,
     "set": "hdr",
     "exposure": 1.5169,
     "floor": 0.015,
@@ -358,7 +382,9 @@
      }
     ]
    },
-   "warnings": []
+   "warnings": [
+    "models/props_frontline/tree_birch_big_leaves_02.mdl: only 50.2 % of 608 triangles face along their vertex normals (2 instance(s))"
+   ]
   }
  },
  "materials": {

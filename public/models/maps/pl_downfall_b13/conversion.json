@@ -1,6 +1,6 @@
 {
  "mapName": "pl_downfall_b13",
- "timestamp": "2026-10-17T23:47:00.993Z",
+ "timestamp": "2026-10-18T01:28:32.886Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 10628
  },
  "stats": {
-  "exportMs": 2835,
+  "exportMs": 2852,
   "sourceFaces": 21928,
   "sourceTriangles": 295417,
   "keptTriangles": 291954,
@@ -151,13 +151,19 @@
   "metaBytes": 65308,
   "visibilityBytes": 1115749,
   "props": {
-   "ms": 536,
-   "bytes": 626020,
+   "ms": 544,
+   "bytes": 627384,
    "skybox": 0,
    "dynamicSkipped": {},
    "unconvertible": 0,
    "models": 9,
    "clusters": 23,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 38281,
+    "after": 38281,
+    "budget": 250000
+   },
    "nodes": 15,
    "instancedNodes": 0,
    "bakedInstances": 29,
@@ -166,10 +172,20 @@
    "triangles": 67823,
    "renderedTriangles": 67823,
    "skippedPrimitives": 0,
+   "winding": {
+    "agree": 1,
+    "drawnTriangles": 67823,
+    "modelAgree": 1,
+    "modelTriangles": 11805
+   },
    "lighting": {
     "exact": 43,
     "estimated": 0,
     "mismatched": 0,
+    "baked": 29,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 211719,
     "set": "hdr",
     "exposure": 2,
     "floor": 0.015,

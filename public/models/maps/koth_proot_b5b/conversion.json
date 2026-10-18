@@ -1,6 +1,6 @@
 {
  "mapName": "koth_proot_b5b",
- "timestamp": "2026-10-17T23:46:32.005Z",
+ "timestamp": "2026-10-17T23:55:44.754Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -129,7 +129,7 @@
   "leaves": 3246
  },
  "stats": {
-  "exportMs": 1466,
+  "exportMs": 1469,
   "sourceFaces": 7601,
   "sourceTriangles": 37597,
   "keptTriangles": 36521,
@@ -151,7 +151,7 @@
   "metaBytes": 14456,
   "visibilityBytes": 243119,
   "props": {
-   "ms": 812,
+   "ms": 816,
    "bytes": 1140912,
    "skybox": 139,
    "dynamicSkipped": {},
@@ -201,7 +201,7 @@
       "source": "pak",
       "kind": "translucent",
       "coverage": 0.259,
-      "alpha": 0.55,
+      "alpha": 0.259,
       "albedo": [
        0.474,
        0.102,
@@ -213,7 +213,7 @@
       "source": "pak",
       "kind": "translucent",
       "coverage": 0.259,
-      "alpha": 0.55,
+      "alpha": 0.259,
       "albedo": [
        0.426,
        0.027,
@@ -235,7 +235,7 @@
       "source": "pak",
       "kind": "translucent",
       "coverage": 0.259,
-      "alpha": 0.55,
+      "alpha": 0.259,
       "albedo": [
        0.348,
        0.052,

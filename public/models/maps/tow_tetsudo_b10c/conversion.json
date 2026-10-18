@@ -1,6 +1,6 @@
 {
  "mapName": "tow_tetsudo_b10c",
- "timestamp": "2026-10-17T23:47:43.451Z",
+ "timestamp": "2026-10-17T23:56:56.744Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -130,7 +130,7 @@
   "leaves": 6965
  },
  "stats": {
-  "exportMs": 2075,
+  "exportMs": 2115,
   "sourceFaces": 12274,
   "sourceTriangles": 51764,
   "keptTriangles": 49903,
@@ -152,8 +152,8 @@
   "metaBytes": 42992,
   "visibilityBytes": 417470,
   "props": {
-   "ms": 1546,
-   "bytes": 3490920,
+   "ms": 1632,
+   "bytes": 3490940,
    "skybox": 0,
    "dynamicSkipped": {
     "parented": 4,
@@ -264,7 +264,7 @@
       "source": "pak",
       "kind": "translucent",
       "coverage": 0.17,
-      "alpha": 0.55,
+      "alpha": 0.17,
       "albedo": [
        0.166,
        0.331,
@@ -276,7 +276,7 @@
       "source": "pak",
       "kind": "translucent",
       "coverage": 0.142,
-      "alpha": 0.55,
+      "alpha": 0.15,
       "albedo": [
        0.069,
        0.131,

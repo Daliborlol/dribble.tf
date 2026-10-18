@@ -22,8 +22,9 @@
  *             texdata), else NEUTRAL (#8a8a8a) when the material or texture is not in the PAK.
  *             $alphatest and $translucent materials decode the texture instead: a cutout takes the mean
  *             colour of the texels that pass the alpha test and draws opaque when at least
- *             OPAQUE_COVERAGE of them pass (tarps, dense pine cards), else at ALPHA_CUTOUT; a blend
- *             takes the alpha-weighted colour and the texture's mean alpha.
+ *             OPAQUE_COVERAGE of them pass (tarps, dense pine cards), else with that share as its
+ *             alpha (sparse leaf cards); a blend takes the alpha-weighted colour and the texture's
+ *             mean alpha. Without the texture in the PAK, cutouts keep ALPHA_CUTOUT.
  *   lighting  the PAK's per-vertex lighting (VRAD's sp[_hdr]_<prop>.vhv, one file per instance), in the
  *             world lightmap's scale: linear * exposure + floor (conversion.json lightmap).
  * Instances of one model share the vertex data, so lighting is factored as instanceLight x shading:
@@ -64,10 +65,13 @@ const ALPHA_CUTOUT = 0.55
 const ALPHA_BLEND = 0.5
 /**
  * $alphatest materials whose PAK texture passes the test on at least this share of its texels draw
- * opaque: a tarp (DXT1, no alpha at all) or a dense pine card is a solid surface in game, while sparse
- * leaf cards (bamboo 15 to 17 %, oak 27 %) keep ALPHA_CUTOUT.
+ * opaque: a tarp (DXT1, no alpha at all) or a dense pine card is a solid surface in game. Sparser
+ * cutouts draw at their coverage (bamboo 14 to 17 %, oak 26 %), the share of the card that blocks the
+ * view, so looking through three layers of bamboo leaves hides about 43 % of what is behind them as in
+ * game, instead of 91 % at ALPHA_CUTOUT. MIN_CUTOUT_ALPHA keeps the sparsest cards visible.
  */
 const OPAQUE_COVERAGE = 0.85
+const MIN_CUTOUT_ALPHA = 0.15
 /** Alpha-test reference when the VMT sets none (the shader API's default GEQUAL reference). */
 const DEFAULT_ALPHA_REF = 0.7
 /** Alpha range of $translucent prop surfaces whose opacity comes from the texture's mean alpha. */
@@ -567,6 +571,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
           info.coverage = round(stats.coverage, 3)
           if (alphaTest) {
             if (stats.coverage >= OPAQUE_COVERAGE) Object.assign(info, { kind: 'opaque', alpha: 1 })
+            else info.alpha = round(Math.max(MIN_CUTOUT_ALPHA, stats.coverage), 3)
             if (stats.coveredColor) Object.assign(info, { source: 'pak', albedo: stats.coveredColor })
           } else {
             const scale = p.$alpha !== undefined && Number.isFinite(Number(p.$alpha)) ? clamp01(Number(p.$alpha)) : 1

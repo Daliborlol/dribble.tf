@@ -9,14 +9,17 @@
 // Thrown lunchbox items and dropped kits (P2) draw with the same placeholder of their size along their xform
 // track, then at rest where the track ends, until they are picked up or deleted. They sit on the bottom of
 // their collision box, do not bob or turn (a thrown item does not spin in TF2) and are never baked into a GLB,
-// so they draw on every map pipeline.
+// so they draw on every map pipeline. Through the eyes of a POV player (the actor whose own povCamera renders
+// the scene) an item within POV_HIDE_DISTANCE of his camera is not drawn: a throw starts inside his head.
 
 import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 
+import { povCameraOwner } from '@highlander/combat/view'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useMapMeta } from '@highlander/map/mapMeta'
+import { getActor } from '@highlander/scene/actorRegistry'
 import { useInstance, useStore } from '@zus/store'
 
 import {
@@ -35,8 +38,10 @@ import { drawn, kitModeOf, tickFOf, useRenderTickRef, type KitMode } from './fra
 import { MATERIALS, RING_MATERIAL, UNIT_BOX, UNIT_BOX_FRAME, createRingGeometry } from './geometry'
 import {
   buildKitEntries,
+  nearPovEye,
   newMovingSample,
   newPickupSample,
+  pickupBoxSize,
   sampleKitSpot,
   sampleMovingPickup,
   type KitEntries,
@@ -67,10 +72,25 @@ const _s = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const _sample = newPickupSample()
 const _moving = newMovingSample()
+const _eye = new THREE.Vector3()
 
-/** Moving pickups (thrown and dropped items) drawn in the last frame, for the probes. */
+/** Moving pickups (thrown and dropped items) drawn in the last frame, and those hidden near the POV camera. */
 let movingDrawn = 0
+let movingNearPov = 0
 export const getMovingDrawn = () => movingDrawn
+export const getMovingNearPov = () => movingNearPov
+
+/**
+ * World position of the povCamera the scene renders from, i.e. the eyes of the actor `povCameraOwner()` names (the
+ * same rule as Actors.tsx `isFocusedPOV`, amendment A4), written into `out`; null for RTS, spectator, chase and death
+ * cameras or when that actor is not mounted. The camera sits at the origin of the actor's aim group.
+ */
+export function povEyePosition(out: THREE.Vector3): THREE.Vector3 | null {
+  const owner = povCameraOwner()
+  if (owner === null) return null
+  const camera = getActor(owner)?.aim.getObjectByName('povCamera')
+  return camera ? camera.getWorldPosition(out) : null
+}
 
 export const ringRadius = (width: number) => width * 0.75 + 6
 
@@ -101,6 +121,9 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
   const meta = useMapMeta(wantMeta ? map : '')
   const tickRef = useRenderTickRef(renderTick)
   const lastTickF = useRef(NaN)
+  // POV camera position of the last drawn frame (NaN: no POV camera): moving items near it are hidden, so a camera
+  // change redraws them even while the tick stands still (paused, switching between RTS and POV or between players)
+  const lastEye = useRef(new THREE.Vector3(NaN, NaN, NaN))
 
   const kits = useMemo(
     () => (x && enabled && mode !== 'none' ? buildKitEntries(x, meta, true) : NO_KITS),
@@ -135,15 +158,21 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       if (active.entries === kits.entries) active = { ...NO_KITS, mode: 'none', surface: null }
       drawn.kits = drawn.wires = drawn.rings = 0
       drawn.pickupSource = 'none'
-      movingDrawn = 0
+      movingDrawn = movingNearPov = 0
     }
   }, [kits, mode, surface])
 
   useFrame(() => {
     if (!x || capacity === 0) return
     const tickF = tickFOf(tickRef.current)
-    if (tickF === lastTickF.current) return
+    const eye = moving.length > 0 ? povEyePosition(_eye) : null
+    const le = lastEye.current
+    // NaN never equals itself, so the first POV frame after another camera always redraws
+    const sameEye = eye ? eye.equals(le) : Number.isNaN(le.x)
+    if (tickF === lastTickF.current && sameEye) return
     lastTickF.current = tickF
+    if (eye) le.copy(eye)
+    else le.set(NaN, NaN, NaN)
 
     const p = x.pickups
     const bob = PICKUP_BOB + PICKUP_BOB * Math.sin(tickF * PICKUP_BOB_RATE)
@@ -209,13 +238,19 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       }
     }
 
-    // Thrown and dropped items along their motion, then at rest, until picked up or deleted.
+    // Thrown and dropped items along their motion, then at rest, until picked up or deleted; not inside the
+    // head of the POV player whose eyes render the scene.
     let mv = 0
+    let near = 0
     for (let k = 0; k < moving.length; k++) {
       const m = moving[k]
       const s = sampleMovingPickup(x, m, tickF, _moving)
       if (!s.drawn) continue
-      const [width, height] = (m.kind === 0 ? HEALTH_SIZE : AMMO_SIZE)[m.size] ?? HEALTH_SIZE[1]
+      if (nearPovEye(s, m.kind, m.size, eye)) {
+        near++
+        continue
+      }
+      const [width, height] = pickupBoxSize(m.kind, m.size)
       _p.set(s.x, s.y, s.bottomZ + height / 2)
       _m.compose(_p, NO_ROTATION, _s.set(width, width, height))
       if (m.kind === 0) {
@@ -235,6 +270,7 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
       mv++
     }
     movingDrawn = mv
+    movingNearPov = near
 
     const finish = (mesh: THREE.InstancedMesh | null, count: number) => {
       if (!mesh) return

@@ -263,6 +263,36 @@
       "p2": true
     },
     {
+      "stat": "pickupTaken.atDelete",
+      "eq": 10,
+      "name": "vis 0 entries at a deletion tick (round restarts), not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.leftForGood",
+      "eq": 0,
+      "name": "leaves without a return while the instance lives on, not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.rows",
+      "eq": 61,
+      "name": "findTicks('pickupTaken') rows",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.thrown",
+      "eq": 2,
+      "name": "thrown items deleted at an item_pickup event of their kind",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.withPlayer",
+      "eq": 61,
+      "name": "takes with the taker from a unique item_pickup event",
+      "p2": true
+    },
+    {
       "stat": "pickupTrack.88.model",
       "eq": "models/items/plate.mdl",
       "name": "pickup 88 is the thrown Sandvich plate of the F6 report",

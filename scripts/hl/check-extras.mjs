@@ -550,6 +550,50 @@ const findKindsChecked = {}
   set('findTicks.busiest.count', all('busiest').length)
 }
 
+// findTicks('pickupTaken') (P2 review fix), recounted here: every pickups.vis falling edge except the vis 0 entry at
+// the deletion tick (round restarts) and a leave for good (no return while the instance outlives the 10 s respawn
+// estimate plus 1 s, F6's ITEM_RESPAWN_SECONDS and ITEM_RESPAWN_SLACK_SECONDS), plus the deletions of items that
+// never left the snapshot (thrown or dropped items) at the tick of an item_pickup event of their kind
+{
+  const pk = x.pickups
+  const v = pk.vis
+  const ipt = x.meta.intervalPerTick || 0.015
+  const staleAfter = Math.round(10 / ipt) + Math.round(1 / ipt)
+  const eventKind = item => (!item ? -1 : item.startsWith('medkit_') || item === 'healthammokit' ? 0 : item.startsWith('ammopack_') ? 1 : -1)
+  const pickEvents = x.events.filter(e => e.t === 'pickup')
+  let falling = 0, atDelete = 0, leftForGood = 0, mapTakes = 0, thrownWant = 0
+  for (let j = 0; j < pk.count; j++) {
+    const end = pk.deleted[j] === 0xffffffff ? x.meta.ticks : pk.deleted[j]
+    let left = false
+    for (let i = v.offsets[j] + 1; i < v.offsets[j + 1]; i++) {
+      if (v.v[i] !== 0 || v.v[i - 1] === 0) continue
+      falling++
+      left = true
+      if (v.ticks[i] === pk.deleted[j]) atDelete++
+      else if (i + 1 === v.offsets[j + 1] && end > v.ticks[i] + staleAfter) leftForGood++
+      else mapTakes++
+    }
+    const kind = pk.kind[j] === 1 ? 1 : 0
+    if (!left && pk.deleted[j] !== 0xffffffff && pickEvents.some(e => e.tick === pk.deleted[j] && eventKind(e.item) === kind)) thrownWant++
+  }
+  const rows = findTicks(x, 'pickupTaken', { limit: 1e9 })
+  const thrown = rows.filter(r => r.note === 'thrown')
+  set('pickupTaken.visFalling', falling)
+  set('pickupTaken.atDelete', atDelete)
+  set('pickupTaken.leftForGood', leftForGood)
+  set('pickupTaken.rows', rows.length)
+  set('pickupTaken.thrown', thrown.length)
+  set('pickupTaken.thrownMoving', thrown.filter(r => getters.pickupMoves(x, r.instance)).length)
+  set('pickupTaken.withPlayer', rows.filter(r => r.player !== undefined).length)
+  set('pickupBack.rows', findTicks(x, 'pickupBack', { limit: 1e9 }).length)
+  if (rows.length - thrown.length !== mapTakes) fail(`findTicks('pickupTaken') has ${rows.length - thrown.length} map-kit rows, expected ${mapTakes} (vis falling edges ${falling}, at a deletion ${atDelete}, left for good ${leftForGood})`)
+  if (thrown.length !== thrownWant) fail(`findTicks('pickupTaken') has ${thrown.length} thrown rows, expected ${thrownWant}`)
+  const atDeleteRows = rows.filter(r => r.note !== 'thrown' && r.tick === pk.deleted[r.instance]).length
+  if (atDeleteRows) fail(`findTicks('pickupTaken') returns ${atDeleteRows} deletions (round restarts) as takes`)
+  const offDelete = thrown.filter(r => r.tick !== pk.deleted[r.instance]).length
+  if (offDelete) fail(`${offDelete} thrown pickupTaken rows are not at their instance's deletion`)
+}
+
 // hydration invariants
 {
   const d = x.derived

@@ -17,6 +17,8 @@
 // (they leave the snapshot) or deleted (pickup, or the 30 s lifetime). A plate thrown before the recording
 // started and already at rest has no track: it exists at tick 0 and lives at most a thrown item's lifetime
 // (8 of the 133 local demos, each deleted by the round restart within 4 s), so it draws at its origin too.
+// Seen from the eyes of a POV player, a moving item is not drawn while it is within POV_HIDE_DISTANCE of his
+// camera: a throw starts inside the thrower's head (contract section 5: nothing inside the POV player's body).
 //
 // Spots. Instances at one origin are one kit spot. At tick T a spot shows only its newest instance created at
 // or before T: an entity that leaves the snapshot at a round restart without a delete stays a dormant
@@ -35,7 +37,9 @@ import type { HighlanderExtras } from '@highlander/extras/types'
 import type { MapMeta } from '@highlander/map/mapMeta'
 
 import {
+  AMMO_SIZE,
   DROPPED_KIT_MAX_SECONDS,
+  HEALTH_SIZE,
   ITEM_RESPAWN_SECONDS,
   ITEM_RESPAWN_SLACK_SECONDS,
   KIT_SPOT_RADIUS,
@@ -304,6 +308,32 @@ export interface MovingSample {
 }
 
 export const newMovingSample = (): MovingSample => ({ instance: -1, drawn: false, inFlight: false, x: 0, y: 0, z: 0, bottomZ: 0 })
+
+/**
+ * Seen through the eyes of a POV player (the actor whose own povCamera renders the scene), a moving pickup whose
+ * placeholder centre lies closer than this to his camera is not drawn. A lunchbox throw starts at EyePosition() - 8
+ * (tf_weapon_lunchbox.cpp:215), inside the thrower's head, so the 20 x 20 x 12 placeholder would otherwise cover the
+ * lower third of his screen for the first ticks of the flight (contract section 5: nothing is drawn inside the body
+ * of the POV player). 40 units is the hull half-width (24) plus the largest placeholder half-width (13), rounded up,
+ * so the item is clear of the body when it appears: 6 ticks (90 ms) after the throw on 1434434 (pickup 88, thrower
+ * standing), later when the thrower runs after it. An item resting at the feet of a standing POV player stays drawn
+ * (his eyes are 65 to 75 units above the floor); only a crouched player (eyes 45 units up) right above it hides it.
+ */
+export const POV_HIDE_DISTANCE = 40
+
+/** Placeholder [width, height] of a pickup kind and size (contract F6 sizes). */
+export function pickupBoxSize(kind: number, size: number): readonly [number, number] {
+  return (kind === 0 ? HEALTH_SIZE : AMMO_SIZE)[size] ?? HEALTH_SIZE[1]
+}
+
+/** True when the placeholder of moving sample `s` (its box centre) lies within POV_HIDE_DISTANCE of `eye`. Pure. */
+export function nearPovEye(s: MovingSample, kind: number, size: number, eye: { x: number; y: number; z: number } | null): boolean {
+  if (!eye || !s.drawn) return false
+  const dz = s.bottomZ + pickupBoxSize(kind, size)[1] / 2 - eye.z
+  const dx = s.x - eye.x
+  const dy = s.y - eye.y
+  return dx * dx + dy * dy + dz * dz < POV_HIDE_DISTANCE * POV_HIDE_DISTANCE
+}
 
 /** State of a moving pickup at tickF: where it is along its xform track and whether it draws. Pure. */
 export function sampleMovingPickup(x: HighlanderExtras, m: MovingPickup, tickF: number, out: MovingSample): MovingSample {

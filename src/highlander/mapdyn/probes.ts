@@ -5,15 +5,19 @@
 //   hl.probe('mapdyn.pickups', tick?)  kit spots that draw at the tick, one row per spot (its current
 //                                      instance): { instance, spot, kind, size, visible, respawnIn, progress,
 //                                      takenTick, nextTick, estimated, pos, floor, baked }, then one row per
-//                                      moving pickup (thrown or dropped item, P2) drawn at the tick:
-//                                      { instance, spot: null, moving: true, kind, size, visible, inFlight, pos }
+//                                      moving pickup (thrown or dropped item, P2) alive and not picked up at the
+//                                      tick: { instance, spot: null, moving: true, kind, size, visible, nearPov,
+//                                      inFlight, pos, bottom }; visible is false only while nearPov (within
+//                                      POV_HIDE_DISTANCE of the POV camera the scene renders from)
 //   hl.probe('mapdyn.kits', tick?)     which pickups are map kits: spots, the instances skipped (reason
 //                                      'moving': thrown or dropped items, drawn along their motion; 'model':
 //                                      other models; 'dropped': kit models on no map spot) and, with a tick,
 //                                      the stale or skipped instances alive then
 //   hl.probe('mapdyn.moving', tick?, floors?) moving pickups (P2): every thrown or dropped item with its
-//                                      lifetime, track and, at the tick, whether and where it draws; with floors
-//                                      the visible floor under each rest position (surface.ts, debug only)
+//                                      lifetime, track and, at the tick, whether and where it draws (drawn: alive
+//                                      and not picked up; nearPov and povDistance: hidden near the POV camera,
+//                                      povEye); with floors the visible floor under each rest position (surface.ts,
+//                                      debug only)
 //   hl.probe('mapdyn.surface', remeasure?) the floor analyses of the kit spots and of the mid-air death
 //                                      markers (surface.ts); remeasure re-runs both in one call and times them
 //   hl.probe('mapdyn.slabs', tick?)    prop-door slabs: { bspModel, name, visible, center }
@@ -44,16 +48,21 @@ import {
   sampleMover,
   type MoverSample,
 } from './movers'
-import { getActiveKits, getMovingDrawn, kitSurfaceOptions } from './Pickups'
+import { getActiveKits, getMovingDrawn, getMovingNearPov, kitSurfaceOptions, povEyePosition } from './Pickups'
 import {
   PICKUP_KIND_NAMES,
   PICKUP_SIZE_NAMES,
+  POV_HIDE_DISTANCE,
+  nearPovEye,
   newMovingSample,
   newPickupSample,
+  pickupBoxSize,
   pickupModel,
   sampleKitSpot,
   sampleMovingPickup,
   samplePickup,
+  type MovingPickup,
+  type MovingSample,
 } from './pickups'
 import { slabMatrixAt } from './slabs'
 import { analyzeSpots, type SpotSurface } from './surface'
@@ -78,6 +87,11 @@ const _matrix = new THREE.Matrix4()
 const _mover: MoverSample = { instance: -1, vis: false, hasXform: false }
 const _pickup = newPickupSample()
 const _moving = newMovingSample()
+const _eye = new THREE.Vector3()
+
+/** Distance from the placeholder centre of a drawn moving sample to the POV eye, null without either. */
+const povDistanceOf = (s: MovingSample, m: MovingPickup, eye: THREE.Vector3 | null) =>
+  eye && s.drawn ? r2(Math.hypot(s.x - eye.x, s.y - eye.y, s.bottomZ + pickupBoxSize(m.kind, m.size)[1] / 2 - eye.z)) : null
 
 registerHlProbe('mapdyn.movers', (tick?: number) => {
   const x = readyExtras()
@@ -155,16 +169,19 @@ registerHlProbe('mapdyn.pickups', (tick?: number) => {
       baked: bakedOf(k),
     })
   })
+  const eye = kits.moving.length ? povEyePosition(_eye) : null
   for (const m of kits.moving) {
     const s = sampleMovingPickup(x, m, t, _moving)
     if (!s.drawn) continue
+    const nearPov = nearPovEye(s, m.kind, m.size, eye)
     rows.push({
       instance: m.instance,
       spot: null,
       moving: true,
       kind: PICKUP_KIND_NAMES[m.kind] ?? m.kind,
       size: PICKUP_SIZE_NAMES[m.size] ?? m.size,
-      visible: true,
+      visible: !nearPov,
+      nearPov,
       inFlight: s.inFlight,
       pos: [r2(s.x), r2(s.y), r2(s.z)],
       bottom: r2(s.bottomZ),
@@ -181,6 +198,7 @@ registerHlProbe('mapdyn.moving', (tick?: number, floors?: boolean) => {
   const kits = getActiveKits()
   const p = x.pickups
   const xf = p.xform
+  const eye = kits.moving.length ? povEyePosition(_eye) : null
   const rows = kits.moving.map(m => {
     const j = m.instance
     const a = xf.offsets[j], b = xf.offsets[j + 1]
@@ -202,12 +220,23 @@ registerHlProbe('mapdyn.moving', (tick?: number, floors?: boolean) => {
       start: tracked ? [r2(xf.x[a]), r2(xf.y[a]), r2(xf.z[a])] : origin,
       rest: tracked ? [r2(xf.x[b - 1]), r2(xf.y[b - 1]), r2(xf.z[b - 1])] : origin,
       drawn: s.drawn,
+      nearPov: s.drawn ? nearPovEye(s, m.kind, m.size, eye) : null,
+      povDistance: povDistanceOf(s, m, eye),
       inFlight: s.drawn ? s.inFlight : null,
       pos: s.drawn ? [r2(s.x), r2(s.y), r2(s.z)] : null,
       bottom: s.drawn ? r2(s.bottomZ) : null,
     }
   })
-  const out: Record<string, unknown> = { tick: t, mode: kits.mode, count: rows.length, drawnLastFrame: getMovingDrawn(), rows }
+  const out: Record<string, unknown> = {
+    tick: t,
+    mode: kits.mode,
+    count: rows.length,
+    drawnLastFrame: getMovingDrawn(),
+    nearPovLastFrame: getMovingNearPov(),
+    povEye: eye ? vec(eye) : null,
+    povHideDistance: POV_HIDE_DISTANCE,
+    rows,
+  }
   const world = getWorldGroup()
   if (floors && world && rows.length) {
     // The visible floor under each rest position, within 120 units below and 4 above the collision box bottom:

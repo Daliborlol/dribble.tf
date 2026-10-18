@@ -64,6 +64,36 @@
       "p2": true
     },
     {
+      "stat": "pickupTaken.atDelete",
+      "eq": 6,
+      "name": "vis 0 entries at a deletion tick (round restarts), not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.leftForGood",
+      "eq": 0,
+      "name": "leaves without a return while the instance lives on, not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.rows",
+      "eq": 309,
+      "name": "findTicks('pickupTaken') rows",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.thrown",
+      "eq": 4,
+      "name": "thrown items deleted at an item_pickup event of their kind",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.withPlayer",
+      "eq": 303,
+      "name": "takes with the taker from a unique item_pickup event",
+      "p2": true
+    },
+    {
       "stat": "pickups.platesSmall",
       "eq": 1,
       "name": "the banana plate is a small kit (12.2 item 4)",

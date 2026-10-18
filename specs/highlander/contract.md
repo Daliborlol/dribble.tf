@@ -1,6 +1,6 @@
 # Highlander implementation contract
 
-Version 2.3, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave, section 13 those after wave 2). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
+Version 2.4, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave, section 13 those after wave 2, section 14 those after wave 3). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
 `../dribble-parser`. It was written from the four research documents in this folder, all of which were present:
 `parser-probe.md`, `maps.md`, `tf2-reference.md` and `frontend.md`. It also reflects a read of the current code
 (`dribble-parser/src/lib.rs`, the Analyse/Data layer, `store.ts`, `actions.ts`, `DemoViewer.tsx`, `Actors.tsx`,
@@ -3306,6 +3306,69 @@ not edit sections 0 to 13 of this contract. After X2's review, DOCS adds X2's fi
 an adversarial review of the whole diff from `598e328` by dimension, each finding verified independently; a
 completeness critic against sections 5 and 9 and the 12.4 and 13.4 task lists. Confirmed findings get fixed before
 the final report.
+
+## 14. Amendments after the wave-3 merge (version 2.4)
+
+X2, H1 and DOCS are merged on `highlander` through `f51f0c0` (X2, tip `308ffba`), `73a8412` (H1, tip `9acf271`) and
+`1ced433` (DOCS, tip `2b6166d`), followed by `30f792c`, which brings H1's smoke sweep and README up to X2's probes.
+The parser is unchanged at `41fe9f3`. These amendments bind the final verification and its fixes and override the text
+above where they differ. The wave-3 final reports are in `$S/handoff/wave3-results.json` (digest:
+`$S/handoff/wave3.md`). `AGENTS.md` and `specs/highlander/STATUS.md` describe the merged state.
+
+### 14.1 Accepted deviations of wave 3
+
+| task | accepted deviation |
+|---|---|
+| X2 | The adapter (`src/highlander/memory/projectileAdapter.ts`) is an exact sparse copy of the base rows, not a set of extras samples (section 5 X2 and D13 said it "serves the base types from extras"). It keeps the raw fixed-point positions and rotations with the cache's own scales (parser2 1024, fallback 32, rotations 256) and the bucket team and type, grouped into one track per instance F3 serves (type from `baseType[j]`) over [created, deleted), the landed phase included. Extras samples cannot feed the legacy path that Highlander off and a later extras error draw through, so the copy is what 13.4 requires. |
+| X2 | API. `AsyncParser.releaseProjectileCache(replacement: ProjectileReader): number` returns the bytes released, or 0 when already released, and detaches each buffer with `transfer(0)`. `projectileReader()` returns the cache, or the adapter after the release, and `projectileCacheReleased` says which. `getProjectilesAtTick` and F3's `getProjectileSource` read through `projectileReader()`. `ProjectileCache.ts` exports `ProjectileTypeMap` and the interface `ProjectileReader { projectileIds, getProjectile(tick, slot), getProjectiles(tick), getTypeCode(tick, slot) }`. Rule: read base projectiles through `demo.projectileReader()` or `getProjectilesAtTick()`, never through `demo.projectileCache`. |
+| X2 | Scheduling. The automatic release runs from `requestIdleCallback` with a 2 s timeout (`setTimeout` 0 where it is missing), as its own task after the extras are ready, and checks the conditions again when it runs. Headless Chromium gives it no idle time, so there it lands 1.5 to 2.0 s after extras-ready. A self-check (256 even ticks, tick 0, `ticks - 1`, and four edge lookups per track) must pass or the cache stays; a failed release is not retried. `?hlProjectileRelease=manual` defers the release to the `memory.release` probe. New probes: `memory.projectiles`, `.release`, `.base`, `.digest`, `.split` and `.drawn` (65 in all). |
+| X2 | `e2b1c33`: `ProjectileModel` clones its GLB in a `useMemo` keyed by `gltf.scene`, so a seek across entity-id reuse no longer keeps the other team's model. This changes drawing with Highlander off (rule 7.4) to fix a determinism bug (D12) that reproduces on `b6688f4`. |
+| X2 | `ViewerPage.tsx` selects the downloads `Map` and filters it in a `useMemo` (the 13.3 option). Over 10 s of playback ViewerPage renders 0 times instead of 598, and DemoViewer 599 instead of 1195. |
+| X2 | Without a release (Highlander off at load, extras disabled, failed or without projectiles) the base cache stays for the session, as 13.4 requires, so such a demo keeps its full projectile memory (641 MB on 1429417). |
+| H1 | The harness lives in `scripts/hl/harness/` (its README is the reference) and replaces `$S/harness`, which later tasks do not use. `tools/compare-runs.mjs` is the baseline gate. It exits 0 when both runs did the same steps: the same demo header, viewport and manifest structure, and per step the same definition, tick, mode, focus, error and screenshot presence; paused steps must also match in render tick and player list. It exits 1 when they did not or a shot changed more than `--max-pct`, 2 when they cannot be compared and 64 on a usage error. Pixels still need a person; heal beams and the FPS counter are noise. Browser auto-detection takes the revision the pinned playwright-core expects (1248 for 1.64.0) first, and warns otherwise. |
+
+### 14.2 Orchestrator decisions
+
+- **Highlander on without extras (3.9).** Whenever `settings.highlander.enabled` is true, the code keeps the Highlander
+  form of the HUD and POV, whatever the extras status. That covers the 9v9 columns, medic panels, killfeed and
+  scoreboard from base data, the TF2 POV FOV, class eye heights, the death camera at the death spot (no killer) and the
+  12-plate cap. Only the layers fed by extras draw nothing. This is accepted. It replaces "base UI only" in the 3.9 rows
+  for loading, `'error'` and a memory-plan skip, because the layout no longer flips when the extras arrive and base
+  data covers what these widgets show. Only Highlander off restores the pre-Highlander UI. The `ExtrasNotice` texts of
+  3.9 stay. Without extras the K and D columns count Dead Ringer feigns (base deaths), so the scoreboard footer must
+  not claim they are left out. That is fixed in the final verification.
+- **Section 8, newer map version.** Re-running `convert:bsp` alone changes nothing. The viewer finds a folder only
+  through `MAP_NAME_SEARCH_MAP` in `src/constants/mappings.ts`, where the longest matching prefix wins. It finds a sky
+  only through `MAP_SKYBOX_MAP`, where the last key in object order that the map name contains wins, so a
+  version-specific key goes after the shorter one. A newer version needs its conversion plus its exact name in both
+  tables, or the shared key re-pointed at the new folder. Letting the converter register what it writes stays a
+  follow-up.
+- **Fixes taken by the final verification**, besides its confirmed findings:
+  - the scoreboard footer above (F5's `Scoreboard.tsx`);
+  - the stale "the base viewer cannot load it" text in `scripts/hl/expect/1429417.json`, stale since B1;
+  - X2's all-tick adapter check (`x2-out/tools/check-adapter.mjs`) ported to `scripts/hl/`, if that is cheap.
+
+### 14.3 Final verification (refines 13.4)
+
+- **Scope.** The whole Highlander diff `009cdb0..highlander`, which includes step 0 (`598e328`: debug bridge, items
+  table, converter scripts and specs), and the parser's `c7185e4..41fe9f3` in `../dribble-parser`.
+- **Smoke.** Run the repo harness on the median-size local demo of every map plus the 6v6 sample, each once with
+  Highlander on (with `--perf-play`) and once with it off. Every run must load its map (`mapStatus` ready), finish
+  with 0 app errors, keep every sweep probe free of errors beyond the documented ones, and show sensible frames. The
+  demos are 1440037 (pl_vigil_rc10), 1434161 (koth_product_final), 1434429 (koth_ashville_final1), `-6.dem`
+  (koth_warmtic_f10), 1422962 (pl_divulgence_b4b), 1428628 (tow_tetsudo_b10c, delayed start, memory gate 3000 MB),
+  1440003 (pl_upward_f12), 1429432 (pl_eruption_b15), 1429440 (pl_downfall_b13), 1437271 (koth_proot_b5b), 1440427
+  (cp_steel_f12) and `public/samples/i52_snakewater_gc.dem`.
+- **Review dimensions**, each finding verified by a separate agent that tries to refute it:
+  - parser and data: the fork's diff, the extras schema, loader, memory plan and worker, and the base-parse routes;
+  - scene and rendering;
+  - HUD, UI and state;
+  - the base app with Highlander off: rule 7.4, settings persistence, URL parameters, 6v6 demos and textured maps;
+  - security and robustness: malformed or hostile demos and files, map names in URLs, and scripts that run commands.
+- **Completeness critic.** Check sections 5 and 9 and the 12.4, 13.4 and 14.2 task lists against the code and
+  `STATUS.md`.
+- **Fixes.** Confirmed findings are fixed on their own branches, each reviewed, then merged with the gates of 7.3 and
+  7.4: tsc at the 10 known errors, build, smoke and the baseline plan through `compare-runs`.
 
 ## Appendix A. `src/highlander/extras/enums.ts`
 

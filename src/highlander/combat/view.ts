@@ -131,6 +131,24 @@ export function gunMuzzle(view: PlayerView, out: THREE.Vector3): THREE.Vector3 {
   return out
 }
 
+/** Writes the world position of the drawn viewmodel's muzzle for the player with that entity id; false: none. */
+export type OwnMuzzleSource = (entityId: number, out: THREE.Vector3) => boolean
+let ownMuzzleSource: OwnMuzzleSource | null = null
+
+/**
+ * Lets the viewmodel integration supply the own-eyes gun muzzle (X1: the world position of F4's
+ * `ViewmodelInstance.muzzle`), so the POV owner's tracers leave the drawn gun. Pass null to remove it.
+ */
+export function setOwnMuzzleSource(source: OwnMuzzleSource | null): void {
+  ownMuzzleSource = source
+}
+
+/** Where the own-eyes tracers start: the registered viewmodel muzzle, else gunMuzzle. */
+export function ownMuzzleAt(entityId: number, view: PlayerView, out: THREE.Vector3): THREE.Vector3 {
+  if (ownMuzzleSource && ownMuzzleSource(entityId, out)) return out
+  return gunMuzzle(view, out)
+}
+
 /**
  * Entity id of the actor whose own povCamera the scene renders from, or null (RTS, spectator, chase and death
  * cameras). Same rule as Actors.tsx `isFocusedPOV` (contract 6.2 item 8 and amendment A4).

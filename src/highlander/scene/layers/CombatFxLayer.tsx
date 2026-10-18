@@ -19,6 +19,7 @@ import {
   critGlowOpacity,
   DEFLECT_RING_RADIUS,
   readCombatSettings,
+  SYRINGE_TRAIL_POINTS,
   TRACER_WIDTH,
   type ViewResolver,
 } from '@highlander/combat/combatData'
@@ -27,6 +28,7 @@ import { combatRecord, recordingEnabled, resetRecord } from '@highlander/combat/
 import { quatForwardX } from '@highlander/combat/projectileData'
 import { getProjectileSource } from '@highlander/combat/projectileSource'
 import { frameTime } from '@highlander/combat/time'
+import { TRAIL_HEAD_ALPHA, TRAIL_MIN_PIXELS } from '@highlander/combat/trails'
 import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
 
@@ -57,8 +59,8 @@ function createCombatMeshes() {
   const flameCone = gradientConeX(rgba('#ffe066', 0.6), rgba('#ff5a1a', 0))
   // brightest at the open end: the expanding front reads as a pressure wave
   const airCone = gradientConeX(rgba('#dff3ff', 0.2), rgba('#dff3ff', 0.8))
-  // 6-unit needles, thick enough to read as a stream from the RTS camera
-  const needle = new THREE.BoxGeometry(6, 1, 1)
+  // 6-unit needles; the streak behind each one (syringeTrails) carries the stream in the RTS overview
+  const needle = new THREE.BoxGeometry(6, 1.6, 1.6)
 
   const scorchMaterial = makeFxMaterial({ blending: 'normal', color: '#141414', instanceOpacity: true, side: THREE.DoubleSide })
   scorchMaterial.polygonOffset = true
@@ -83,8 +85,11 @@ function createCombatMeshes() {
   }
   const tracerMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })
   const tracers = new RibbonBatch(tracerMaterial, 4096, 'hl-tracers')
+  // syringe streaks blend like the projectile trails
+  const syringeTrailMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+  const syringeTrails = new RibbonBatch(syringeTrailMaterial, 1024, 'hl-syringe-trails')
   const geometries = [sphere, glowSphere, disc, ring, thinRing, frontRing, flameCone, airCone, needle]
-  return { meshes, tracers, tracerMaterial, geometries, glowMaterial }
+  return { meshes, tracers, tracerMaterial, syringeTrails, syringeTrailMaterial, geometries, glowMaterial }
 }
 
 type CombatMeshes = ReturnType<typeof createCombatMeshes>
@@ -96,6 +101,8 @@ function disposeCombatMeshes(fx: CombatMeshes) {
   }
   fx.tracers.dispose()
   fx.tracerMaterial.dispose()
+  fx.syringeTrails.dispose()
+  fx.syringeTrailMaterial.dispose()
   for (const geometry of fx.geometries) geometry.dispose()
 }
 
@@ -115,6 +122,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       matrix: new THREE.Matrix4(),
       camera: new THREE.Vector3(),
       color: new THREE.Color(),
+      points: new Float32Array(SYRINGE_TRAIL_POINTS * 3),
     }),
     []
   )
@@ -130,7 +138,9 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     const m = fx.meshes
     for (const instances of Object.values(m)) instances.begin()
     camera.getWorldPosition(s.camera)
-    fx.tracers.begin(s.camera, pixelScaleOf(camera, size.height))
+    const pixelScale = pixelScaleOf(camera, size.height)
+    fx.tracers.begin(s.camera, pixelScale)
+    fx.syringeTrails.begin(s.camera, pixelScale)
 
     const at = (v: [number, number, number]) => s.pos.set(v[0], v[1], v[2])
 
@@ -218,22 +228,32 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       s.matrix.compose(at(d.pos), s.quat.identity(), s.scale.setScalar(d.radius))
       m.deflects.push(s.matrix, undefined, d.opacity)
     }
-    // syringes: needles along their velocity in the shooter's trail colour
+    // syringes: needles along their velocity in the shooter's trail colour, each with a streak through its path
     for (const n of effects.syringes) {
       s.dir.set(n.dir[0], n.dir[1], n.dir[2])
       quatForwardX(s.dir, s.quat)
       s.matrix.compose(at(n.pos), s.quat, s.scale.setScalar(1))
       m.syringes.push(s.matrix, s.color.set(n.color))
+      const count = Math.min(n.trail.length, SYRINGE_TRAIL_POINTS)
+      if (count < 2) continue
+      for (let k = 0; k < count; k++) {
+        s.points[k * 3] = n.trail[k][0]
+        s.points[k * 3 + 1] = n.trail[k][1]
+        s.points[k * 3 + 2] = n.trail[k][2]
+      }
+      fx.syringeTrails.strip(s.points, count, s.color.set(n.trailColor), n.trailWidth, n.trailWidth * 0.5, TRAIL_HEAD_ALPHA, 0, TRAIL_MIN_PIXELS)
     }
 
     for (const instances of Object.values(m)) instances.end()
     fx.tracers.end()
+    fx.syringeTrails.end()
 
     if (recordingEnabled()) {
       resetRecord(combatRecord, tickF)
       for (const g of effects.glows) combatRecord.glows.set(g.instance, g.pos)
       for (const [name, instances] of Object.entries(m)) if (instances.count) combatRecord.counts[name] = instances.count
       combatRecord.counts.tracerVertices = fx.tracers.vertexCount
+      if (fx.syringeTrails.vertexCount) combatRecord.counts.syringeTrailVertices = fx.syringeTrails.vertexCount
     }
   })
 
@@ -243,6 +263,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
         <primitive key={name} object={instances.mesh} />
       ))}
       <primitive object={fx.tracers.mesh} />
+      <primitive object={fx.syringeTrails.mesh} />
     </group>
   )
 })

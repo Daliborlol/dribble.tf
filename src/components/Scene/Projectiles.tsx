@@ -19,19 +19,23 @@ import type { HighlanderExtras } from '@highlander/extras/types'
 import { CRIT_GLOW_RADIUS, CRIT_GLOW_SOFTNESS, critGlowOpacity, DEFLECT_RING_RADIUS } from '@highlander/combat/combatData'
 import { FxInstances, makeFxMaterial, pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
 import { baseRecord, pointList, recordingEnabled, resetRecord } from '@highlander/combat/frameRecord'
+import { landedPoseAt } from '@highlander/combat/landing'
 import {
   deflectIndexAt,
   directionAt,
+  landedEnd,
+  makeEntityMatch,
   matchEntity,
   positionAt,
   projectilesDrawnAt,
   projectilesDrawnIn,
   projectileTeamAt,
   quatLookBack,
-  type EntityMatch,
 } from '@highlander/combat/projectileData'
 import { getProjectileSource } from '@highlander/combat/projectileSource'
 import { frameTime } from '@highlander/combat/time'
+import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
+import type { ViewResolver } from '@highlander/combat/combatData'
 import {
   DESPAWN_EXPLOSION_COLOR,
   despawnExplosionsAt,
@@ -976,9 +980,10 @@ export const HealingBoltProjectile = (props: BaseProjectileProps) => {
 //
 // Once the extras are ready every base projectile takes its position from the samples of its extras instance at
 // tickF and its orientation from the sample delta, so mesh, crit glow, deflect ring and trail share one position
-// and a seek reproduces the frame exactly. Instances that the source split gives to ProjectilesExtraLayer, and
-// instances that are hidden (detonated pipes, landed bolts) but not deleted yet, are not drawn here. A base
-// projectile without any extras instance keeps the legacy smoothed component (no trail).
+// and a seek reproduces the frame exactly. Instances that the source split gives to ProjectilesExtraLayer are not
+// drawn here, nor are hidden instances (detonated pipes and stickies) that are not deleted yet, except landed
+// healing bolts: they stay where they hit, or on the player they hit, until the server deletes them
+// (combat/landing.ts). A base projectile without any extras instance keeps the legacy smoothed component (no trail).
 //
 
 
@@ -1008,23 +1013,27 @@ function deflectRingMaterial(color: string): THREE.MeshBasicMaterial {
   return material
 }
 
+const BASE_DRAWN_TYPES = ['rocket', 'pipebomb', 'stickybomb', 'healingBolt']
+
 const ExtrasProjectiles = (props: ProjectilesProps & { x: HighlanderExtras; demo: AsyncParser }) => {
   const { projectiles = [], tick, intervalPerTick, x, demo } = props
   const source = getProjectileSource(x, demo)
-  const match = useRef<EntityMatch>({ drawn: -1, hidden: false }).current
+  const match = useMemo(() => makeEntityMatch(), [])
 
   return (
     <group name="projectiles">
       {projectiles.map(projectile => {
         matchEntity(x, projectile.entityId, tick, match)
-        if (match.drawn >= 0) {
-          // the source split decides: instances without a typed base slot belong to ProjectilesExtraLayer
-          if (!source.servedByBase[match.drawn]) return null
-          if (!['rocket', 'pipebomb', 'stickybomb', 'healingBolt'].includes(projectile.type)) return null
+        // the source split decides: instances without a typed base slot belong to ProjectilesExtraLayer. A landed
+        // bolt keeps the same component (and key) as its flight, so nothing remounts at the hide tick.
+        const j = match.drawn >= 0 ? match.drawn : match.hiddenInstance >= 0 && tick < landedEnd(x, match.hiddenInstance) ? match.hiddenInstance : -1
+        if (j >= 0) {
+          if (!source.servedByBase[j] || !BASE_DRAWN_TYPES.includes(projectile.type)) return null
           return (
             <ExtrasBaseProjectile
               key={`x-${projectile.entityId}`}
               x={x}
+              demo={demo}
               entityId={projectile.entityId}
               type={projectile.type}
               teamNumber={projectile.teamNumber}
@@ -1058,19 +1067,22 @@ const ExtrasProjectiles = (props: ProjectilesProps & { x: HighlanderExtras; demo
 
 interface ExtrasBaseProjectileProps {
   x: HighlanderExtras
+  demo: AsyncParser
   entityId: number
   type: string
   teamNumber: number
 }
 
-const ExtrasBaseProjectile = React.memo(({ x, entityId, type, teamNumber }: ExtrasBaseProjectileProps) => {
+const ExtrasBaseProjectile = React.memo(({ x, demo, entityId, type, teamNumber }: ExtrasBaseProjectileProps) => {
   const ref = useRef<THREE.Group>(null)
   const glowRef = useRef<THREE.Mesh>(null)
   const ringRef = useRef<THREE.Mesh>(null)
   const s = useMemo(
-    () => ({ time: { tick: 0, tickF: 0 }, match: { drawn: -1, hidden: false } as EntityMatch, pos: new THREE.Vector3(), dir: new THREE.Vector3(), quat: new THREE.Quaternion() }),
+    () => ({ time: { tick: 0, tickF: 0 }, match: makeEntityMatch(), pos: new THREE.Vector3(), dir: new THREE.Vector3(), quat: new THREE.Quaternion() }),
     []
   )
+  // a bolt that landed on a player rides on his drawn actor, like the flames
+  const resolve: ViewResolver = useMemo(() => (p, tickF, out) => playerViewDrawn(demo, p, tickF, out), [demo])
   const team = TEAM_MAP[teamNumber]
   const teamColor = TEAM_COLORS[team] ?? TRAIL_FALLBACK_COLOR
 
@@ -1079,20 +1091,30 @@ const ExtrasBaseProjectile = React.memo(({ x, entityId, type, teamNumber }: Extr
     if (!group) return
     const { tick, tickF } = frameTime(s.time)
     // the store tick can run one frame ahead of the mounted list: hide when the instance is not drawn there
-    const j = matchEntity(x, entityId, tick, s.match).drawn
-    if (j < 0 || !positionAt(x, j, tickF, s.pos)) {
+    const m = matchEntity(x, entityId, tick, s.match)
+    let j = m.drawn
+    let landed = false
+    if (j >= 0) {
+      if (!positionAt(x, j, tickF, s.pos)) j = -1
+    } else if (m.hiddenInstance >= 0 && landedPoseAt(x, demo, m.hiddenInstance, tickF, resolve, s.pos, s.dir, povCameraOwner())) {
+      j = m.hiddenInstance
+      landed = true
+    }
+    if (j < 0) {
       group.visible = false
       return
     }
     group.visible = true
     group.position.copy(s.pos)
-    if (type !== 'healingBolt') group.quaternion.copy(quatLookBack(directionAt(x, j, tickF, s.dir), s.quat))
+    if (type !== 'healingBolt') group.quaternion.copy(quatLookBack(landed ? s.dir : directionAt(x, j, tickF, s.dir), s.quat))
     group.userData.hlInstance = j
+    group.userData.hlLanded = landed
 
+    // glow and deflect ring belong to the flight
     const projectileTeam = projectileTeamAt(x, j, tick)
     const glow = glowRef.current
     if (glow) {
-      glow.visible = x.projectiles.crit[j] !== 0 && getHlSetting<boolean>('projectiles.critGlow') !== false
+      glow.visible = !landed && x.projectiles.crit[j] !== 0 && getHlSetting<boolean>('projectiles.critGlow') !== false
       if (glow.visible) {
         const material = critGlowMaterial(teamGlowColor(projectileTeam))
         material.uniforms.uOpacity.value = critGlowOpacity(tickF)
@@ -1101,13 +1123,13 @@ const ExtrasBaseProjectile = React.memo(({ x, entityId, type, teamNumber }: Extr
     }
     const ring = ringRef.current
     if (ring) {
-      ring.visible = deflectIndexAt(x, j, tick) >= 0 && getHlSetting<boolean>('projectiles.airblast') !== false
+      ring.visible = !landed && deflectIndexAt(x, j, tick) >= 0 && getHlSetting<boolean>('projectiles.airblast') !== false
       if (ring.visible) ring.material = deflectRingMaterial(teamGlowColor(projectileTeam))
     }
   })
 
   return (
-    <group name={type} ref={ref} visible={false} userData={{ hlProjectile: 'base', entityId, hlInstance: -1 }}>
+    <group name={type} ref={ref} visible={false} userData={{ hlProjectile: 'base', entityId, hlInstance: -1, hlLanded: false }}>
       {type === 'healingBolt' ? (
         <Sphere args={[5]}>
           <meshLambertMaterial attach="material" color="yellow" />

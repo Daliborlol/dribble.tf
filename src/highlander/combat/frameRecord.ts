@@ -19,13 +19,15 @@ export interface FrameRecord {
   tickF: number
   frame: number
   meshes: Map<number, Vec3>
+  /** landed bolts drawn this frame (instance -> position) */
+  landed: Map<number, Vec3>
   glows: Map<number, Vec3>
   trails: DrawnTrail[]
   smoke: number
   counts: Record<string, number>
 }
 
-const makeRecord = (): FrameRecord => ({ tickF: NaN, frame: 0, meshes: new Map(), glows: new Map(), trails: [], smoke: 0, counts: {} })
+const makeRecord = (): FrameRecord => ({ tickF: NaN, frame: 0, meshes: new Map(), landed: new Map(), glows: new Map(), trails: [], smoke: 0, counts: {} })
 
 /** ProjectilesExtraLayer (meshes and ribbons of extras-drawn instances). */
 export const extrasRecord = makeRecord()
@@ -45,6 +47,7 @@ export function resetRecord(record: FrameRecord, tickF: number): void {
   record.tickF = tickF
   record.frame = ++frameCounter
   record.meshes.clear()
+  record.landed.clear()
   record.glows.clear()
   record.trails.length = 0
   record.smoke = 0

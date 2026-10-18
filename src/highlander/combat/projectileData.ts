@@ -6,6 +6,7 @@
 
 import * as THREE from 'three'
 
+import { PROJ } from '@highlander/extras/enums'
 import { trackIndexAt } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 
@@ -116,12 +117,19 @@ export interface EntityMatch {
   drawn: number
   /** True when an instance of this entity exists at the tick but is hidden (hidden <= tick < deleted). */
   hidden: boolean
+  /** That hidden instance, or -1. */
+  hiddenInstance: number
+}
+
+export function makeEntityMatch(): EntityMatch {
+  return { drawn: -1, hidden: false, hiddenInstance: -1 }
 }
 
 /** The extras instance of entity id `entityId` at `tick` (contract 5 F3 Projectiles.tsx edit 1). */
-export function matchEntity(x: HighlanderExtras, entityId: number, tick: number, out: EntityMatch = { drawn: -1, hidden: false }): EntityMatch {
+export function matchEntity(x: HighlanderExtras, entityId: number, tick: number, out: EntityMatch = makeEntityMatch()): EntityMatch {
   out.drawn = -1
   out.hidden = false
+  out.hiddenInstance = -1
   const list = x.derived.projectilesByEntity.get(entityId)
   if (!list) return out
   const pj = x.projectiles
@@ -133,10 +141,36 @@ export function matchEntity(x: HighlanderExtras, entityId: number, tick: number,
     else {
       const deleted = pj.deleted[j]
       out.hidden = deleted === NONE_U32 || tick < deleted
+      if (out.hidden) out.hiddenInstance = j
     }
     break
   }
   return out
+}
+
+// ─── Landed phase: hidden but not deleted yet ──────────────────────────────────
+
+/**
+ * Kinds the server stops, hides (EF_NODRAW) and deletes 3 s later when they land: every CTFProjectile_Arrow
+ * (FadeOut, tf_projectile_arrow.cpp:1014). On the measured demos only healing bolts hide before they are deleted;
+ * arrows and repair bolts stay networked while they rest, so their resting phase is already drawn as alive.
+ */
+export const LANDING_KINDS: ReadonlySet<number> = new Set([PROJ.ARROW, PROJ.REPAIR_BOLT, PROJ.HEALING_BOLT])
+/** FadeOut(3.0): the server deletes a landed bolt 3 s after it hid. */
+export const LANDED_SECONDS = 3
+
+/**
+ * Exclusive end of instance j's landed phase [hidden, end): deleted, capped at hidden + 3 s and at the demo end.
+ * The phase is empty (end <= hidden) for kinds without one and 0 for instances that never hid.
+ */
+export function landedEnd(x: HighlanderExtras, j: number): number {
+  const pj = x.projectiles
+  const hidden = pj.hidden[j]
+  if (hidden === NONE_U32) return 0
+  if (!LANDING_KINDS.has(pj.kind[j])) return hidden
+  const cap = hidden + Math.round(LANDED_SECONDS / (x.meta.intervalPerTick || 0.015))
+  const deleted = pj.deleted[j]
+  return Math.min(deleted === NONE_U32 ? cap : deleted, cap, x.meta.ticks)
 }
 
 // ─── Interval index: instances drawn at a tick ────────────────────────────────
@@ -205,7 +239,21 @@ function queryRange(index: IntervalIndex, from: number, to: number, out: number[
 }
 
 const projectileIndexes = new WeakMap<HighlanderExtras, IntervalIndex>()
+const landedIndexes = new WeakMap<HighlanderExtras, IntervalIndex>()
 const flameIndexes = new WeakMap<HighlanderExtras, IntervalIndex>()
+
+/** Instances in their landed phase at tick (hidden <= tick < landedEnd), ascending. */
+export function projectilesLandedAt(x: HighlanderExtras, tick: number, out: number[] = []): number[] {
+  let index = landedIndexes.get(x)
+  if (!index) {
+    const pj = x.projectiles
+    // [hidden, landedEnd); never-hidden instances and kinds without a landed phase get an empty interval
+    const starts = Uint32Array.from(pj.hidden, h => (h === NONE_U32 ? 0 : h))
+    index = buildIntervalIndex(starts, j => landedEnd(x, j), pj.count, x.meta.ticks)
+    landedIndexes.set(x, index)
+  }
+  return queryAt(index, tick, out)
+}
 
 function projectileIndex(x: HighlanderExtras): IntervalIndex {
   let index = projectileIndexes.get(x)

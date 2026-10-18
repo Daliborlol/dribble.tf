@@ -16,7 +16,7 @@ import { hash } from './time'
 import { deflectIndexAt, directionAt, flamesAliveAt, positionAt, projectilesDrawnAt, projectileTeamAt } from './projectileData'
 import type { ProjectileSource } from './projectileSource'
 import { despawnExplosionsAt, type DespawnExplosion } from './trails'
-import { gunMuzzle, makePlayerView, pyroMuzzle, setViewVectors, type PlayerView } from './view'
+import { gunMuzzle, makePlayerView, ownMuzzleAt, pyroMuzzle, setViewVectors, type PlayerView } from './view'
 
 export type Vec3 = [number, number, number]
 /** Resolves player p's view at tickF (base data for probes, drawn actor position for rendering). */
@@ -205,10 +205,10 @@ export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number,
       }
     }
 
-    // the POV owner's own shots start at his gun, not inside his eye
+    // the POV owner's own shots start at his gun (the drawn viewmodel's muzzle when one is registered), not inside his eye
     let startVec = _start
     if (ownEyes !== null && resolve && demo.entityPlayerMap.get(p)?.user.entityId === ownEyes && resolve(p, tickF, _ownView)) {
-      startVec = gunMuzzle(_ownView, _ownMuzzle)
+      startVec = ownMuzzleAt(ownEyes, _ownView, _ownMuzzle)
     }
 
     const pellets = pelletCount(weaponId)
@@ -232,15 +232,46 @@ export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number,
   return out
 }
 
-export interface SentryTracerFx { row: number; tick: number; age: number; sentry: number; start: Vec3; end: Vec3; opacity: number; color: string }
+export interface SentryTracerFx { row: number; tick: number; age: number; sentry: number; pivot: Vec3; start: Vec3; end: Vec3; opacity: number; color: string }
 
+/** SENTRYGUN_EYE_OFFSET_LEVEL_1..3 (tf_shareddefs.h): the turret pivot above the sentry origin. */
 const SENTRY_EYE = [32, 32, 40, 46]
+const SENTRY_MINI_SCALE = 0.75
+/**
+ * Where a tracer leaves the gun: the barrel tip of F2's placeholder sentry (hl/f2 render.ts SENTRY: turret half
+ * length plus barrel length, 11 + 18 at level 1 and 13 + 22 at levels 2 and 3, minis scaled 0.75), measured from
+ * the pivot along the line to the tracer's end, which F2's pose-driven turret aim follows within a few degrees.
+ * Levels 2 and 3 fire their twin barrels 3.5 units to either side in turn, in the order F2 flashes them (each
+ * sentry's even shots on the right barrel, odd shots on the left).
+ */
+const SENTRY_BARREL_REACH = [29, 29, 35, 35]
+const SENTRY_BARREL_SIDE = 3.5
 const _q = new THREE.Quaternion()
+const _pivot = new THREE.Vector3()
+const tracerOrdinals = new WeakMap<HighlanderExtras, Uint32Array>()
+
+/** Per tracer row: how many earlier rows the same sentry fired (F2's twin-barrel parity). */
+function tracerOrdinal(x: HighlanderExtras, row: number): number {
+  let ordinals = tracerOrdinals.get(x)
+  if (!ordinals) {
+    const sentry = x.tempents.tracers.sentry
+    ordinals = new Uint32Array(sentry.length)
+    const counts = new Map<number, number>()
+    for (let i = 0; i < sentry.length; i++) {
+      const n = counts.get(sentry[i]) ?? 0
+      ordinals[i] = n
+      counts.set(sentry[i], n + 1)
+    }
+    tracerOrdinals.set(x, ordinals)
+  }
+  return ordinals[row] ?? 0
+}
 
 /**
  * Sentry "Tracer" effects with age < 3. The networked start is the dummy (999, 999, 999) of
  * CBaseEntity::ComputeTracerStartPosition (the client uses the muzzle attachment), so the line starts at the
- * sentry's eye: origin + (0, 0, 32 / 40 / 46 by level), x0.75 for minis.
+ * barrel tip: from the pivot (origin + (0, 0, 32 / 40 / 46 by level), x0.75 for minis) 29 or 35 units toward the
+ * end point, to the side of the firing barrel at levels 2 and 3.
  */
 export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTracerFx[] {
   const tr = x.tempents.tracers
@@ -253,16 +284,28 @@ export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTrace
     const age = tickF - tick
     if (age < 0 || age >= SENTRY_TRACER_TICKS) continue
     const j = tr.sentry[i]
-    let ok = false
-    if (j !== 65535 && j < bl.count && xformAt(bl.xform, j, tick, _start, _q)) {
-      const si = trackIndexAt(bl.state, j, tick)
-      const level = si >= 0 ? bl.state.level[si] : 1
-      _start.z += (SENTRY_EYE[level] ?? 32) * (bl.mini[j] ? 0.75 : 1)
-      ok = true
+    if (j === 65535 || j >= bl.count || !xformAt(bl.xform, j, tick, _pivot, _q)) continue
+    const si = trackIndexAt(bl.state, j, tick)
+    const mini = bl.mini[j] !== 0
+    const level = mini ? 1 : Math.min(3, Math.max(1, si >= 0 ? bl.state.level[si] : 1))
+    const scale = mini ? SENTRY_MINI_SCALE : 1
+    _pivot.z += SENTRY_EYE[level] * scale
+    _start.copy(_pivot)
+    _to.set(tr.ex[i], tr.ey[i], tr.ez[i]).sub(_pivot)
+    const length = _to.length()
+    if (length > 1) {
+      _to.multiplyScalar(1 / length)
+      _start.addScaledVector(_to, Math.min(SENTRY_BARREL_REACH[level] * scale, length))
+      const horizontal = Math.hypot(_to.x, _to.y)
+      if (level >= 2 && horizontal > 1e-6) {
+        // the barrels sit along the turret's left axis, which stays horizontal while the turret pitches
+        const side = (tracerOrdinal(x, i) % 2 === 0 ? -1 : 1) * SENTRY_BARREL_SIDE
+        _start.x += (-_to.y / horizontal) * side
+        _start.y += (_to.x / horizontal) * side
+      }
     }
-    if (!ok) continue
     out.push({
-      row: i, tick, age, sentry: j, start: vec(_start), end: [tr.ex[i], tr.ey[i], tr.ez[i]],
+      row: i, tick, age, sentry: j, pivot: vec(_pivot), start: vec(_start), end: [tr.ex[i], tr.ey[i], tr.ez[i]],
       opacity: 0.8 * (1 - age / SENTRY_TRACER_TICKS), color: TRACER_COLOR,
     })
   }
@@ -465,9 +508,28 @@ export function muzzleFlashesAt(x: HighlanderExtras, tickF: number, ownEyes: num
 
 export const SYRINGE_SECONDS = 0.6
 export const SYRINGE_GRAVITY = 240
-export interface SyringeFx { row: number; tick: number; t: number; player: number; team: number; pos: Vec3; dir: Vec3; color: string }
+/**
+ * The game draws a short bright particle trail behind every syringe (nailtrails_medic_*). A 6-unit needle alone is
+ * two or three pixels from the RTS camera, so each needle also gets a streak through its path over the last
+ * 0.06 s (about 60 units at 1000 u/s), 3 units wide (crits 5) in TEAM_FX: TEAM_TRAIL blue is too dark to read on
+ * dark interiors (luminance 0.22 against 0.35 for TEAM_FX blue). The needle itself stays TEAM_TRAIL.
+ */
+export const SYRINGE_TRAIL_SECONDS = 0.06
+export const SYRINGE_TRAIL_POINTS = 3
+export const SYRINGE_TRAIL_WIDTH = 3
+export const SYRINGE_CRIT_TRAIL_WIDTH = 5
+export interface SyringeFx {
+  row: number; tick: number; t: number; player: number; team: number; crit: boolean; pos: Vec3; dir: Vec3; color: string
+  /** streak points along the path, head first (at least the needle position) */
+  trail: Vec3[]
+  trailColor: string
+  trailWidth: number
+}
 
-/** ClientProjectile_Syringe rows: p0 + v t + 0.5 (0, 0, -240) t^2 for t in [0, 0.6 s], along the velocity. */
+/**
+ * ClientProjectile_Syringe rows: p0 + v t + 0.5 (0, 0, -240) t^2 for t in [0, 0.6 s], along the velocity, plus
+ * the streak through the path over the last 0.06 s (never before the launch).
+ */
 export function syringesAt(x: HighlanderExtras, demo: AsyncParser, tickF: number): SyringeFx[] {
   const out: SyringeFx[] = []
   if (!x.meta.available.clientProjectiles) return out
@@ -483,13 +545,22 @@ export function syringesAt(x: HighlanderExtras, demo: AsyncParser, tickF: number
     const p = cp.player[i]
     const team = p < 255 && demo.entityPlayerMap.has(p) ? demo.playerCache.metaCache.getMeta(p, Math.min(cp.tick[i], demo.ticks - 1)).teamId : 0
     const key = teamKey(team)
+    const crit = cp.crit[i] !== 0
     _dir.set(vx, vy, vz)
     if (_dir.lengthSq() > 0) _dir.normalize()
     else _dir.set(1, 0, 0)
+    const at = (s: number): Vec3 => [cp.x[i] + cp.vx[i] * s, cp.y[i] + cp.vy[i] * s, cp.z[i] + cp.vz[i] * s - 0.5 * SYRINGE_GRAVITY * s * s]
+    const trail: Vec3[] = [at(t)]
+    for (let k = 1; k < SYRINGE_TRAIL_POINTS && t > 0; k++) {
+      const s = t - (k * SYRINGE_TRAIL_SECONDS) / (SYRINGE_TRAIL_POINTS - 1)
+      trail.push(at(Math.max(0, s)))
+      if (s <= 0) break
+    }
     out.push({
-      row: i, tick: cp.tick[i], t, player: p, team,
-      pos: [cp.x[i] + cp.vx[i] * t, cp.y[i] + cp.vy[i] * t, cp.z[i] + cp.vz[i] * t - 0.5 * SYRINGE_GRAVITY * t * t],
-      dir: vec(_dir), color: key ? TEAM_TRAIL[key] : NEUTRAL,
+      row: i, tick: cp.tick[i], t, player: p, team, crit, pos: trail[0], dir: vec(_dir), color: key ? TEAM_TRAIL[key] : NEUTRAL,
+      trail: trail.map(v => [r2(v[0]), r2(v[1]), r2(v[2])] as Vec3),
+      trailColor: key ? TEAM_FX[key] : NEUTRAL,
+      trailWidth: crit ? SYRINGE_CRIT_TRAIL_WIDTH : SYRINGE_TRAIL_WIDTH,
     })
   }
   return out

@@ -1,8 +1,9 @@
 // Projectiles the base parser drops (contract D13 and 5 F3): every extras projectile instance without a typed base
 // slot (servedByBase 0) that is drawn at the tick, whatever its kind: flares, arrows, repair bolts, cannonballs,
 // jars, cleavers, balls, ornaments, Bison and Pomson rings, Cow Mangler balls, Dragon's Fury fireballs, orbs, and
-// any rocket, pipe or bolt the base missed. One InstancedMesh per placeholder part, plus one ribbon batch for their
-// trails. Positions and trails come from the extras samples at tickF, so a seek reproduces them exactly (D12).
+// any rocket, pipe or bolt the base missed, plus the landed phase of such a bolt (combat/landing.ts). One
+// InstancedMesh per placeholder part, plus one ribbon batch for their trails. Positions and trails come from the
+// extras samples at tickF, so a seek reproduces them exactly (D12).
 
 import React, { useEffect, useMemo } from 'react'
 
@@ -13,13 +14,16 @@ import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useInstance } from '@zus/store'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import type { ViewResolver } from '@highlander/combat/combatData'
 import { pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
 import { extrasRecord, pointList, recordingEnabled, resetRecord, roundVec } from '@highlander/combat/frameRecord'
-import { directionAt, positionAt, projectilesDrawnAt, projectileTeamAt, quatForwardX } from '@highlander/combat/projectileData'
+import { landedPoseAt } from '@highlander/combat/landing'
+import { directionAt, positionAt, projectilesDrawnAt, projectilesLandedAt, projectileTeamAt, quatForwardX } from '@highlander/combat/projectileData'
 import { createProjectileParts, disposeProjectileParts, partColor, partsForKind } from '@highlander/combat/projectileMeshes'
 import { getProjectileSource } from '@highlander/combat/projectileSource'
 import { frameTime } from '@highlander/combat/time'
 import { TRAIL_HEAD_ALPHA, TRAIL_MIN_PIXELS, TRAIL_SAMPLES, trailPoints, trailStyle } from '@highlander/combat/trails'
+import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
 
 const ONE = new THREE.Vector3(1, 1, 1)
@@ -50,10 +54,13 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
     [parts, ribbons, ribbonMaterial]
   )
 
+  const resolve: ViewResolver = useMemo(() => (p, tickF, out) => playerViewDrawn(demo, p, tickF, out), [demo])
+
   const scratch = useMemo(
     () => ({
       time: { tick: 0, tickF: 0 },
       alive: [] as number[],
+      landed: [] as number[],
       pos: new THREE.Vector3(),
       dir: new THREE.Vector3(),
       quat: new THREE.Quaternion(),
@@ -98,6 +105,19 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
           extrasRecord.trails.push({ key: `extras:${j}`, instance: j, source: 'extras', width: style.width, color: style.color, points: pointList(s.points, count) })
         }
       }
+    }
+
+    // landed bolts: where they hit, or on the player they hit, until the server deletes them (no trail)
+    const ownEyes = povCameraOwner()
+    for (const j of projectilesLandedAt(x, tick, s.landed)) {
+      if (source.servedByBase[j]) continue // Projectiles.tsx draws it
+      if (!landedPoseAt(x, demo, j, tickF, resolve, s.pos, s.dir, ownEyes)) continue
+      quatForwardX(s.dir, s.quat)
+      s.matrix.compose(s.pos, s.quat, ONE)
+      const kind = pj.kind[j]
+      const team = projectileTeamAt(x, j, tick)
+      for (const part of partsForKind(byKind, kind)) part.instances.push(s.matrix, partColor(part, kind, team))
+      if (record) extrasRecord.landed.set(j, roundVec(s.pos.x, s.pos.y, s.pos.z))
     }
 
     for (const part of parts) part.instances.end()

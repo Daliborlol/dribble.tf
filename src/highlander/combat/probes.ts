@@ -9,13 +9,15 @@ import { getHlSetting } from '@highlander/extras/hooks'
 
 import { combatEffectsAt, readCombatSettings } from './combatData'
 import { baseRecord, combatRecord, extrasRecord, pointList, roundVec, type DrawnTrail, type Vec3 } from './frameRecord'
-import { deflectIndexAt, positionAt, projectilesDrawnAt, projectilesDrawnIn, projectileTeamAt } from './projectileData'
+import { boltLanding, landedPoseAt } from './landing'
+import { deflectIndexAt, positionAt, projectilesDrawnAt, projectilesDrawnIn, projectilesLandedAt, projectileTeamAt } from './projectileData'
 import { getProjectileSource, projectileSourceStats } from './projectileSource'
 import { frameTime, readyExtras } from './time'
 import { ROCKET_TRAIL_SAMPLES, SMOKE_TICKS, TRAIL_SAMPLES, forEachSmokePuff, trailPoints, trailStyle } from './trails'
 import { playerViewAt, povCameraOwner } from './view'
 
 const _p = new THREE.Vector3()
+const _d = new THREE.Vector3()
 
 function context() {
   const x = readyExtras()
@@ -57,6 +59,38 @@ registerHlProbe('projectiles.at', (tick?: number) => {
       baseType: source.baseType[j],
       created: pj.created[j],
       hidden: pj.hidden[j],
+    }
+  })
+})
+
+/**
+ * Bolts in their landed phase at the tick (hidden <= tick < deleted, capped at 3 s): how each landed ('world' or
+ * 'player' with the victim) and its pose from base data; pos is null while the victim is dead or not drawn.
+ */
+registerHlProbe('projectiles.landed', (tick?: number) => {
+  const c = context()
+  if (!c) return { error: 'extras not ready' }
+  const { x, demo } = c
+  const t = tickArg(tick)
+  const source = getProjectileSource(x, demo)
+  const pj = x.projectiles
+  const resolve = (p: number, tickF: number, out: Parameters<typeof playerViewAt>[3]) => playerViewAt(demo, p, tickF, out)
+  return projectilesLandedAt(x, t.tick).map(j => {
+    const landing = boltLanding(x, demo, j)
+    const ok = !!landedPoseAt(x, demo, j, t.tickF, resolve, _p, _d)
+    return {
+      instance: j,
+      entityId: pj.entityId[j],
+      kind: pj.kind[j],
+      source: source.servedByBase[j] ? 'base' : 'extras',
+      mode: landing?.mode ?? null,
+      victim: landing?.victim ?? -1,
+      victimEntityId: landing && landing.victim >= 0 ? demo.entityPlayerMap.get(landing.victim)?.user.entityId ?? null : null,
+      from: landing?.from ?? pj.hidden[j],
+      to: landing?.to ?? null,
+      age: landing ? Math.round((t.tickF - landing.from) * 100) / 100 : null,
+      pos: ok ? roundVec(_p.x, _p.y, _p.z) : null,
+      dir: ok ? roundVec(_d.x, _d.y, _d.z) : null,
     }
   })
 })
@@ -128,27 +162,34 @@ registerHlProbe('projectiles.trails', (tick?: number) => {
   }
 })
 
-/** Scene meshes per projectile entity id in the last frame: base groups (Projectiles.tsx) and extras instances. */
+/**
+ * Scene meshes per projectile entity id in the last frame: flying base groups (Projectiles.tsx), legacy groups,
+ * extras instances, and landed bolts from either source (`landed`).
+ */
 registerHlProbe('projectiles.meshes', (entityId?: number) => {
   const c = context()
   const scene = useInstance.getState().threeScene
-  const counts = new Map<number, { entityId: number; base: number; legacy: number; extras: number; names: string[] }>()
+  const counts = new Map<number, { entityId: number; base: number; legacy: number; extras: number; landed: number; names: string[] }>()
   const row = (e: number) => {
     let r = counts.get(e)
-    if (!r) counts.set(e, (r = { entityId: e, base: 0, legacy: 0, extras: 0, names: [] }))
+    if (!r) counts.set(e, (r = { entityId: e, base: 0, legacy: 0, extras: 0, landed: 0, names: [] }))
     return r
   }
   scene?.traverse(node => {
-    const data = node.userData as { hlProjectile?: 'base' | 'legacy'; entityId?: number }
+    const data = node.userData as { hlProjectile?: 'base' | 'legacy'; entityId?: number; hlLanded?: boolean }
     if (!data?.hlProjectile || typeof data.entityId !== 'number') return
     let visible = true
     for (let n: THREE.Object3D | null = node; n; n = n.parent) if (!n.visible) visible = false
     if (!visible) return
     const r = row(data.entityId)
-    r[data.hlProjectile]++
+    if (data.hlLanded) r.landed++
+    else r[data.hlProjectile]++
     r.names.push(node.name)
   })
-  if (c) for (const j of extrasRecord.meshes.keys()) row(c.x.projectiles.entityId[j]).extras++
+  if (c) {
+    for (const j of extrasRecord.meshes.keys()) row(c.x.projectiles.entityId[j]).extras++
+    for (const j of extrasRecord.landed.keys()) row(c.x.projectiles.entityId[j]).landed++
+  }
   const rows = Array.from(counts.values()).sort((a, b) => a.entityId - b.entityId)
   return entityId === undefined ? rows : rows.filter(r => r.entityId === entityId)
 })

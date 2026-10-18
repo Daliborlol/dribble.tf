@@ -18,9 +18,11 @@
 //   6. a digest of what DemoViewer reads (getProjectilesAtTick at every tick) before and after
 //      AsyncParser.releaseProjectileCache, the bytes it released, and that a second release returns 0;
 //   7. the split computed again after the release (as after an extras restart) equals the first one.
-// --root defaults to this checkout, --tmp (bundled modules while they are imported) to the OS temp dir. Every worker
-// shares this process, so it peaks above the browser: VmHWM 0.5 GB on 1434434, 1.0 GB on 1438891 and 2.1 to 2.3 GB
-// on the tetsudo fallback demos 1428628 and 1429417 (run those only when `free -m` shows 3000 MB available). Prints a JSON summary (also to --out); exit code 1 when a check fails.
+// --root defaults to this checkout and may be any Highlander checkout with the projectile adapter: it needs none of
+// scripts/hl, and the script names what is missing. --tmp (bundled modules while they are imported) defaults to the
+// OS temp dir. Every worker shares this process, so it peaks above the browser: VmHWM 0.5 GB on 1434434, 1.0 GB on
+// 1438891 and 2.1 to 2.3 GB on the tetsudo fallback demos 1428628 and 1429417 (run those only when `free -m` shows
+// 3000 MB available). Prints a JSON summary (also to --out); exit code 1 when a check fails, 2 on a usage error.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -29,14 +31,44 @@ import path from 'node:path'
 import { parseArgs, REPO_ROOT } from './lib/bundle.mjs'
 import { loadDemo, vmMB } from './lib/load-demo.mjs'
 
+const USAGE = 'usage: node --expose-gc scripts/hl/check-adapter.mjs <demo.dem> [--root checkout] [--tmp dir] [--slot-step n] [--out file]'
 const { positional, flags } = parseArgs(process.argv.slice(2))
 const demoPath = positional[0]
 const slotStep = Number(flags['slot-step'] ?? 1)
-if (!demoPath || !(Number.isInteger(slotStep) && slotStep >= 1)) {
-  console.error('usage: node --expose-gc scripts/hl/check-adapter.mjs <demo.dem> [--root checkout] [--tmp dir] [--slot-step n] [--out file]')
+// Checked before anything is bundled or parsed: an unknown flag (such as check-fallback's --expect-route) or a flag
+// without its value would otherwise be ignored silently
+const unknown = Object.keys(flags).filter(name => !['root', 'tmp', 'slot-step', 'out'].includes(name))
+const valueless = Object.keys(flags).filter(name => flags[name] === undefined)
+if (!demoPath || !(Number.isInteger(slotStep) && slotStep >= 1) || unknown.length || valueless.length) {
+  if (unknown.length) console.error(`[check-adapter] unknown option ${unknown.map(n => `--${n}`).join(', ')}`)
+  if (valueless.length) console.error(`[check-adapter] missing value for ${valueless.map(n => `--${n}`).join(', ')}`)
+  console.error(USAGE)
   process.exit(2)
 }
 const root = path.resolve(flags.root ?? REPO_ROOT)
+// What --root must contain. It needs no file under scripts/hl (the extras entry is bundled from stdin and the three
+// shim falls back to this script's own), but it must have the projectile adapter, so a checkout from task X2 on.
+const NEEDED = [
+  'package.json',
+  'src/components/Analyse/Data/AsyncParser.ts',
+  'src/components/Analyse/Data/ParseWorker.ts',
+  'src/highlander/extras/hydrate.ts',
+  'src/highlander/items.ts',
+  'src/highlander/combat/projectileSource.ts',
+  'src/highlander/memory/projectileAdapter.ts',
+  'src/libs/hlextras/hlextras.js',
+  'src/libs/hlextras/hlextras_bg.wasm',
+]
+const missing = NEEDED.filter(file => !fs.existsSync(path.join(root, file)))
+if (missing.length) {
+  console.error(`[check-adapter] --root ${root} lacks ${missing.join(', ')}`)
+  console.error('[check-adapter] it needs a Highlander checkout with the projectile adapter (task X2 or later); scripts/hl is not needed there')
+  process.exit(2)
+}
+if (!fs.existsSync(demoPath)) {
+  console.error(`[check-adapter] no such demo: ${demoPath}`)
+  process.exit(2)
+}
 const tmp = fs.mkdtempSync(path.join(flags.tmp ?? os.tmpdir(), 'hl-adapter-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 const gc = () => {

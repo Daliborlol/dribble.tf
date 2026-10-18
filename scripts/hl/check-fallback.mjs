@@ -36,7 +36,18 @@ const ROUTES = {
   forced: 'fallback: forced',
 }
 // Checked before the child runs: a typo should not cost a whole parse
-if (flags['expect-route'] !== undefined && !ROUTES[flags['expect-route']]) {
+const unknown = Object.keys(flags).filter(name => !['force-fallback', 'out', 'expect-route', 'tmp'].includes(name))
+if (unknown.length) {
+  console.error(`[check-fallback] unknown option ${unknown.map(n => `--${n}`).join(', ')}`)
+  process.exit(2)
+}
+for (const name of ['out', 'tmp']) {
+  if (name in flags && flags[name] === undefined) {
+    console.error(`[check-fallback] missing value for --${name}`)
+    process.exit(2)
+  }
+}
+if ('expect-route' in flags && !Object.hasOwn(ROUTES, flags['expect-route'] ?? '')) {
   console.error(`[check-fallback] unknown --expect-route ${flags['expect-route']} (one of ${Object.keys(ROUTES).join(', ')})`)
   process.exit(2)
 }
@@ -56,7 +67,7 @@ if (child.status !== 0) {
   process.exit(1)
 }
 const base = JSON.parse(child.stdout)
-if (flags['expect-route'] !== undefined) {
+if ('expect-route' in flags) {
   const want = ROUTES[flags['expect-route']]
   if (base.route !== want) failures.push(`route: ${base.route}, expected ${want}`)
 }

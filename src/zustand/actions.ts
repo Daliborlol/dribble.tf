@@ -292,7 +292,7 @@ export const changeControlsModeAction = async (
       // So we should go back to the POV of the last person they spectated
       if (focusedObject === undefined) {
         const entityId = lastFocusedPOV?.userData?.entityId || actors[0]?.userData?.entityId
-        jumpToPlayerPOVCamera(entityId)
+        jumpToPlayerPOVCamera(entityId, { resume: true })
         return
       }
 
@@ -320,7 +320,13 @@ export const changeControlsModeAction = async (
   }
 }
 
-export const jumpToPlayerPOVCamera = async (entityId: number) => {
+// Counts the POV picks a user makes (lists, killfeed, next/prev, bridge), so Actors can tell a pick of the player
+// shown as a stand-in from its own re-resolved focus. A count of UI events, no demo or store snapshot (rule 12.3).
+let povPicks = 0
+export const getPovPicks = () => povPicks
+
+/** `resume: true` returns to the last POV (RTS or spectator to POV) and does not count as a pick */
+export const jumpToPlayerPOVCamera = async (entityId: number, options: { resume?: boolean } = {}) => {
   try {
     const actors = getSceneActors(useInstance.getState().threeScene)
 
@@ -330,6 +336,7 @@ export const jumpToPlayerPOVCamera = async (entityId: number) => {
 
     if (!actor) return null
 
+    if (!options.resume) povPicks++
     useInstance.getState().setFocusedObject(actor)
     useInstance.getState().setLastFocusedPOV(actor)
 

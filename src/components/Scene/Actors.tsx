@@ -12,6 +12,7 @@ import { Nameplate } from '@components/Scene/Nameplate'
 import { CachedPlayer } from '@components/Analyse/Data/PlayerCache'
 
 import { useInstance, useStore } from '@zus/store'
+import { getPovPicks } from '@zus/actions'
 import { CLASS_MAP } from '@constants/mappings'
 import {
   objCoordsToVector3,
@@ -162,25 +163,36 @@ export interface ActorsProps {
 }
 
 interface FocusMemo {
-  /** Entity id of the player the user focused while a stand-in is shown, else null */
+  /** Entity id of the player the user focused while a stand-in is shown (or parked as the last POV), else null */
   wanted: number | null
   /** The group focused in his place, else null */
   standIn: THREE.Object3D | null
   /** The focused player's index in the latest actor list that held him */
   slot: number
+  /** getPovPicks() at the last resolve: a change means the user picked a POV since */
+  picks: number
+}
+
+const clearStandIn = (memo: FocusMemo) => {
+  memo.wanted = null
+  memo.standIn = null
 }
 
 const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
   const { focusedObject, lastFocusedPOV, setFocusedObject, setLastFocusedPOV } = useInstance.getState()
+  const picks = getPovPicks()
+  const picked = picks !== memo.picks
+  memo.picks = picks
+  // A user pick (even of the player shown as the stand-in) replaces the remembered player
+  if (picked) clearStandIn(memo)
+
   if (!focusedObject || focusedObject.name !== 'actor') {
-    memo.wanted = null
-    memo.standIn = null
+    // RTS or spectator after a stand-in: keep the remembered player, so returning to POV (a resume, not a pick)
+    // goes back to him once he is drawn again. lastFocusedPOV itself is not moved: it positions the free cameras.
+    if (!(memo.standIn && lastFocusedPOV === memo.standIn)) clearStandIn(memo)
     return
   }
-  if (focusedObject !== memo.standIn) {
-    memo.wanted = null
-    memo.standIn = null
-  }
+  if (focusedObject !== memo.standIn) clearStandIn(memo)
   const wanted: number = memo.wanted ?? focusedObject.userData?.entityId
   const slot = actors.findIndex(actor => actor.user.entityId === wanted)
   if (slot >= 0) memo.slot = slot
@@ -190,8 +202,7 @@ const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
   if (live?.parent) {
     // The focused player is drawn: focus his current group (a no-op unless he came back or a stand-in is shown)
     next = live
-    memo.wanted = null
-    memo.standIn = null
+    clearStandIn(memo)
   } else if (!focusedObject.parent && actors.length > 0) {
     // The focused group is detached and the player is absent: the player in his slot stands in for him
     const standIn = actors[Math.min(Math.max(memo.slot, 0), actors.length - 1)]
@@ -225,8 +236,10 @@ export const Actors = (props: ActorsProps) => {
   // spectator, team switch) and comes back is a new group, and the focus would stay on the detached old one.
   // After each commit (the children's registration effects have run): while the focused player is absent, follow
   // the player who now holds his list slot, as the index-keyed actors at 598e328 did; once he is drawn again,
-  // focus his new group. A focus the user picks while a stand-in is shown replaces the remembered player.
-  const focusMemo = useRef<FocusMemo>({ wanted: null, standIn: null, slot: -1 })
+  // focus his new group. A POV the user picks, even the stand-in's, replaces the remembered player.
+  // Subscribed to the focus so the slot is recorded as soon as a player is focused, even while paused.
+  useInstance(state => state.focusedObject)
+  const focusMemo = useRef<FocusMemo>({ wanted: null, standIn: null, slot: -1, picks: getPovPicks() })
   useEffect(() => {
     resolveFocus(focusMemo.current, actors)
   })

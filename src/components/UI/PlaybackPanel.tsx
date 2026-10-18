@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import * as Slider from '@radix-ui/react-slider'
 import { motion } from 'framer-motion'
@@ -28,6 +28,11 @@ import { focusMainCanvas } from '@utils/misc'
 import { cn } from '@utils/styling'
 import { getDurationFromTicks } from '@utils/parser'
 import { useIsMobile } from '@utils/hooks'
+
+import { TEAM_HUD } from '@highlander/constants'
+import { useExtras, useHlSetting } from '@highlander/extras/hooks'
+import { timelineStripStats } from '@highlander/hud/timeline'
+import { enabledTimelineMarkers, type TimelineMarker } from '@highlander/objectives/timelineModel'
 
 // Since parser only returns round ends (not round starts) we need to
 // account for the humiliation period before it resets
@@ -200,7 +205,7 @@ export const PlaybackPanel = () => {
               icon={
                 <div className="-mr-1 flex min-w-11 select-none flex-col items-center text-center">
                   <div className="text-xs leading-none">TICK</div>
-                  <div className="font-bold leading-none">{tick * 2}</div>
+                  <div className="font-bold leading-none">{tick}</div>
                 </div>
               }
               content={
@@ -213,7 +218,7 @@ export const PlaybackPanel = () => {
                       const tickEl = e.target.elements.namedItem('tick') as HTMLInputElement
                       const newTick = Number(tickEl.value)
                       if (isNaN(newTick)) return
-                      goToTick(newTick / 2)
+                      goToTick(Math.round(newTick))
                     }}
                   >
                     <input
@@ -232,7 +237,7 @@ export const PlaybackPanel = () => {
 
                   <div className="mt-2 flex justify-between text-xs opacity-80">
                     <div>Total Ticks</div>
-                    <div className="font-bold">{maxTicks * 2}</div>
+                    <div className="font-bold">{maxTicks}</div>
                   </div>
                 </div>
               }
@@ -419,6 +424,9 @@ export const PlaybackPanel = () => {
             </Slider.Track>
           </Slider.Root>
 
+          {/* Highlander timeline markers ([ and ] step through them) */}
+          {!isMobile && <HlTimelineMarkers maxTicks={maxTicks} />}
+
           {/* Bookmark markers */}
           {bookmarks.map(bookmarkTick => (
             <div
@@ -469,3 +477,93 @@ export const PlaybackPanel = () => {
     </div>
   )
 }
+
+//
+// ─── HIGHLANDER TIMELINE MARKERS (contract section 5 F5) ───────────────────────
+//
+// Markers by category, each with its own setting: medic (uber pops, medic drops), objective (captures, round
+// wins, overtime, setup end), spy (backstabs, Dead Ringer feigns, sappers, decloaks) and engineer (sentries built
+// and destroyed). They sit just above the slider at playback tick = cache tick + 2; hovering shows the clock
+// time and what happened, clicking seeks there. Memoized: the list only changes with the extras or the toggles,
+// and PlaybackPanel re-renders on every playback tick, so both components are React.memo with primitive or
+// stable props (the seek callback lives at module level) and the strip renders only when its list changes.
+
+const MARKER_SIZE = 9
+
+const seekToMarker = (tick: number) => {
+  goToTickAction(tick)
+  focusMainCanvas()
+}
+
+const markerColor = (m: TimelineMarker) =>
+  m.team === 2 ? TEAM_HUD.red : m.team === 3 ? TEAM_HUD.blue : m.shape === 'overtime' ? '#ffd23f' : '#e5e7eb'
+
+const MarkerShape = ({ m }: { m: TimelineMarker }) => {
+  const c = markerColor(m)
+  const s = MARKER_SIZE
+  const stroke = { stroke: '#000', strokeOpacity: 0.6, strokeWidth: 0.8 }
+  switch (m.shape) {
+    case 'uber':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M5 1 L9.5 9 H0.5 Z" fill={c} {...stroke} /></svg>
+    case 'drop':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5" stroke={c} strokeWidth="2.4" strokeLinecap="round" /></svg>
+    case 'capture':
+      return <svg width={s} height={s + 2} viewBox="0 0 10 12"><path d="M1.5 0.5 V11.5" stroke="#e5e7eb" strokeWidth="1.3" /><path d="M2 1 H9.5 L7.5 3.5 L9.5 6 H2 Z" fill={c} /></svg>
+    case 'roundWin':
+      return <svg width={4} height={18} viewBox="0 0 4 18"><rect x="0.5" y="0" width="3" height="18" rx="1" fill={c} {...stroke} /></svg>
+    case 'overtime':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.6" fill="none" stroke={c} strokeWidth="1.8" /></svg>
+    case 'setup':
+      return <svg width={4} height={s + 2} viewBox="0 0 4 12"><rect x="1" y="0" width="2" height="12" fill="#e5e7eb" /></svg>
+    case 'backstab':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M1 9 L7.5 2.5 L9 1 L8.2 3.6 L2.2 9.6 Z" fill={c} {...stroke} /></svg>
+    case 'feign':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.8" fill="none" stroke={c} strokeWidth="1.4" strokeDasharray="2 1.5" /></svg>
+    case 'sapped':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill={c} {...stroke} /><path d="M3 5 H7" stroke="#111" strokeWidth="1.4" /></svg>
+    case 'decloak':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M0.8 5 C2.5 2 7.5 2 9.2 5 C7.5 8 2.5 8 0.8 5 Z" fill="none" stroke={c} strokeWidth="1.2" /><circle cx="5" cy="5" r="1.5" fill={c} /></svg>
+    case 'sentryBuilt':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M5 1 L9.5 9 H0.5 Z" fill="none" stroke={c} strokeWidth="1.6" /></svg>
+    case 'sentryDestroyed':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><path d="M5 1 L9.5 9 H0.5 Z" fill="none" stroke={c} strokeWidth="1.3" /><path d="M3 4 L7 8 M7 4 L3 8" stroke={c} strokeWidth="1.3" /></svg>
+  }
+}
+
+const HlTimelineMarkers = React.memo(({ maxTicks }: { maxTicks: number }) => {
+  const enabled = useHlSetting<boolean>('enabled')
+  const on = useHlSetting<boolean>('hud.timelineMarkers')
+  const medic = useHlSetting<boolean>('hud.timelineMedic')
+  const objective = useHlSetting<boolean>('hud.timelineObjective')
+  const spy = useHlSetting<boolean>('hud.timelineSpy')
+  const engineer = useHlSetting<boolean>('hud.timelineEngineer')
+  const x = useExtras()
+  const demo = useInstance(state => state.parsedDemo)
+  const markers = useMemo(
+    () => (enabled && on && x && demo ? enabledTimelineMarkers(demo, x, { medic, objective, spy, engineer }) : []),
+    [enabled, on, x, demo, medic, objective, spy, engineer]
+  )
+  if (markers.length === 0 || maxTicks <= 1) return null
+  return <MarkerStrip markers={markers} maxTicks={maxTicks} onSeek={seekToMarker} />
+})
+
+const MarkerStrip = React.memo(
+  ({ markers, maxTicks, onSeek }: { markers: TimelineMarker[]; maxTicks: number; onSeek: (tick: number) => void }) => {
+    timelineStripStats.renders++
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-[calc(50%+6px)] h-[18px]" data-hl-layout="timeline">
+        {markers.map((m, i) => (
+          <div
+            key={`${m.tick}-${m.shape}-${i}`}
+            title={m.text}
+            className="pointer-events-auto absolute bottom-0 flex -translate-x-1/2 cursor-pointer items-end opacity-90 hover:scale-150 hover:opacity-100"
+            style={{ left: `${((Math.min(maxTicks, m.tick) - 1) / (maxTicks - 1)) * 100}%`, transformOrigin: 'bottom center' }}
+            onClick={() => onSeek(m.tick)}
+          >
+            <MarkerShape m={m} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+)

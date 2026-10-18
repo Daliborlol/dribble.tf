@@ -159,8 +159,8 @@ export const KillfeedItem = (props: KillfeedItemProps) => {
 // Desktop: top 96 px, right 248 px (between the player columns); below 1280 px wide: top 88 px, centred. While
 // the round banner shows, the killfeed starts below it. From 768 to 943 px wide the gap between the columns is
 // under 320 px: the killfeed goes below the taller column at full width when the viewport has room for it, else it
-// stays between the columns with 3 compact lines (hud/responsive.ts). A line never grows wider than the killfeed;
-// its names truncate instead. Name colours are the team at the kill tick.
+// stays between the columns with 3 compact lines (hud/responsive.ts). Below 1280 px a line never grows wider than
+// the killfeed; its names truncate instead. Name colours are the team at the kill tick.
 
 const TEAM_TEXT: Record<number, string> = { 2: 'text-pp-killfeed-text-red', 3: 'text-pp-killfeed-text-blue' }
 
@@ -224,7 +224,7 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
       style={{ ...style, gap: HUD_LAYOUT.killfeedLineGap }}
     >
       {lines.map(line => (
-        <FeedLine key={line.key} line={line} compact={compactFeed} highlighted={focusedEntityId !== undefined && isInvolved(line, focusedEntityId)} />
+        <FeedLine key={line.key} line={line} fit={narrow || isMobile} compact={compactFeed} highlighted={focusedEntityId !== undefined && isInvolved(line, focusedEntityId)} />
       ))}
     </div>
   )
@@ -249,10 +249,14 @@ const Badge = ({ text, title }: { text: string; title: string }) => (
   </span>
 )
 
-const FeedLine = React.memo(({ line, highlighted, compact }: { line: KillfeedLine; highlighted: boolean; compact?: boolean }) => {
+const FeedLine = React.memo(({ line, highlighted, fit, compact }: { line: KillfeedLine; highlighted: boolean; fit?: boolean; compact?: boolean }) => {
   const base = cn(
-    'pointer-events-auto flex max-w-full shrink-0 items-center whitespace-nowrap rounded-lg font-bold leading-none',
+    'pointer-events-auto flex shrink-0 items-center whitespace-nowrap rounded-lg',
+    // the font size before leading-none: tailwind-merge drops a leading-* class that precedes a text-[size]
     compact ? 'px-2 text-[11px]' : 'px-3 text-[13px]',
+    'font-bold leading-none',
+    // below 1280 px wide the killfeed can be narrower than a line: the line keeps to it and its names truncate
+    fit && 'max-w-full',
     highlighted ? 'bg-white/90' : 'bg-pp-panel/75',
     line.feign && 'opacity-60'
   )

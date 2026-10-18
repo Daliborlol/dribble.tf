@@ -12,7 +12,7 @@ import { BUILDING_TYPE } from '@highlander/extras/enums'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useInstance } from '@zus/store'
 
-import { BuildingLabel, LABEL_SIZE } from './label'
+import { BuildingLabel, glyphOf, LABEL_SIZE, minScreenScale } from './label'
 import {
   ARC,
   ARC_SEGMENTS,
@@ -26,7 +26,6 @@ import {
   GAUGE,
   ghostOf,
   glowSprite,
-  type GlyphKind,
   METAL,
   MUZZLE,
   OPEN_CYL,
@@ -50,6 +49,8 @@ import { MINI_SCALE, SENTRY_PIVOT } from './sentryAim'
 import { enemyCentreResolver } from './scene'
 
 const DEG = Math.PI / 180
+/** Sentry range ring opacity (contract 0.12, raised: see the ring mesh). */
+const RANGE_OPACITY = 0.25
 /** Size of the sapper's electric spark sprite: large enough to read from the RTS camera. */
 const SAPPER_SPARK = 30
 
@@ -79,64 +80,63 @@ const Part = React.forwardRef<THREE.Mesh, PartProps>(({ mat, ...props }, ref) =>
 const LABEL_ORDER = 20
 /**
  * Labels keep at least this many pixels of width: far from the camera (the default RTS view sits 2000 to 3500
- * units away) they grow like the HTML nameplates do, so every building stays findable and its type readable.
- * Up close they keep their world size (scale 1).
+ * units away) they grow like the HTML nameplates do, so every building stays findable and its glyph (about 23 px)
+ * readable. Up close they keep their world size (scale 1).
  */
-const LABEL_MIN_PX = 64
+const LABEL_MIN_PX = 80
 const LABEL_MAX_SCALE = 8
-const _labelWorld = new THREE.Vector3()
-const _cameraWorld = new THREE.Vector3()
+/** Width of the state frame around the label, units. */
+const FRAME = 4
+/** The label sits this far above its anchor in billboard space: its frame's bottom edge on the anchor. */
+const LABEL_LIFT = LABEL_SIZE.height / 2 + FRAME
+/** A hollow rectangle around the label (it tucks half a unit under the label's edge). */
+const FRAME_GEOMETRY = (() => {
+  const w = LABEL_SIZE.width / 2 + FRAME, h = LABEL_SIZE.height / 2 + FRAME
+  const iw = LABEL_SIZE.width / 2 - 0.5, ih = LABEL_SIZE.height / 2 - 0.5
+  const shape = new THREE.Shape([new THREE.Vector2(-w, -h), new THREE.Vector2(w, -h), new THREE.Vector2(w, h), new THREE.Vector2(-w, h)])
+  shape.holes.push(new THREE.Path([new THREE.Vector2(-iw, -ih), new THREE.Vector2(-iw, ih), new THREE.Vector2(iw, ih), new THREE.Vector2(iw, -ih)]))
+  return new THREE.ShapeGeometry(shape)
+})()
 
 interface LabelRefs {
   group: THREE.Group | null
-  sapFrame: THREE.Mesh | null
+  frame: THREE.Mesh | null
 }
 
-function glyphOf(type: number, mode: number): GlyphKind {
-  if (type === BUILDING_TYPE.SENTRY) return 'sentry'
-  if (type === BUILDING_TYPE.DISPENSER) return 'dispenser'
-  return mode === 1 ? 'teleExit' : 'teleEntrance'
-}
-
-/** The status billboard: one canvas quad (label.ts) and, while sapped, a flickering electric-blue frame behind it. */
-function StatusLabel({ refs, label, frameMaterial }: { refs: MutableRefObject<LabelRefs>; label: BuildingLabel; frameMaterial: THREE.Material }) {
+/**
+ * The status billboard: one canvas quad (label.ts) and a frame behind it that shows two states from afar: a
+ * flickering electric-blue frame while sapped, a steady team-coloured one while wrangled.
+ */
+function StatusLabel({ refs, label }: { refs: MutableRefObject<LabelRefs>; label: BuildingLabel }) {
   return (
     <Billboard ref={(g: THREE.Group | null) => (refs.current.group = g)}>
-      <mesh
-        ref={m => (refs.current.sapFrame = m)}
-        geometry={PLANE}
-        material={frameMaterial}
-        scale={[LABEL_SIZE.width + 4, LABEL_SIZE.height + 4, 1]}
-        renderOrder={LABEL_ORDER - 1}
-        visible={false}
-      />
-      <mesh geometry={PLANE} material={label.material} scale={[LABEL_SIZE.width, LABEL_SIZE.height, 1]} renderOrder={LABEL_ORDER} />
+      {/* lifted in billboard space, so the label grows upward on screen from its anchor at any camera angle */}
+      <group position={[0, LABEL_LIFT, 0]}>
+        <mesh name="labelFrame" ref={m => (refs.current.frame = m)} geometry={FRAME_GEOMETRY} renderOrder={LABEL_ORDER - 1} visible={false} />
+        <mesh name="label" geometry={PLANE} material={label.material} scale={[LABEL_SIZE.width, LABEL_SIZE.height, 1]} renderOrder={LABEL_ORDER} />
+      </group>
     </Billboard>
   )
 }
 
-/** Label scale that keeps it at least LABEL_MIN_PX wide on screen for a perspective camera. */
-function labelScale(group: THREE.Object3D, camera: THREE.Camera, viewportHeight: number): number {
-  const cam = camera as THREE.PerspectiveCamera
-  if (!cam.isPerspectiveCamera || viewportHeight <= 0) return 1
-  group.getWorldPosition(_labelWorld)
-  _cameraWorld.setFromMatrixPosition(camera.matrixWorld)
-  const distance = _labelWorld.distanceTo(_cameraWorld)
-  const pxPerUnit = viewportHeight / (2 * distance * Math.tan((cam.fov * DEG) / 2))
-  if (!Number.isFinite(pxPerUnit) || pxPerUnit <= 0) return 1
-  return Math.min(LABEL_MAX_SCALE, Math.max(1, LABEL_MIN_PX / (LABEL_SIZE.width * pxPerUnit)))
-}
-
-function updateLabel(refs: LabelRefs, label: BuildingLabel, d: BuildingDraw, camera: THREE.Camera, viewportHeight: number) {
+function updateLabel(
+  refs: LabelRefs,
+  label: BuildingLabel,
+  d: BuildingDraw,
+  frames: { sapped: THREE.MeshBasicMaterial; wrangled: THREE.Material },
+  camera: THREE.Camera,
+  viewportHeight: number
+) {
   if (!refs.group) return
   refs.group.position.set(0, 0, d.labelZ)
-  const scale = labelScale(refs.group, camera, viewportHeight)
-  refs.group.scale.setScalar(scale)
-  // grow upward, so the bigger label stays clear of the building top
-  refs.group.position.z = d.labelZ + (LABEL_SIZE.height / 2) * (scale - 1)
-  if (refs.sapFrame) {
-    refs.sapFrame.visible = !!d.sapper
-    if (d.sapper) (refs.sapFrame.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.65 * d.sapper.opacity
+  refs.group.scale.setScalar(minScreenScale(refs.group, camera, viewportHeight, LABEL_SIZE.width, LABEL_MIN_PX, LABEL_MAX_SCALE))
+  if (refs.frame) {
+    refs.frame.visible = !!d.sapper || d.wrangled
+    refs.frame.userData.state = d.sapper ? 'sapped' : d.wrangled ? 'wrangled' : null
+    if (d.sapper) {
+      frames.sapped.opacity = 0.35 + 0.65 * d.sapper.opacity
+      refs.frame.material = frames.sapped
+    } else if (d.wrangled) refs.frame.material = frames.wrangled
   }
   label.update(d)
 }
@@ -323,7 +323,7 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
   const shield = useRef<THREE.Mesh>(null)
   const upgrade = useRef<THREE.Mesh>(null)
   const range = useRef<THREE.Mesh>(null)
-  const label = useRef<LabelRefs>({ group: null, sapFrame: null })
+  const label = useRef<LabelRefs>({ group: null, frame: null })
   const sentryRefs = useRef<SentryRefs>({ post: null, yaw: null, pitch: null, l1: null, l23: null, pod: null, muzzle: null })
   const dispenserRefs = useRef<DispenserRefs>({ body: null, cap: null, stripe: null, screen: null, gauge: null })
   const teleRefs = useRef<TeleporterRefs>({ blades: null, glow: null, arc: null })
@@ -336,13 +336,13 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
 
   // one flicker material per sapper sprite and per sapped-label frame (their opacity changes per tick)
   const sparkMaterial = useMemo(() => glowSprite(SAPPER_GLOW).clone(), [])
-  const frameMaterial = useMemo(() => basic(SAPPER_GLOW, 0.9, false, true).clone(), [])
+  const frames = useMemo(() => ({ sapped: basic(SAPPER_GLOW, 0.9, false, true).clone(), wrangled: basic(TEAM_FX[team], 0.95, false, true) }), [team])
   React.useEffect(
     () => () => {
       sparkMaterial.dispose()
-      frameMaterial.dispose()
+      frames.sapped.dispose()
     },
-    [sparkMaterial, frameMaterial]
+    [sparkMaterial, frames]
   )
 
   // the status label's canvas, owned by this building (team, glyph and type never change for an instance)
@@ -388,7 +388,7 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
       if (d.upgradeRing >= 0) upgrade.current.position.set(0, 0, (d.labelZ - LABEL_GAP) * d.upgradeRing)
     }
     if (range.current) range.current.visible = d.rangeRing
-    if (labelCanvas) updateLabel(label.current, labelCanvas, d, camera, size.height)
+    if (labelCanvas) updateLabel(label.current, labelCanvas, d, frames, camera, size.height)
   })
 
   if (!x || type < 0) return null
@@ -407,11 +407,13 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
       {type === BUILDING_TYPE.SENTRY && (
         <>
           <mesh ref={shield} geometry={SPHERE} material={basic(TEAM_FX[team], 0.18, true)} scale={45} visible={false} />
-          <mesh ref={range} geometry={RANGE_RING} material={basic(TEAM_FX[team], 0.12)} position={[0, 0, 2]} visible={false} />
+          {/* an overlay, not depth-tested: at the sentry's base height the flat ring runs through hills and walls, and
+              at the contract's 0.12 opacity it vanished on the map ground (it is an opt-in setting) */}
+          <mesh ref={range} geometry={RANGE_RING} material={basic(TEAM_FX[team], RANGE_OPACITY, false, true)} position={[0, 0, 2]} visible={false} />
         </>
       )}
       <mesh ref={upgrade} geometry={THIN_RING} material={basic(TEAM_FX[team], 0.8, true)} scale={upgradeRadius} visible={false} />
-      {labels && labelCanvas && <StatusLabel refs={label} label={labelCanvas} frameMaterial={frameMaterial} />}
+      {labels && labelCanvas && <StatusLabel refs={label} label={labelCanvas} />}
     </group>
   )
 })

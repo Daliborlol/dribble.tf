@@ -21,6 +21,7 @@ import type { HighlanderExtras } from '../extras/types'
 // demos: 1438891 (koth_product_final, 29 sentries, 476 samples), 1440442 (cp_steel_f12, 20 sentries, 138 samples)
 // fit on firing samples: 410 of 614 attacking state samples; R^2 yaw 0.9981, pitch 0.9736; rms yaw 2.43 deg, pitch 2.43 deg
 // barrel within 15 deg of the enemy centre: 79.1 % of state samples (median 1.66 deg, p90 45.59 deg), 99.8 % of the 410 firing samples
+// misses are turret slew: 128 samples sit on the tick a target is acquired (26.6 % within), 50 in the 32 ticks after it (40.0 %); without the acquisition tick 93.0 % of 486
 export const YAW_RANGE = 361.8
 export const YAW_SIGN = -1
 export const YAW_OFFSET = 0.1

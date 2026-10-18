@@ -30,8 +30,8 @@ export const ARC = new THREE.RingGeometry(TELEPORTER.radius - 2, TELEPORTER.radi
 export const PLANE = new THREE.PlaneGeometry(1, 1)
 /** Unit box edges, for the blueprint outline. */
 export const BOX_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1))
-/** Sentry range ring (1100 units, SENTRY_MAX_RANGE), flat; a 16-unit band so it survives the distance it is seen from. */
-export const RANGE_RING = new THREE.RingGeometry(1084, 1100, 160)
+/** Sentry range ring (1100 units, SENTRY_MAX_RANGE), flat; a 40-unit band inside the range, so it reads from the RTS camera. */
+export const RANGE_RING = new THREE.RingGeometry(1060, 1100, 160)
 
 // Parts that always move together share one geometry, so each costs one draw call.
 const merged = (parts: THREE.BufferGeometry[]) => {
@@ -72,7 +72,7 @@ export const HEALTH_COLORS = { good: '#4caf50', mid: '#e0c040', low: '#e04040' }
 export const SHELLS = '#d8c08a'
 export const ROCKETS = '#e07a3a'
 export const PIP_ON = '#f2f2f2'
-export const PIP_OFF = '#3a3a3a'
+export const PIP_OFF = '#666666'
 export const LABEL_BG = '#111111'
 
 /** Mini sentry body: TEAM_DARK lerped 40 % toward TEAM_FX. */
@@ -170,10 +170,10 @@ export function getGlowTexture(): THREE.Texture {
 
 export type GlyphKind = 'sentry' | 'dispenser' | 'teleEntrance' | 'teleExit'
 
-/** Draws a building type glyph in white into the box (0, 0, s, s) of the current canvas transform. */
-export function drawGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number) {
-  ctx.fillStyle = '#ffffff'
-  ctx.strokeStyle = '#ffffff'
+/** Draws a building type glyph (white by default) into the box (0, 0, s, s) of the current canvas transform. */
+export function drawGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color = '#ffffff') {
+  ctx.fillStyle = color
+  ctx.strokeStyle = color
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   const u = s / 64

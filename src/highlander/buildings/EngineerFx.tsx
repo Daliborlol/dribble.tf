@@ -12,7 +12,8 @@ import { useExtras } from '@highlander/extras/hooks'
 import { getActor } from '@highlander/scene/actorRegistry'
 import { useInstance } from '@zus/store'
 
-import { basic, BOX, BOX_EDGES, DARK_METAL, FLASH, INVALID, METAL, solid, SPHERE, TEAM_DARK, TEAM_FX, type TeamKey } from './parts'
+import { glyphBadgeTexture, glyphOf, minScreenScale } from './label'
+import { basic, BOX, BOX_EDGES, DARK_METAL, FLASH, INVALID, METAL, PLANE, solid, SPHERE, TEAM_DARK, TEAM_FX, type TeamKey } from './parts'
 import {
   blueprintsAt,
   buildingDraw,
@@ -130,23 +131,42 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
 // ─── carry boxes ──────────────────────────────────────────────────────────────
 
 const CARRY_POOL = 6
+/** The carried building's glyph badge beside the box: 14 units up close, at least 24 px wide from afar. */
+const CARRY_BADGE = { size: 14, minPx: 24, maxScale: 10, side: 14, order: 21 }
+const _right = new THREE.Vector3()
+const _cameraQuat = new THREE.Quaternion()
 
-/** A 16-unit TEAM_DARK box with a TEAM_FX top, behind the engineer at chest height while he carries a building. */
+/**
+ * A 16-unit TEAM_DARK box with a TEAM_FX top, behind the engineer at chest height while he carries a building, and
+ * beside it the carried building's glyph on a round team token (label.ts), which keeps the carry readable from the
+ * default RTS camera where the box is a few pixels wide.
+ */
 export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
+  const badges = useRef<(THREE.Mesh | null)[]>([])
+  // one material per badge slot: its texture follows the carried building's team and type
+  const badgeMaterials = useMemo(
+    () => Array.from({ length: CARRY_POOL }, () => new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false })),
+    []
+  )
+  useEffect(() => () => badgeMaterials.forEach(m => m.dispose()), [badgeMaterials])
 
-  useFrame(() => {
+  useFrame(({ camera, size }) => {
     if (!x) return
     const tick = tickRef.current
     const pov = povRenderedEntityId()
+    // world orientation: the POV camera sits inside an actor
+    camera.getWorldQuaternion(_cameraQuat)
+    _right.set(1, 0, 0).applyQuaternion(_cameraQuat)
     let used = 0
     for (const c of carriesAt(x, tick)) {
       if (used >= CARRY_POOL || c.entityId === pov) continue
       const actor = liveActor(c.p, c.entityId, tick)
       const team = baseTeam(c.p, tick)
       const slot = slots.current[used]
-      if (!actor || !team || !slot) continue
+      const badge = badges.current[used]
+      if (!actor || !team || !slot || !badge) continue
       _off.set(CARRY_BOX.offset[0], CARRY_BOX.offset[1], CARRY_BOX.offset[2] * actor.body.scale.z).applyQuaternion(actor.body.quaternion)
       slot.position.copy(actor.group.position).add(_off)
       slot.quaternion.copy(actor.body.quaternion)
@@ -155,9 +175,31 @@ export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
       top.material = solid(TEAM_FX[team], 0.35)
       slot.userData.carry = { p: c.p, type: c.type }
       slot.visible = true
+
+      // the badge: only when the carried building is known (its type picks the glyph)
+      badge.visible = c.type >= 0 && c.type !== BUILDING_TYPE.SAPPER
+      if (badge.visible) {
+        const material = badgeMaterials[used]
+        const texture = glyphBadgeTexture(team, glyphOf(c.type, c.mode))
+        if (material.map !== texture) {
+          material.map = texture
+          material.needsUpdate = true
+        }
+        badge.position.copy(slot.position)
+        const scale = minScreenScale(badge, camera, size.height, CARRY_BADGE.size, CARRY_BADGE.minPx, CARRY_BADGE.maxScale)
+        const half = (CARRY_BADGE.size * scale) / 2
+        // beside the engineer from the camera's view, so it covers neither him nor his nameplate
+        badge.position.addScaledVector(_right, CARRY_BADGE.side + half)
+        badge.quaternion.copy(_cameraQuat)
+        badge.scale.set(CARRY_BADGE.size * scale, CARRY_BADGE.size * scale, 1)
+        badge.userData.badge = { p: c.p, type: c.type, mode: c.mode, team }
+      }
       used++
     }
-    for (let i = used; i < CARRY_POOL; i++) if (slots.current[i]) slots.current[i]!.visible = false
+    for (let i = used; i < CARRY_POOL; i++) {
+      if (slots.current[i]) slots.current[i]!.visible = false
+      if (badges.current[i]) badges.current[i]!.visible = false
+    }
   })
 
   const s = CARRY_BOX.size
@@ -168,6 +210,18 @@ export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
           <mesh geometry={BOX} material={solid(TEAM_DARK.red)} scale={[s, s, s]} />
           <mesh geometry={BOX} material={solid(TEAM_FX.red)} position={[0, 0, s / 2 + 0.5]} scale={[s, s, 1]} />
         </group>
+      ))}
+      {Array.from({ length: CARRY_POOL }, (_, i) => (
+        <mesh
+          key={`badge-${i}`}
+          name="carryBadge"
+          ref={m => (badges.current[i] = m)}
+          geometry={PLANE}
+          material={badgeMaterials[i]}
+          renderOrder={CARRY_BADGE.order}
+          frustumCulled={false}
+          visible={false}
+        />
       ))}
     </group>
   )

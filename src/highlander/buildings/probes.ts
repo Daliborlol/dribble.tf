@@ -34,6 +34,7 @@ function drawJson(d: BuildingDraw) {
     pos: vec(d.pos),
     yaw: r1(d.yaw),
     level: d.level,
+    builtFrac: r3(d.builtFrac),
     scaleZ: r3(d.scaleZ),
     opacity: d.ghost ? 0.55 : 1,
     health: d.health,
@@ -173,12 +174,26 @@ registerHlProbe('buildings.scene', () => {
     node.traverse(m => {
       if ((m as THREE.Mesh).isMesh || (m as THREE.Sprite).isSprite) meshes[visibleChain(m) ? 0 : 1]++
     })
-    buildings.push({ instance: node.userData.instance, visible: visibleChain(node), pos: world(node), visibleMeshes: meshes[0], hiddenMeshes: meshes[1] })
+    const label = node.getObjectByName('label')
+    const frame = node.getObjectByName('labelFrame')
+    const labelVisible = !!label && visibleChain(label)
+    buildings.push({
+      instance: node.userData.instance,
+      visible: visibleChain(node),
+      pos: world(node),
+      visibleMeshes: meshes[0],
+      hiddenMeshes: meshes[1],
+      // label -> lift group -> drei Billboard's inner group -> the outer group BuildingObject scales
+      // a hidden label (carried building) keeps whatever scale it last had, so only a drawn one reports it
+      label: label
+        ? { visible: labelVisible, scale: labelVisible ? r3(label.parent?.parent?.parent?.scale.x ?? 1) : null, frame: frame && visibleChain(frame) ? frame.userData.state ?? null : null }
+        : null,
+    })
   })
   const slots = (name: string, key: string) => {
     const group = root.getObjectByName(name)
     if (!group) return []
-    return group.children.filter(c => c.visible).map(c => ({ ...(c.userData[key] ?? {}), pos: world(c) }))
+    return group.children.filter(c => c.visible && c.userData[key]).map(c => ({ ...c.userData[key], pos: world(c) }))
   }
   const beams = root.getObjectByName('dispenserBeams')
   return {
@@ -186,6 +201,9 @@ registerHlProbe('buildings.scene', () => {
     visible: visibleChain(root),
     buildings,
     carries: slots('carryBoxes', 'carry'),
+    carryBadges: (root.getObjectByName('carryBoxes')?.children ?? [])
+      .filter(c => c.visible && c.userData.badge)
+      .map(c => ({ ...c.userData.badge, pos: world(c), size: r1(c.scale.x) })),
     blueprints: slots('blueprints', 'blueprint'),
     blasts: slots('destructions', 'blast'),
     beams: beams ? beams.children.map(m => ((m as THREE.Mesh).visible ? ((m as THREE.Mesh).geometry.drawRange.count / 6) : 0)) : [],

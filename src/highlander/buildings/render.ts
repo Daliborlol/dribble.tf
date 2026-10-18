@@ -27,8 +27,13 @@ export const HULLS: Record<number, [number, number, number]> = {
   [BUILDING_TYPE.DISPENSER]: [40, 40, 55],
   [BUILDING_TYPE.TELEPORTER]: [48, 48, 12],
 }
-/** Contract: the label sits 14 units above the building's top. */
-export const LABEL_GAP = 14
+/**
+ * The status label's anchor, units above the building's top: the bottom edge of the label's frame sits there and the
+ * label grows upward on screen from it (BuildingObject lifts it in billboard space). In a side view at scale 1 its
+ * centre is 18 units above the top (the contract says top + 14), and in steep RTS views it stays clear of the
+ * building instead of covering it.
+ */
+export const LABEL_GAP = 1
 export const BLUEPRINT_DISTANCE = 64
 export const CARRY_BOX = { size: 16, offset: [-14, 0, 40] as [number, number, number] }
 export const SENTRY_RANGE = 1100
@@ -183,6 +188,8 @@ export interface BuildingDraw {
   /** build yaw, degrees */
   yaw: number
   level: number
+  /** construction fraction 0..1 (m_flPercentageConstructed, interpolated between updates), 1 once built */
+  builtFrac: number
   /** construction: z scale 0.25 + 0.75 * built, else 1 */
   scaleZ: number
   /** construction (and redeploy): every part at opacity 0.55 */
@@ -190,7 +197,7 @@ export interface BuildingDraw {
   health: number
   maxHealth: number
   healthFrac: number
-  /** label anchor height above the origin (already scaled), see LABEL_GAP */
+  /** label anchor height above the origin (the building top, construction-scaled, plus LABEL_GAP) */
   labelZ: number
   // sentry
   aim: SentryAim | null
@@ -309,7 +316,8 @@ export function buildingDraw(
     const a = (tickF - s.ticks[si]) / gap
     if (gap > 0 && gap <= 8 && a > 0) built += (s.built[si + 1] / 255 - built) * Math.min(1, a)
   }
-  const scaleZ = building ? 0.25 + 0.75 * Math.max(0, Math.min(1, built)) : 1
+  const builtFrac = building ? Math.max(0, Math.min(1, built)) : 1
+  const scaleZ = building ? 0.25 + 0.75 * builtFrac : 1
   const health = si < 0 ? 0 : s.health[si]
   const maxHealth = si < 0 ? 0 : s.maxHealth[si]
   const top = buildingTop(type, level, mini, b.mode[j])
@@ -374,6 +382,7 @@ export function buildingDraw(
     pos,
     yaw,
     level,
+    builtFrac,
     scaleZ,
     ghost: building,
     health,

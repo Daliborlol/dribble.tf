@@ -329,6 +329,17 @@ async function main() {
     accuracyContractDefaults: within(contractDefaults),
     accuracyContractDefaultsFiring: within(contractDefaults, firing),
     accuracyCurrentFile: within(current),
+    // Why attacking state samples miss: a sentry pushes a state entry when it acquires or switches targets (its
+    // m_iState or m_hEnemy changes) and its turret then needs up to about half a second to turn onto the new
+    // enemy (CObjectSentrygun::MoveTurret). The pose shows that slew truthfully, so those samples are off target
+    // by design; the firing samples (the turret is within 10 degrees of its goal) measure the mapping itself.
+    accuracyByKind: {
+      firing: within(fitted, firing),
+      acquisitionTick: within(fitted, samples.filter(s => !s.firing && s.since === 0)),
+      slewWindow1to32: within(fitted, samples.filter(s => !s.firing && s.since > 0 && s.since < 33)),
+      other: within(fitted, samples.filter(s => !s.firing && s.since >= 33)),
+    },
+    accuracyExcludingAcquisitionTick: within(fitted, samples.filter(s => s.firing || s.since > 0)),
     everyAttackingTick: { all: within(fitted, tickSamples), bySinceAcquired: slew },
     aimAtEnemy: r2Yaw < 0.9 || r2Pitch < 0.9,
   }
@@ -345,6 +356,7 @@ async function main() {
       `// demos: ${perDemo.map(d => `${d.demo} (${d.map}, ${d.sentries} sentries, ${d.samples} samples)`).join(', ')}`,
       `// fit on ${report.fitOn} samples: ${fitSet.length} of ${samples.length} attacking state samples; R^2 yaw ${report.r2.yaw}, pitch ${report.r2.pitch}; rms yaw ${report.rmsDeg.yaw} deg, pitch ${report.rmsDeg.pitch} deg`,
       `// barrel within 15 deg of the enemy centre: ${(report.accuracyFitted.within15 * 100).toFixed(1)} % of state samples (median ${report.accuracyFitted.medianDeg} deg, p90 ${report.accuracyFitted.p90Deg} deg), ${(report.accuracyFittedFiring.within15 * 100).toFixed(1)} % of the ${firing.length} firing samples`,
+      `// misses are turret slew: ${report.accuracyByKind.acquisitionTick.samples} samples sit on the tick a target is acquired (${pct(report.accuracyByKind.acquisitionTick.within15)} within), ${report.accuracyByKind.slewWindow1to32.samples} in the 32 ticks after it (${pct(report.accuracyByKind.slewWindow1to32.within15)}); without the acquisition tick ${pct(report.accuracyExcludingAcquisitionTick.within15)} of ${report.accuracyExcludingAcquisitionTick.samples}`,
       `export const YAW_RANGE = ${fitted.YAW_RANGE}`,
       `export const YAW_SIGN = ${fitted.YAW_SIGN}`,
       `export const YAW_OFFSET = ${fitted.YAW_OFFSET}`,
@@ -377,6 +389,10 @@ function circularMean(degrees) {
     sy += Math.sin((d * Math.PI) / 180)
   }
   return (Math.atan2(sy, sx) * 180) / Math.PI
+}
+
+function pct(v) {
+  return Number.isFinite(v) ? `${(v * 100).toFixed(1)} %` : 'n/a'
 }
 
 function round(v, digits) {

@@ -18,7 +18,7 @@ What a viewer sees today:
 How to use it:
 
 1. Open a SourceTV demo as before: a file, drag and drop, `?demo=<demos.tf id>` or `?demoUrl=<url>`. The base parse runs first; the Highlander data parses afterwards in the background, in about 1 s on an 800 s demo and 2.7 s on the 130k-tick 1429417. "Highlander data NN %" shows at the bottom left while it loads.
-2. The Settings panel has a "Highlander" section: the master switch (applies on the next demo load), an effects preset, and toggles for every group. `AGENTS.md` lists every key with its default.
+2. The Settings panel has a "Highlander" section: the master switch, an effects preset, and toggles for every group. The switch decides at demo load whether the Highlander data parses, while the HUD and the layers follow it at once. `AGENTS.md` lists every key with its default.
 3. Keys: `V` viewmodel, `I` disguise view, `4` chase camera, `[` and `]` timeline markers, hold `Tab` for the scoreboard; `1`, `2` and `3` still switch to POV, spectator and RTS.
 
 How it works: the committed base parser (`src/libs/parser2`) still drives the base viewer. A second wasm module (`src/libs/hlextras`, built from `../dribble-parser` branch `highlander`) parses the same file again in its own worker, with the base parse's start tick, tick base and player list as input, so its data lines up with the base caches by construction. A 16-sample alignment check guards it. Scene layers and HUD widgets in `src/highlander/` draw from that data and from the base caches as pure functions of the tick, so seeking and shared `?tick=` links reproduce the same picture.
@@ -28,6 +28,7 @@ How it works: the committed base parser (`src/libs/parser2`) still drives the ba
 | task | branch and tip | merged in | state |
 |---|---|---|---|
 | step 0 | `598e328` on `highlander` | | done |
+| step 0.3 base viewer on the two longest demos | measurement at `598e328` | | done: both load and play (1437285 26.1 fps, 1432698 32.1 fps); see Performance and memory |
 | S0 scaffold | `hl/s0` `61e6ece` | `c50bc38` | done |
 | P1 extras parser | `hl/p1` `41f6699`; parser `hl/p1-extras` `1a8f2f9` | `4572bdc` | done |
 | M1 maps | `hl/m1` `f67809d` | `fce10b5` | done |
@@ -156,6 +157,7 @@ PENDING H1: where the harness lives in `scripts/hl/harness/`, how to run it, wha
 ### DOCS
 
 - **Built**: `AGENTS.md` rewritten (Highlander mode, every setting, the debug bridge and its 59 probes, the validation tools, the converter with `props.glb`, the base-parser fallback with B2's text, gotchas, limits) and this file. Every command, path, flag, probe name, settings key and number in both files was checked against the code at `b6688f4` or the task reports. The contract stays as it is.
+- **Found in review**: with Highlander on, the HUD and POV keep their Highlander form from base data whenever the extras are missing, which contract 3.9 does not allow. A harness run on 1434434 confirmed it; see Known limits.
 - **Not done yet**: X2's and H1's final state (the PENDING lines), added after their reviews (13.4).
 
 ## Contract section 9, row by row
@@ -223,6 +225,7 @@ From the "later" rows above, with the data already exported where one is named:
 
 From the task reports:
 
+- Decide the HUD and POV behaviour with Highlander on and no extras (Known limits): a deviation row for contract 3.9, or code that shows the base HUD and POV until the extras are ready.
 - `scripts/hl/fallback-values.mjs` and `check-fallback.mjs` should call `delayedStartOf`, so B1's tools match the viewer on 1428628 (13.3).
 - parser2's empty tails after pauses and on cut files: clamp the timeline to the last tick with positions.
 - The tickbase lead: export the lead (`m_nTickBase` minus the server tick) or apply `povFovAt`'s `min()` in the getters (F4).
@@ -239,6 +242,7 @@ From the task reports:
 - **No game assets** (D1): every model Highlander adds is a procedural placeholder; the player models and the rocket, pipe and sticky models are the viewer's existing GLBs. Stock static props are invisible: 353 to 1844 per map, 117 to 837 of them solid, so sticky traps, sniper dots, rockets, sentries and players can float on the bsp-to-glb maps (114 of the 133 local demos). Overlays and decals, the 3D skybox, light styles toggled during a round and two stock skies (stand-ins) are missing; `AGENTS.md` "Known visual limits" has the examples.
 - **Tickbase lead** (12.2 item 6): `m_flFOVTime`, `m_flChargeBeginTime` and `m_flInvisChangeCompleteTime` are written in the player's tickbase time and run 3 to 4 ticks ahead of the server tick. The data is unchanged; `povFovAt` works around it for the POV camera and scope, while `fovAt`, `invisAt` and charge-begin values are not adjusted.
 - **Rare kinds without a local demo** (11.4 and the wave reports): jarate, Mad Milk, the Quick-Fix uber, Vaccinator blast and fire ubers, cleavers, stun balls, Short Circuit orbs and energy-ring tempents. Also unvalidated on real data: the minicrit aura, crit syringes, kits that players drop, arena points, two medics on one team and left-handed viewmodels.
+- **Highlander on without extras**, open for the final verification: while the extras load, after an extras error, after a memory-plan skip and for a demo loaded with Highlander off and switched on later, the HUD keeps the 9v9 columns, the medic panels and the Highlander killfeed, fed from base data. POV keeps TF2's FOV without zoom, the class eye heights and the death camera at the death spot, and the 12-plate nameplate cap stays on. Dead Ringer feigns then count as kills and deaths in the killfeed and the Tab scoreboard, whose footer still says they are left out. Contract 3.9 says "base UI only" for the first three states, and no deviation row records the difference. The review of DOCS found it in the code (`HudLayout.tsx`, `hudSnapshot.ts`, `eyeHeight.ts`, `PovLayer.tsx`, `perf/nameplates.ts`) and in earlier harness runs with the extras skipped, and a DOCS run on 1434434 confirmed it for a demo loaded with Highlander off and switched on later (status `disabled`, 9v9 columns, camera FOV 73.74, class eye heights, cap 12, death camera without a killer). Only Highlander off restores the pre-Highlander HUD and POV camera. The final verification either records a deviation or changes the code. `AGENTS.md` "Highlander on without extras" has the details.
 - **Fallback demos**: with Highlander off, 1429417 and 1428628 load through the fork's cache (positionScale 32), not as before S0; 1428628's saved ticks moved by +3678 with B2.
 - **Newer map versions**: they load the older converted geometry with a notice until someone reconverts the new BSP.
 - **Behaviour worth knowing**: the chase camera has no wall collision; a sentry kill's death camera aims at the engineer; crit hitscan tracers look like normal ones; the nameplate cap thins plates by distance only, and DOM plates draw over the buildings' canvas labels; the KOTH point shows a padlock while waiting for players, as in TF2; thrown items can hover a few units on slopes; a player model's first appearance costs one 120 to 133 ms long task.

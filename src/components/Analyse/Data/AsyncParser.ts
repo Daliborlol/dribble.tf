@@ -177,6 +177,11 @@ export class AsyncParser {
   deaths: { [tick: string]: CachedDeath[] } = {}
   rounds!: Round[]
   buildingCache!: BuildingCache
+  /**
+   * The base projectile cache as parsed. Read base projectiles through projectileReader() or getProjectilesAtTick(),
+   * never through this field: once releaseProjectileCache() ran (task X2), its arrays are empty and the reader that
+   * replaced it serves every row.
+   */
   projectileCache!: ProjectileCache
   intervalPerTick!: number
   world!: World

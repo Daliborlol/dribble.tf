@@ -1,13 +1,14 @@
 // Release of the base projectile cache (contract section 5 X2, 12.3 and 13.4).
 //
-// When the extras are ready with `available.projectiles` true while Highlander is on, F3's source split is computed
-// (it reads the cache), the cache's rows are copied into a ProjectileAdapter (projectileAdapter.ts), a sample of
-// ticks is compared against the cache, and AsyncParser.releaseProjectileCache drops the dense typed arrays. From then
-// on the adapter serves every base projectile read for the rest of the session: DemoViewer's getProjectilesAtTick
-// calls and projectileSource's slot reads go to demo.projectileReader(). Turning Highlander off, an extras restart,
-// reload or error change nothing it serves, because it holds its own copy and no extras reference. With Highlander
-// off, extras unavailable, disabled or failed, or the projectiles group excluded or empty, nothing happens: the cache
-// stays. A failed build or self-check also keeps the cache (and is not retried for that demo).
+// When the extras are ready with `available.projectiles` true while Highlander is on, the release waits for an idle
+// period of the main thread. Then F3's source split is computed (it reads the cache), the cache's rows are copied into
+// a ProjectileAdapter (projectileAdapter.ts), a sample of ticks and every track's edges are compared against the cache
+// (releaseSelfCheck), and AsyncParser.releaseProjectileCache drops the dense typed arrays. From then on the adapter
+// serves every base projectile read for the rest of the session: DemoViewer's getProjectilesAtTick calls and
+// projectileSource's slot reads go to demo.projectileReader(). Turning Highlander off, an extras restart, reload or
+// error change nothing it serves, because it holds its own copy and no extras reference. With Highlander off, extras
+// unavailable, disabled or failed, or the projectiles group excluded or empty, nothing happens: the cache stays. A
+// failed build or self-check also keeps the cache (and is not retried for that demo).
 //
 // `?hlProjectileRelease=manual` keeps the cache until the `memory.release` probe asks, so a harness run can measure
 // both sides in one page. Imported for its side effects by Projectiles.tsx.
@@ -21,16 +22,12 @@ import type { HighlanderExtras } from '@highlander/extras/types'
 import { getState, useInstance, useStore } from '@zus/store'
 import * as THREE from 'three'
 
-import {
-  buildProjectileAdapter,
-  compareWithReader,
-  sampleTicks,
-  type ProjectileAdapterStats,
-  type ReaderComparison,
-} from './projectileAdapter'
+import { buildProjectileAdapter, releaseSelfCheck, type ProjectileAdapterStats, type ReaderComparison } from './projectileAdapter'
 
-/** Ticks the release compares between the adapter and the cache before it drops the cache. */
+/** Ticks the release compares between the adapter and the cache before it drops the cache (plus the track edges). */
 const SELF_CHECK_TICKS = 256
+/** The automatic release waits for an idle period, at most this long. A scheduling bound, not effect logic (D12). */
+const RELEASE_IDLE_TIMEOUT_MS = 2000
 
 export interface ProjectileReleaseRecord {
   state: 'pending' | 'released' | 'failed'
@@ -39,6 +36,8 @@ export interface ProjectileReleaseRecord {
   releasedBytes: number
   /** Split, build and self-check time (a measurement, not effect logic). */
   buildMs: number
+  /** buildMs by phase: F3's split, the adapter build, the self-check. */
+  phaseMs?: { split: number; adapter: number; selfCheck: number }
   selfCheck?: ReaderComparison
   error?: string
 }
@@ -80,6 +79,7 @@ function canRelease(demo: AsyncParser): boolean {
 }
 
 const mb = (bytes: number) => Math.round((bytes / 1048576) * 10) / 10
+const ms = (from: number, to: number) => Math.round((to - from) * 10) / 10
 
 /**
  * Builds the adapter from the cache and releases the cache when the conditions hold; returns the demo's record (an
@@ -95,10 +95,14 @@ export function releaseBaseProjectiles(demo: AsyncParser, trigger: 'auto' | 'pro
   try {
     // the split first: it reads the cache, and Projectiles.tsx and the F3 layers keep using it (cached per extras)
     const source = getProjectileSource(x, demo)
+    const t1 = performance.now()
     const adapter = buildProjectileAdapter(demo.projectileCache, demo.ticks, x, source)
+    const t2 = performance.now()
     record.stats = adapter.stats
-    record.selfCheck = compareWithReader(adapter, demo.projectileCache, sampleTicks(demo.ticks, SELF_CHECK_TICKS))
-    record.buildMs = Math.round((performance.now() - t0) * 10) / 10
+    record.selfCheck = releaseSelfCheck(adapter, demo.projectileCache, demo.ticks, SELF_CHECK_TICKS)
+    const t3 = performance.now()
+    record.buildMs = ms(t0, t3)
+    record.phaseMs = { split: ms(t0, t1), adapter: ms(t1, t2), selfCheck: ms(t2, t3) }
     if (record.selfCheck.mismatches > 0) {
       record.error = `self-check found ${record.selfCheck.mismatches} differences (first ${JSON.stringify(record.selfCheck.first)})`
     } else {
@@ -119,6 +123,7 @@ export function releaseBaseProjectiles(demo: AsyncParser, trigger: 'auto' | 'pro
       orphanRows: record.stats?.orphanRows,
       typeOverrides: record.stats?.typeOverrides,
       buildMs: record.buildMs,
+      phaseMs: record.phaseMs,
       trigger,
     })
   } else {
@@ -127,14 +132,24 @@ export function releaseBaseProjectiles(demo: AsyncParser, trigger: 'auto' | 'pro
   return record
 }
 
-// The automatic release: checked on every store update, done once per demo in a microtask, outside the store
-// listener that fired (loadExtras sets the status inside its own try block).
+/** Runs `fn` in an idle period of the main thread, at the latest after RELEASE_IDLE_TIMEOUT_MS. */
+function whenIdle(fn: () => void): void {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: RELEASE_IDLE_TIMEOUT_MS })
+  else setTimeout(fn, 0)
+}
+
+// The automatic release: checked on every store update, done once per demo, outside the store listener that fired
+// (loadExtras sets the status inside its own try block). It waits for an idle period instead of joining the task that
+// made the extras ready, which also mounts every Highlander layer. While the canvas renders every frame, headless
+// Chromium finds no idle period and the release runs at the 2 s bound, as one task of 13 to 41 ms on the measured
+// demos. The rows served are the same before and after the release, so when it runs changes nothing drawn (D12). The
+// conditions are checked again when it runs.
 function onStoreChange(): void {
   if (manualRelease) return
   const demo = useInstance.getState().parsedDemo
   if (!demo || records.has(demo) || !canRelease(demo)) return
   records.set(demo, { state: 'pending', trigger: 'auto', releasedBytes: 0, buildMs: 0 })
-  queueMicrotask(() => {
+  whenIdle(() => {
     if (records.get(demo)?.state !== 'pending') return
     records.delete(demo)
     if (canRelease(demo)) releaseBaseProjectiles(demo, 'auto')

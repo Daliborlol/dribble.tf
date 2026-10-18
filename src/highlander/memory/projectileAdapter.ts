@@ -20,6 +20,7 @@
 // The adapter holds only its own typed arrays and a copy of the slot entity ids: no demo, extras or store reference
 // (12.3), so an extras restart, reload or error after the release changes nothing it serves.
 
+import type { DataArray } from '@components/Analyse/Data/DataCache'
 import { ProjectileTypeMap } from '@components/Analyse/Data/ProjectileCache'
 import type { CachedProjectile, ProjectileCache, ProjectileReader } from '@components/Analyse/Data/ProjectileCache'
 import type { ProjectileSource } from '@highlander/combat/projectileSource'
@@ -50,14 +51,6 @@ export interface ProjectileAdapterStats {
   bytes: number
   positionScale: number
   rotationScale: number
-}
-
-/** `array`, or a copy at least `need` long (doubling) while the build does not know the final sizes. */
-function grow<T extends Uint32Array | Int32Array | Uint8Array>(array: T, need: number): T {
-  if (need <= array.length) return array
-  const next = new (array.constructor as new (length: number) => T)(Math.max(need, array.length * 2))
-  next.set(array)
-  return next
 }
 
 export class ProjectileAdapter implements ProjectileReader {
@@ -156,6 +149,11 @@ export class ProjectileAdapter implements ProjectileReader {
     return track < 0 ? 0 : this.trackType[track] || this.runCode[this.runAt(track, tick)]
   }
 
+  /** Calls `fn` with the slot and the tick range [start, end) of every track, in slot order. */
+  forEachTrack(fn: (slot: number, start: number, end: number) => void): void {
+    for (let track = 0; track < this.trackSlot.length; track++) fn(this.trackSlot[track], this.trackStart[track], this.trackEnd[track])
+  }
+
   /** The track of slot `index` with a row at `tick`, or -1. */
   private trackAt(tick: number, index: number): number {
     if (!Number.isInteger(tick) || tick < 0 || !Number.isInteger(index) || index < 0 || index >= this.projectileIds.length) return -1
@@ -197,6 +195,174 @@ export class ProjectileAdapter implements ProjectileReader {
   }
 }
 
+/** Where the build finds a slot's values (DataCache.getOffset): vectors at tick * 3 + c, team and type per bucket. */
+interface CacheLayout {
+  pv: number
+  rv: number
+  teamShift: number
+  teamStride: number
+  typeShift: number
+  typeStride: number
+}
+
+/**
+ * The adapter's arrays while the build fills them. The per-slot scan is a method of its own: a small function with
+ * monomorphic arrays that the JIT optimizes within the first slot. As one large function, the build's first call ran
+ * about 30 ms slower than later calls, while V8 compiled it twice (17 and 11 ms) and deoptimized it twice.
+ */
+class AdapterBuilder {
+  readonly runTick: Uint32Array
+  readonly runPos: Int32Array
+  readonly runRot: Int32Array
+  readonly runTeam: Uint8Array
+  readonly runCode: Uint8Array
+  runs = 0
+  trackSlot: Uint32Array
+  trackStart: Uint32Array
+  trackEnd: Uint32Array
+  trackType: Uint8Array
+  trackRun: Uint32Array
+  tracks = 0
+  rows = 0
+  orphanRows = 0
+  orphanTracks = 0
+  typeOverrides = 0
+  /** owned[j] = 1 when served instance j owns a track. */
+  readonly owned: Uint8Array
+  private readonly created: Uint32Array
+  private readonly deleted: Uint32Array
+  private readonly served: Uint8Array
+  private readonly baseType: Uint8Array
+
+  /** `maxRows` bounds the rows and so the runs (a run starts at a row); the track arrays grow when they must. */
+  constructor(maxRows: number, trackCapacity: number, x: HighlanderExtras, source: ProjectileSource) {
+    this.runTick = new Uint32Array(maxRows)
+    this.runPos = new Int32Array(maxRows * 3)
+    this.runRot = new Int32Array(maxRows * 3)
+    this.runTeam = new Uint8Array(maxRows)
+    this.runCode = new Uint8Array(maxRows)
+    this.trackSlot = new Uint32Array(trackCapacity)
+    this.trackStart = new Uint32Array(trackCapacity)
+    this.trackEnd = new Uint32Array(trackCapacity)
+    this.trackType = new Uint8Array(trackCapacity)
+    this.trackRun = new Uint32Array(trackCapacity + 1)
+    this.owned = new Uint8Array(x.projectiles.count)
+    this.created = x.projectiles.created
+    this.deleted = x.projectiles.deleted
+    this.served = source.servedByBase
+    this.baseType = source.baseType
+  }
+
+  /**
+   * Copies the rows of `slot` in its typed buckets `buckets[from .. to)` (ascending bucket indices). The ticks of the
+   * buckets between two that are not adjacent hold no row, so the open track ends there. `list` holds the extras
+   * instances of the slot's entity id, by creation tick.
+   */
+  scanSlot(
+    slot: number, pos: DataArray, rot: DataArray | undefined, team: DataArray | undefined, type: DataArray,
+    end: number, list: readonly number[], buckets: Uint32Array, from: number, to: number, layout: CacheLayout
+  ): void {
+    const { pv, rv, teamShift, teamStride, typeShift, typeStride } = layout
+    const bucketTicks = 1 << typeShift
+    const { created, deleted, served, runTick, runPos, runRot, runTeam, runCode } = this
+    let runs = this.runs
+    let rows = this.rows
+    let orphanRows = this.orphanRows
+    let typeOverrides = this.typeOverrides
+    let k = -1 // list[k]: the newest instance of this entity created at or before t
+    let open = -1 // the track that ends at t, -1 after a tick without a row
+    let openOwner = -1
+    let previous = -2
+    for (let n = from; n < to; n++) {
+      const b = buckets[n]
+      if (b !== previous + 1) open = -1
+      previous = b
+      const code = type[b * typeStride]
+      for (let t = b << typeShift, t1 = Math.min(end, t + bucketTicks); t < t1; t++) {
+        const i = t * pv
+        const px = pos[i] | 0
+        const py = pos[i + 1] | 0
+        const pz = pos[i + 2] | 0
+        if ((px | py | pz) === 0) {
+          open = -1
+          continue
+        }
+        while (k + 1 < list.length && created[list[k + 1]] <= t) k++
+        let owner = -1
+        if (k >= 0) {
+          const j = list[k]
+          const gone = deleted[j]
+          if (served[j] && (gone === NONE_U32 || t < gone)) owner = j
+        }
+        if (open < 0 || owner !== openOwner) {
+          open = this.openTrack(slot, t, owner, runs)
+          openOwner = owner
+        }
+        this.trackEnd[open] = t + 1
+        rows++
+        if (owner < 0) orphanRows++
+        else if (code !== this.trackType[open]) typeOverrides++
+
+        const ri = t * rv
+        const rx = rot ? rot[ri] | 0 : 0
+        const ry = rot ? rot[ri + 1] | 0 : 0
+        const rz = rot ? rot[ri + 2] | 0 : 0
+        // An index past the team array would make the cache's team undefined. That can only happen at a slot's last
+        // ticks, and releaseSelfCheck compares every track's last row, so the release would refuse.
+        const tm = team ? team[(t >> teamShift) * teamStride] ?? 0 : 0
+        const last = runs - 1
+        const r = last * 3
+        if (
+          last >= this.trackRun[open] &&
+          runPos[r] === px && runPos[r + 1] === py && runPos[r + 2] === pz &&
+          runRot[r] === rx && runRot[r + 1] === ry && runRot[r + 2] === rz &&
+          runTeam[last] === tm && runCode[last] === code
+        ) {
+          continue // the same row as the tick before: the run goes on
+        }
+        const w = runs * 3
+        runTick[runs] = t
+        runPos[w] = px
+        runPos[w + 1] = py
+        runPos[w + 2] = pz
+        runRot[w] = rx
+        runRot[w + 1] = ry
+        runRot[w + 2] = rz
+        runTeam[runs] = tm
+        runCode[runs] = code
+        runs++
+      }
+    }
+    this.runs = runs
+    this.rows = rows
+    this.orphanRows = orphanRows
+    this.typeOverrides = typeOverrides
+  }
+
+  /** Starts a track of `slot` at tick `t`, owned by served instance `owner` (-1: an orphan), whose runs start at `run`. */
+  private openTrack(slot: number, t: number, owner: number, run: number): number {
+    if (this.tracks + 2 > this.trackRun.length) this.growTracks()
+    const track = this.tracks++
+    this.trackSlot[track] = slot
+    this.trackStart[track] = t
+    this.trackType[track] = owner >= 0 ? this.baseType[owner] : 0
+    this.trackRun[track] = run
+    if (owner >= 0) this.owned[owner] = 1
+    else this.orphanTracks++
+    return track
+  }
+
+  private growTracks(): void {
+    const capacity = this.trackSlot.length * 2
+    const copy = <T extends Uint32Array | Uint8Array>(array: T, next: T): T => (next.set(array), next)
+    this.trackSlot = copy(this.trackSlot, new Uint32Array(capacity))
+    this.trackStart = copy(this.trackStart, new Uint32Array(capacity))
+    this.trackEnd = copy(this.trackEnd, new Uint32Array(capacity))
+    this.trackType = copy(this.trackType, new Uint8Array(capacity))
+    this.trackRun = copy(this.trackRun, new Uint32Array(capacity + 1))
+  }
+}
+
 /**
  * Copies every row of the base cache into an adapter (call it while the cache still holds its arrays). `source` is
  * F3's split for these extras (getProjectileSource), which assigns the rows to served instances and their type.
@@ -207,138 +373,75 @@ export function buildProjectileAdapter(cache: ProjectileCache, ticks: number, x:
   const pj = x.projectiles
   const byEntity = x.derived.projectilesByEntity
   const served = source.servedByBase
-  const baseType = source.baseType
+  const layout: CacheLayout = {
+    pv: cache.positionCache.valuesPerPlayer,
+    rv: cache.rotationCache.valuesPerPlayer,
+    teamShift: cache.teamNumberCache.sparse,
+    teamStride: cache.teamNumberCache.valuesPerPlayer,
+    typeShift: cache.typeCache.sparse,
+    typeStride: cache.typeCache.valuesPerPlayer,
+  }
+  const bucketTicks = 1 << layout.typeShift
 
-  let runTick = new Uint32Array(4096)
-  let runPos = new Int32Array(4096 * 3)
-  let runRot = new Int32Array(4096 * 3)
-  let runTeam = new Uint8Array(4096)
-  let runCode = new Uint8Array(4096)
-  let runs = 0
-  let trackSlot = new Uint32Array(1024)
-  let trackStart = new Uint32Array(1024)
-  let trackEnd = new Uint32Array(1024)
-  let trackType = new Uint8Array(1024)
-  let trackRun = new Uint32Array(1025)
-  let tracks = 0
-  const slotTrack = new Uint32Array(slots + 1)
-  const owned = new Uint8Array(pj.count)
-  let rows = 0
-  let orphanRows = 0
-  let orphanTracks = 0
-  let typeOverrides = 0
+  // ProjectileCache.getProjectile has no row where the bucket's type code has no name or the position is (0, 0, 0).
+  // The code is stored once per bucket of 2^typeShift ticks (SparseDataCache), and only 1.6 to 13 % of the buckets
+  // hold a named one on the measured demos. So this pass lists the typed buckets of every slot, and only their ticks
+  // are scanned: the same rows as a scan of every tick, found 3 to 4 times faster on the first, cold call (19 instead
+  // of 63 ms on 1438891, 32 instead of 135 on 1429417) and 2 to 7 times once optimized.
   let span = Math.max(0, ticks)
-  // the cache's own layout (DataCache.getOffset): vectors at tick * 3 + c, team and type at (tick >> 6) * 1
-  const pv = cache.positionCache.valuesPerPlayer
-  const rv = cache.rotationCache.valuesPerPlayer
-  const teamShift = cache.teamNumberCache.sparse
-  const teamStride = cache.teamNumberCache.valuesPerPlayer
-  const typeShift = cache.typeCache.sparse
-  const typeStride = cache.typeCache.valuesPerPlayer
-
+  let bucketCount = 0
   for (let slot = 0; slot < slots; slot++) {
-    slotTrack[slot] = tracks
     const pos = cache.positionCache.data[slot]
     if (!pos) continue
-    const rot = cache.rotationCache.data[slot]
-    const team = cache.teamNumberCache.data[slot]
-    const type = cache.typeCache.data[slot]
-    const list = byEntity.get(ids[slot]) ?? EMPTY
     // the cache reads index tick * 3, so its rows end where the slot's array ends
-    const end = Math.floor(pos.length / pv)
+    const end = Math.floor(pos.length / layout.pv)
     span = Math.max(span, end)
-    let k = -1 // list[k]: the newest instance of this entity created at or before t
-    let open = -1 // the track that ends at t, -1 after a tick without a row
-    let openOwner = -1
-    for (let t = 0; t < end; t++) {
-      const i = t * pv
-      const px = pos[i] | 0
-      const py = pos[i + 1] | 0
-      const pz = pos[i + 2] | 0
-      // ProjectileCache.getProjectile: no row while the position is (0, 0, 0) or the bucket type has no name
-      if ((px | py | pz) === 0) {
-        open = -1
-        continue
-      }
-      const code = type ? type[(t >> typeShift) * typeStride] : undefined
-      if (code === undefined || !ProjectileTypeMap[code]) {
-        open = -1
-        continue
-      }
-      while (k + 1 < list.length && pj.created[list[k + 1]] <= t) k++
-      let owner = -1
-      if (k >= 0) {
-        const j = list[k]
-        const deleted = pj.deleted[j]
-        if (served[j] && (deleted === NONE_U32 || t < deleted)) owner = j
-      }
-      if (open < 0 || owner !== openOwner) {
-        trackSlot = grow(trackSlot, tracks + 1)
-        trackStart = grow(trackStart, tracks + 1)
-        trackEnd = grow(trackEnd, tracks + 1)
-        trackType = grow(trackType, tracks + 1)
-        trackRun = grow(trackRun, tracks + 2)
-        open = tracks++
-        openOwner = owner
-        trackSlot[open] = slot
-        trackStart[open] = t
-        trackType[open] = owner >= 0 ? baseType[owner] : 0
-        trackRun[open] = runs
-        if (owner >= 0) owned[owner] = 1
-        else orphanTracks++
-      }
-      trackEnd[open] = t + 1
-      rows++
-      if (owner < 0) orphanRows++
-      else if (code !== trackType[open]) typeOverrides++
-
-      const ri = t * rv
-      const rx = rot ? rot[ri] | 0 : 0
-      const ry = rot ? rot[ri + 1] | 0 : 0
-      const rz = rot ? rot[ri + 2] | 0 : 0
-      // an index past the bucket array would make the cache's team undefined; the release self-check would see it
-      const tm = team ? team[(t >> teamShift) * teamStride] ?? 0 : 0
-      const last = runs - 1
-      const r = last * 3
-      if (
-        last >= trackRun[open] &&
-        runPos[r] === px && runPos[r + 1] === py && runPos[r + 2] === pz &&
-        runRot[r] === rx && runRot[r + 1] === ry && runRot[r + 2] === rz &&
-        runTeam[last] === tm && runCode[last] === code
-      ) {
-        continue // the same row as the tick before: the run goes on
-      }
-      runTick = grow(runTick, runs + 1)
-      runPos = grow(runPos, (runs + 1) * 3)
-      runRot = grow(runRot, (runs + 1) * 3)
-      runTeam = grow(runTeam, runs + 1)
-      runCode = grow(runCode, runs + 1)
-      const w = runs * 3
-      runTick[runs] = t
-      runPos[w] = px
-      runPos[w + 1] = py
-      runPos[w + 2] = pz
-      runRot[w] = rx
-      runRot[w + 1] = ry
-      runRot[w + 2] = rz
-      runTeam[runs] = tm
-      runCode[runs] = code
-      runs++
+    if (cache.typeCache.data[slot]) bucketCount += Math.ceil(end / bucketTicks)
+  }
+  const buckets = new Uint32Array(bucketCount)
+  const slotBucket = new Uint32Array(slots + 1)
+  let typed = 0
+  let maxRows = 0
+  for (let slot = 0; slot < slots; slot++) {
+    slotBucket[slot] = typed
+    const pos = cache.positionCache.data[slot]
+    // without a type array every type code is undefined, and the cache has no row in this slot
+    const type = cache.typeCache.data[slot]
+    if (!pos || !type) continue
+    const end = Math.floor(pos.length / layout.pv)
+    for (let b = 0, t0 = 0; t0 < end; b++, t0 += bucketTicks) {
+      const code = type[b * layout.typeStride]
+      if (code === undefined || !ProjectileTypeMap[code]) continue
+      buckets[typed++] = b
+      maxRows += Math.min(bucketTicks, end - t0)
     }
   }
+  slotBucket[slots] = typed
+
+  const builder = new AdapterBuilder(maxRows, 1024, x, source)
+  const slotTrack = new Uint32Array(slots + 1)
+  for (let slot = 0; slot < slots; slot++) {
+    slotTrack[slot] = builder.tracks
+    if (slotBucket[slot] === slotBucket[slot + 1]) continue
+    const pos = cache.positionCache.data[slot]
+    builder.scanSlot(
+      slot, pos, cache.rotationCache.data[slot], cache.teamNumberCache.data[slot], cache.typeCache.data[slot],
+      Math.floor(pos.length / layout.pv), byEntity.get(ids[slot]) ?? EMPTY, buckets, slotBucket[slot], slotBucket[slot + 1], layout
+    )
+  }
+  const { tracks, runs, rows, orphanRows, orphanTracks, typeOverrides, owned, trackStart, trackEnd } = builder
   slotTrack[slots] = tracks
-  trackRun = grow(trackRun, tracks + 1)
-  trackRun[tracks] = runs
+  builder.trackRun[tracks] = runs
 
   // bucket index, filled in track order, so every bucket lists its tracks in slot order
-  const bucketCount = (span >> BUCKET_SHIFT) + 1
-  const bucketOffset = new Uint32Array(bucketCount + 1)
+  const indexBuckets = (span >> BUCKET_SHIFT) + 1
+  const bucketOffset = new Uint32Array(indexBuckets + 1)
   for (let tr = 0; tr < tracks; tr++) {
     for (let b = trackStart[tr] >> BUCKET_SHIFT, last = (trackEnd[tr] - 1) >> BUCKET_SHIFT; b <= last; b++) bucketOffset[b + 1]++
   }
-  for (let b = 0; b < bucketCount; b++) bucketOffset[b + 1] += bucketOffset[b]
-  const bucketTrack = new Uint32Array(bucketOffset[bucketCount])
-  const fill = bucketOffset.slice(0, bucketCount)
+  for (let b = 0; b < indexBuckets; b++) bucketOffset[b + 1] += bucketOffset[b]
+  const bucketTrack = new Uint32Array(bucketOffset[indexBuckets])
+  const fill = bucketOffset.slice(0, indexBuckets)
   for (let tr = 0; tr < tracks; tr++) {
     for (let b = trackStart[tr] >> BUCKET_SHIFT, last = (trackEnd[tr] - 1) >> BUCKET_SHIFT; b <= last; b++) bucketTrack[fill[b]++] = tr
   }
@@ -360,17 +463,17 @@ export function buildProjectileAdapter(cache: ProjectileCache, ticks: number, x:
     projectileIds: ids.slice(),
     positionScale: cache.positionCache.scale,
     rotationScale: cache.rotationCache.scale,
-    trackSlot: trackSlot.slice(0, tracks),
+    trackSlot: builder.trackSlot.slice(0, tracks),
     trackStart: trackStart.slice(0, tracks),
     trackEnd: trackEnd.slice(0, tracks),
-    trackType: trackType.slice(0, tracks),
-    trackRun: trackRun.slice(0, tracks + 1),
+    trackType: builder.trackType.slice(0, tracks),
+    trackRun: builder.trackRun.slice(0, tracks + 1),
     slotTrack,
-    runTick: runTick.slice(0, runs),
-    runPos: runPos.slice(0, runs * 3),
-    runRot: runRot.slice(0, runs * 3),
-    runTeam: runTeam.slice(0, runs),
-    runCode: runCode.slice(0, runs),
+    runTick: builder.runTick.slice(0, runs),
+    runPos: builder.runPos.slice(0, runs * 3),
+    runRot: builder.runRot.slice(0, runs * 3),
+    runTeam: builder.runTeam.slice(0, runs),
+    runCode: builder.runCode.slice(0, runs),
     bucketOffset,
     bucketTrack,
     stats: {
@@ -394,7 +497,28 @@ export interface ReaderComparison {
   ticks: number
   rows: number
   mismatches: number
-  first?: { tick: number; field: string; cache: unknown; adapter: unknown }
+  /** Slot rows compared at track edges (releaseSelfCheck). */
+  edges?: number
+  first?: { tick: number; slot?: number; field: string; cache: unknown; adapter: unknown }
+}
+
+const sameVector = (a: CachedProjectile['position'], b: CachedProjectile['position']) =>
+  Object.is(a.x, b.x) && Object.is(a.y, b.y) && Object.is(a.z, b.z)
+
+/** The first field in which two rows differ ('row' when only one of them exists), or null when they are the same. */
+function rowDifference(a: CachedProjectile | null, b: CachedProjectile | null): string | null {
+  if (a === null || b === null) return a === b ? null : 'row'
+  if (a.entityId !== b.entityId) return 'entityId'
+  if (a.type !== b.type) return 'type'
+  if (a.teamNumber !== b.teamNumber) return 'teamNumber'
+  if (!sameVector(a.position, b.position)) return 'position'
+  if (!sameVector(a.rotation, b.rotation)) return 'rotation'
+  return null
+}
+
+function noteDifference(result: ReaderComparison, tick: number, slot: number | undefined, field: string, a: unknown, b: unknown) {
+  result.mismatches++
+  result.first ??= { tick, slot, field, cache: a, adapter: b }
 }
 
 /**
@@ -403,32 +527,50 @@ export interface ReaderComparison {
  */
 export function compareWithReader(adapter: ProjectileAdapter, reader: ProjectileReader, ticks: Iterable<number>): ReaderComparison {
   const result: ReaderComparison = { ticks: 0, rows: 0, mismatches: 0 }
-  const note = (tick: number, field: string, a: unknown, b: unknown) => {
-    result.mismatches++
-    result.first ??= { tick, field, cache: a, adapter: b }
-  }
   for (const tick of ticks) {
     result.ticks++
     const want = reader.getProjectiles(tick)
     const got = adapter.getProjectiles(tick, true)
     result.rows += want.length
     if (want.length !== got.length) {
-      note(tick, 'count', want.length, got.length)
+      noteDifference(result, tick, undefined, 'count', want.length, got.length)
       continue
     }
     for (let i = 0; i < want.length; i++) {
-      const a = want[i]
-      const b = got[i]
-      if (a.entityId !== b.entityId) note(tick, 'entityId', a.entityId, b.entityId)
-      else if (a.type !== b.type) note(tick, 'type', a.type, b.type)
-      else if (a.teamNumber !== b.teamNumber) note(tick, 'teamNumber', a.teamNumber, b.teamNumber)
-      else if (!Object.is(a.position.x, b.position.x) || !Object.is(a.position.y, b.position.y) || !Object.is(a.position.z, b.position.z)) {
-        note(tick, 'position', a.position, b.position)
-      } else if (!Object.is(a.rotation.x, b.rotation.x) || !Object.is(a.rotation.y, b.rotation.y) || !Object.is(a.rotation.z, b.rotation.z)) {
-        note(tick, 'rotation', a.rotation, b.rotation)
-      }
+      const field = rowDifference(want[i], got[i])
+      if (field) noteDifference(result, tick, undefined, field, want[i], got[i])
     }
   }
+  return result
+}
+
+/**
+ * The release self-check. compareWithReader at `count` ticks spread over the demo plus its first and last tick, then
+ * for every track the slot's row at the tick before it, its first and last tick and the tick after it. The edges
+ * cover every slot's last row, so they reach the last, partial 64-tick bucket of the slot's team and type arrays
+ * wherever it holds a row, which the even sample can miss (1438891's last bucket starts at 54400, its sample ends at
+ * 54335). The edges cost one slot lookup each, not a scan of every slot.
+ */
+export function releaseSelfCheck(adapter: ProjectileAdapter, reader: ProjectileReader, ticks: number, count: number): ReaderComparison {
+  const sample = new Set(sampleTicks(ticks, count))
+  if (ticks > 0) sample.add(0).add(ticks - 1)
+  const result = compareWithReader(adapter, reader, Array.from(sample).sort((a, b) => a - b))
+  let edges = 0
+  const edge = (slot: number, tick: number) => {
+    if (tick < 0) return
+    edges++
+    const a = reader.getProjectile(tick, slot)
+    const b = adapter.getProjectile(tick, slot, true)
+    const field = rowDifference(a, b)
+    if (field) noteDifference(result, tick, slot, field, a, b)
+  }
+  adapter.forEachTrack((slot, start, end) => {
+    edge(slot, start - 1)
+    edge(slot, start)
+    edge(slot, end - 1)
+    edge(slot, end)
+  })
+  result.edges = edges
   return result
 }
 

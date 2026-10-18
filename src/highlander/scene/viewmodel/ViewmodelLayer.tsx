@@ -24,7 +24,7 @@ import type { ActiveWeapon } from '@highlander/extras/getters'
 import { getPovSubject, usePovSubject } from '@highlander/pov/subject'
 import { getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
 
-import { DEPTH_CLEAR_ORDER, VM_GLOW_ORDER, VM_ORDER } from './kit'
+import { DEPTH_CLEAR_ORDER, prepareViewmodelObject } from './kit'
 import { buildViewmodelInput, viewmodelBlock } from './input'
 import { pickViewmodelProvider, type ViewmodelInstance, type ViewmodelProvider } from './provider'
 import { computePose, MELEE_KINDS } from './animate'
@@ -37,25 +37,6 @@ const INSTANCE_CACHE_SIZE = 6
 
 const depthClearGeometry = new THREE.PlaneGeometry(0.01, 0.01)
 const depthClearMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true })
-
-/** Forces the contract's viewmodel flags on every mesh of a provider instance (GLB providers included). */
-function prepareViewmodelObject(object: THREE.Object3D): void {
-  object.traverse(node => {
-    const mesh = node as THREE.Mesh
-    if (!(mesh as any).isMesh && !(node as THREE.Sprite).isSprite) return
-    node.frustumCulled = false
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    const additive = materials.some(m => m && m.blending === THREE.AdditiveBlending)
-    node.renderOrder = additive ? VM_GLOW_ORDER : VM_ORDER
-    if (additive) return
-    for (const m of materials) {
-      if (!m) continue
-      m.transparent = true
-      m.depthTest = true
-      m.depthWrite = true
-    }
-  })
-}
 
 interface CachedInstance { provider: ViewmodelProvider; instance: ViewmodelInstance }
 

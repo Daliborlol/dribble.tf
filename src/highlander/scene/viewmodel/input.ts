@@ -52,46 +52,130 @@ function wstateSince(x: HighlanderExtras, p: number, tick: number, test: (i: num
   return t.ticks[j]
 }
 
-/** Reload phases and clip increments from the wstate history (shell-by-shell reloads, reload ease-out). */
-function reloadHistory(x: HighlanderExtras, p: number, tick: number): { reloadSince?: number; reloadEnd?: number; clipUpTicks: number[] } {
+type AnimEvent = { tick: number; event: number; data: number }
+
+const ANIM_RELOAD = 3
+const ANIM_RELOAD_LOOP = 4
+const ANIM_RELOAD_END = 5
+/** A finished reload reports its end tick this long (the 6-tick ease-out, and no restart from its own events). */
+const RELOAD_END_WINDOW = 60
+/** Contract: a RELOAD or RELOAD_LOOP anim event holds the reload pose 40 ticks when nothing in the data ends it. */
+const ANIM_RELOAD_HOLD = 40
+/**
+ * While the clip is known, a whole-clip reload holds until the clip refills, at most this long. The slowest stock
+ * clip reloads take about 1.5 s (Force-A-Nature 1.43 s, syringe gun 1.3 s, pistol 1.25 s), 100 ticks at 66.7 Hz.
+ */
+const CLIP_RELOAD_MAX = 110
+/** Anim and fire events read for whole-clip reloads: the longest reload plus the end window. */
+const RELOAD_LOOKBACK = CLIP_RELOAD_MAX + RELOAD_END_WINDOW
+
+interface ReloadHistory { reloadSince?: number; reloadEnd?: number; clipUpTicks: number[] }
+
+/**
+ * Whole-clip reloads. CTFWeaponBase::DefaultReload (pistols, revolvers, SMGs, syringe guns, the Force-A-Nature)
+ * emits PLAYERANIMEVENT_RELOAD but leaves m_iReloadMode at TF_RELOAD_START (tf_weaponbase.cpp:1812-1816 and 2202),
+ * so wstate never shows these reloads. One starts at a RELOAD event after the weapon was drawn (old demos without
+ * weapon state reload singly through a run of RELOAD and RELOAD_LOOP events, each within the hold of the previous
+ * one), and the first of these ends it: RELOAD_END, the clip growing, a shot (firing with rounds left aborts the
+ * reload, tf_weaponbase.cpp:2384-2404), or the hold: CLIP_RELOAD_MAX from the start while the clip is known (the
+ * refill comes first), else the contract's 40 ticks after the latest event.
+ */
+function clipReloadPhase(x: HighlanderExtras, p: number, tick: number, drawTick: number, anim: AnimEvent[], fire: number[]): { since?: number; end?: number } {
+  const isReload = (e: AnimEvent) => e.event === ANIM_RELOAD || e.event === ANIM_RELOAD_LOOP
+  const firedIn = (from: number, to: number) => fire.some(f => f > from && f <= to)
+  let last = anim.length - 1
+  while (last >= 0 && !(anim[last].tick <= tick && isReload(anim[last]))) last--
+  if (last < 0 || anim[last].tick < drawTick) return {}
+  let first = last
+  for (let k = last - 1; k >= 0; k--) {
+    const e = anim[k]
+    if (e.event === ANIM_RELOAD_END || e.tick < drawTick) break
+    if (!isReload(e)) continue
+    if (anim[first].tick - e.tick > ANIM_RELOAD_HOLD || firedIn(e.tick, anim[first].tick)) break
+    first = k
+  }
+  const start = anim[first].tick
+  const lastTick = anim[last].tick
+
+  let end = Infinity
+  for (let k = last + 1; k < anim.length; k++) {
+    if (anim[k].tick > tick) break
+    if (anim[k].event === ANIM_RELOAD_END) { end = anim[k].tick; break }
+  }
+  for (const f of fire) if (f > lastTick && f <= tick) { end = Math.min(end, f); break }
+  const w = x.players.wstate
+  const i = trackIndexAt(w, p, tick)
+  const clipKnown = i >= 0 && w.clip[i] >= 0
+  if (clipKnown) {
+    const lo = w.offsets[p]
+    for (let k = i; k > lo && w.ticks[k] > lastTick; k--) {
+      if (w.clip[k - 1] >= 0 && w.clip[k] > w.clip[k - 1]) end = Math.min(end, w.ticks[k])
+    }
+  }
+  const hold = clipKnown ? start + CLIP_RELOAD_MAX : lastTick + ANIM_RELOAD_HOLD
+  if (end <= tick) return { end: Math.min(end, hold) }
+  return hold > tick ? { since: start } : { end: hold }
+}
+
+/**
+ * Reload phases: wstate reload 1 or 2 (weapons that reload singly), else the whole-clip reload of the anim events;
+ * plus the clip increments of the last 12 ticks (shell-by-shell reloads).
+ */
+function reloadHistory(x: HighlanderExtras, p: number, tick: number, drawTick: number, anim: AnimEvent[], fire: number[]): ReloadHistory {
   const t = x.players.wstate
   const i = trackIndexAt(t, p, tick)
-  const out: { reloadSince?: number; reloadEnd?: number; clipUpTicks: number[] } = { clipUpTicks: [] }
-  if (i < 0) return out
-  const lo = t.offsets[p]
+  const out: ReloadHistory = { clipUpTicks: [] }
   const inReload = (k: number) => t.reload[k] === 1 || t.reload[k] === 2
-  if (inReload(i)) {
-    out.reloadSince = wstateSince(x, p, tick, inReload, 128) ?? t.ticks[i]
-  } else {
-    // The latest entry that left a reload phase, within 60 ticks
-    for (let k = i; k > lo && tick - t.ticks[k] <= 60; k--) {
+  let wstateEnd: number | undefined
+  if (i >= 0) {
+    const lo = t.offsets[p]
+    for (let k = i; k > lo && tick - t.ticks[k] <= 12; k--) {
+      if (t.clip[k] >= 0 && t.clip[k - 1] >= 0 && t.clip[k] === t.clip[k - 1] + 1) out.clipUpTicks.unshift(t.ticks[k])
+    }
+    if (inReload(i)) {
+      out.reloadSince = wstateSince(x, p, tick, inReload, 128) ?? t.ticks[i]
+      return out
+    }
+    // The latest entry that left a reload phase, within the end window
+    for (let k = i; k > lo && tick - t.ticks[k] <= RELOAD_END_WINDOW; k--) {
       if (inReload(k - 1) && !inReload(k)) {
-        out.reloadEnd = t.ticks[k]
+        wstateEnd = t.ticks[k]
         break
       }
     }
   }
-  for (let k = i; k > lo && tick - t.ticks[k] <= 12; k--) {
-    if (t.clip[k] >= 0 && t.clip[k - 1] >= 0 && t.clip[k] === t.clip[k - 1] + 1) out.clipUpTicks.unshift(t.ticks[k])
+  const clip = clipReloadPhase(x, p, tick, drawTick, anim, fire)
+  // A RELOAD event from before the end of a wstate reload belongs to that reload
+  if (clip.since !== undefined && (wstateEnd === undefined || clip.since > wstateEnd)) {
+    out.reloadSince = clip.since
+    return out
   }
+  const end = Math.max(wstateEnd ?? -Infinity, clip.end ?? -Infinity)
+  if (tick - end <= RELOAD_END_WINDOW) out.reloadEnd = end
   return out
 }
 
-// Per-tick event windows: the arrays only change when the integer tick does, so frames within a tick reuse them.
+// Per-tick event windows and reload phases: they only change when the integer tick does, so frames within a tick
+// reuse them.
+let windowX: HighlanderExtras | null = null
 let windowKey = ''
 let windowFire: number[] = []
-let windowAnim: { tick: number; event: number; data: number }[] = []
+let windowAnim: AnimEvent[] = []
+let windowReload: ReloadHistory = { clipUpTicks: [] }
 
 export function buildViewmodelInput(x: HighlanderExtras, demo: AsyncParser, p: number, classId: number, team: 'red' | 'blue', weapon: ActiveWeapon, tickF: number): ViewmodelInput {
   const tick = Math.floor(tickF)
-  const key = `${p}:${tick}:${x.meta.ticks}`
-  if (key !== windowKey) {
+  const key = `${p}:${tick}:${weapon.since}`
+  if (key !== windowKey || x !== windowX) {
+    windowX = x
     windowKey = key
-    windowFire = fireTicks(x, p, tick - 40, tick + 1)
-    windowAnim = animEvents(x, p, tick - 60, tick + 1)
+    const anim = animEvents(x, p, tick - RELOAD_LOOKBACK, tick + 1)
+    const fire = fireTicks(x, p, tick - RELOAD_LOOKBACK, tick + 1)
+    windowFire = fire.filter(f => f >= tick - 40)
+    windowAnim = anim.filter(e => e.tick >= tick - 60)
+    windowReload = reloadHistory(x, p, tick, weapon.since, anim, fire)
   }
   const wstate = weaponStateAt(x, p, tick)
-  const history = reloadHistory(x, p, tick)
   const misc = miscAt(x, p, tick)
   return {
     p,
@@ -111,10 +195,10 @@ export function buildViewmodelInput(x: HighlanderExtras, demo: AsyncParser, p: n
     vm0: viewmodelAt(x, p, tick, 0),
     vm1: viewmodelAt(x, p, tick, 1),
     interval: x.meta.intervalPerTick || demo.intervalPerTick || 0.015,
-    reloadSince: history.reloadSince,
-    reloadEnd: history.reloadEnd,
+    reloadSince: windowReload.reloadSince,
+    reloadEnd: windowReload.reloadEnd,
     stateSince: wstate ? wstateSince(x, p, tick, i => x.players.wstate.state[i] === wstate.state) ?? undefined : undefined,
-    clipUpTicks: history.clipUpTicks,
+    clipUpTicks: windowReload.clipUpTicks,
     weaponClass: weapon.cls,
   }
 }

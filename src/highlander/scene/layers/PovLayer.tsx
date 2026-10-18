@@ -144,7 +144,6 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
   const tf2Fov = useHlSetting<boolean>('pov.tf2Fov')
   const viewmodelOn = useHlSetting<boolean>('pov.viewmodel')
   const settingsFov = useStore(s => s.settings.camera.fov)
-  const settingsNear = useStore(s => s.settings.camera.near)
   const settingsFar = useStore(s => s.settings.camera.far)
   const registryVersion = useActorRegistryVersion()
   const { size } = useThree()
@@ -176,12 +175,14 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
 
   useEffect(() => () => useInstance.getState().setPovCameraOverride(undefined), [])
 
-  // The camera whose fov and near this layer changed, with the values to restore
+  // The camera whose fov and near this layer changed. Restoring reads the settings at that moment, so the unmount
+  // cleanup (created on mount) does not bring back the values of the first render.
   const applied = useRef<THREE.PerspectiveCamera | null>(null)
   const restore = (camera: THREE.PerspectiveCamera | null) => {
     if (!camera) return
-    camera.fov = settingsFov
-    camera.near = settingsNear
+    const { fov, near } = useStore.getState().settings.camera
+    camera.fov = fov
+    camera.near = near
     camera.updateProjectionMatrix()
   }
   useEffect(

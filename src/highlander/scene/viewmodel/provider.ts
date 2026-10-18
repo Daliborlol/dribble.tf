@@ -35,9 +35,15 @@ export interface ViewmodelInput {
   vm1: VmState | null
   /** Seconds per tick (charge times of bows and sticky launchers). */
   interval?: number
-  /** Tick the current `wstate.reload` phase 1 or 2 began (only while reloading). */
+  /**
+   * Tick the current reload began (only while reloading): the start of the `wstate.reload` 1 or 2 phase, or, for
+   * weapons that reload the whole clip at once and stay in reload mode 0, the RELOAD anim event that started it.
+   */
   reloadSince?: number
-  /** Tick the latest reload phase ended (`wstate.reload` left 1 and 2), when that was within the last 60 ticks. */
+  /**
+   * Tick the latest reload ended (`wstate.reload` left 1 and 2, or a whole-clip reload ended by the clip refill, a
+   * shot, RELOAD_END or its hold time), when that was within the last 60 ticks.
+   */
   reloadEnd?: number
   /** Tick the current `wstate.state` value began (minigun spin, airblast puff). */
   stateSince?: number

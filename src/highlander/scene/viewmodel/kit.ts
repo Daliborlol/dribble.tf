@@ -15,6 +15,30 @@ export const VM_ORDER = 1_000_001
 /** Additive viewmodel glows (flame, muzzle flash, nozzle) draw after the solid viewmodel meshes. */
 export const VM_GLOW_ORDER = 1_000_002
 
+/**
+ * Forces the contract's viewmodel flags on every mesh and sprite under `object`: renderOrder VM_ORDER (VM_GLOW_ORDER
+ * for additive glows), no frustum culling, and transparent solids with depth test and write, so they sort after the
+ * depth clear and never clip into walls. ViewmodelLayer runs it on every provider instance after `create` (GLB
+ * providers included); a provider that adds meshes later (the spy's watch hand) runs it on them itself.
+ */
+export function prepareViewmodelObject(object: THREE.Object3D): void {
+  object.traverse(node => {
+    const mesh = node as THREE.Mesh
+    if (!(mesh as any).isMesh && !(node as THREE.Sprite).isSprite) return
+    node.frustumCulled = false
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const additive = materials.some(m => m && m.blending === THREE.AdditiveBlending)
+    node.renderOrder = additive ? VM_GLOW_ORDER : VM_ORDER
+    if (additive) return
+    for (const m of materials) {
+      if (!m) continue
+      m.transparent = true
+      m.depthTest = true
+      m.depthWrite = true
+    }
+  })
+}
+
 export const WOOD = '#6b4a2b'
 export const DARK_WOOD = '#4a3220'
 /** Shirt cuff of the spy and the medic. */

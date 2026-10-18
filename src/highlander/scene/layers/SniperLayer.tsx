@@ -6,7 +6,7 @@
 // through walls. A thin beam joins the owner's eye to the dot (opacity 0.3, 0.5 for the wrangler). The beam is a
 // fixed-pixel-width line, so it stays readable from an RTS camera far away without getting fat up close.
 
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
@@ -129,6 +129,17 @@ export const SniperLayer = React.memo(({ renderTick }: { renderTick: number }) =
     }
     return out
   }, [])
+  // r3f does not dispose <primitive> objects: free the per-slot beam geometries and materials on unmount (the sprite
+  // materials are module-level and shared)
+  useEffect(
+    () => () => {
+      for (const slot of slots) {
+        slot.beam.geometry.dispose()
+        ;(slot.beam.material as LineMaterial).dispose()
+      }
+    },
+    [slots]
+  )
 
   const dots = useMemo(() => (extras && dotsOn && extras.meta.available.dots ? dotsAt(extras, renderTick) : []), [extras, dotsOn, renderTick])
 

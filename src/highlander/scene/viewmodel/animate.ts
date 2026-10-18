@@ -78,22 +78,29 @@ function latestAnim(input: ViewmodelInput, events: number[], t: number): number 
   return null
 }
 
-/** Reload weight: eases in over 6 ticks from the reload start and out over 6 ticks after its end. */
+/**
+ * Reload weight: eases in over 6 ticks from the reload start and out over 6 ticks after its end. A reload is
+ * `wstate.reload` 1 or 2 (weapons that reload singly), or the RELOAD anim event of a weapon that reloads its whole
+ * clip at once and so stays in reload mode 0 (pistols, revolvers, SMGs, syringe guns): input.ts derives that phase as
+ * reloadSince and reloadEnd, ended by the clip refill, a shot, RELOAD_END or the hold time.
+ */
 function reloadWeight(input: ViewmodelInput, t: number): number {
   const ws = input.wstate
-  const inReload = !!ws && (ws.reload === 1 || ws.reload === 2)
-  if (inReload) {
+  if (ws && (ws.reload === 1 || ws.reload === 2)) {
     const since = input.reloadSince ?? latestAnim(input, [ANIM_RELOAD, ANIM_RELOAD_LOOP], t) ?? t
     return easeInOut(clamp01((t - since) / 6))
   }
+  if (input.reloadSince !== undefined) return easeInOut(clamp01((t - input.reloadSince) / 6))
   if (input.reloadEnd !== undefined) return 1 - easeInOut(clamp01((t - input.reloadEnd) / 6))
-  if (!ws) {
-    // No weapon state (old demos): reload anim events alone, until RELOAD_END or 40 ticks
-    const start = latestAnim(input, [ANIM_RELOAD, ANIM_RELOAD_LOOP], t)
-    const end = latestAnim(input, [ANIM_RELOAD_END], t)
-    if (start !== null && (end === null || end < start) && t - start < 40) return easeInOut(clamp01((t - start) / 6))
-    if (end !== null && start !== null && end >= start) return 1 - easeInOut(clamp01((t - end) / 6))
-  }
+  // input.ts fills clipUpTicks whenever it derives the reload phases: then there is no reload now
+  if (input.clipUpTicks !== undefined) return 0
+  // An input built without F4's reload history: the contract rule from the anim events alone (RELOAD or RELOAD_LOOP
+  // within 40 ticks after the draw, until RELOAD_END)
+  const start = latestAnim(input, [ANIM_RELOAD, ANIM_RELOAD_LOOP], t)
+  const end = latestAnim(input, [ANIM_RELOAD_END], t)
+  if (start === null || start < input.drawTick) return 0
+  if ((end === null || end < start) && t - start < 40) return easeInOut(clamp01((t - start) / 6))
+  if (end !== null && end >= start) return 1 - easeInOut(clamp01((t - end) / 6))
   return 0
 }
 

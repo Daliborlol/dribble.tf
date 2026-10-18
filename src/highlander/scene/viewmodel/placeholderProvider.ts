@@ -15,7 +15,7 @@ import * as THREE from 'three'
 import { flashTexture } from './textures'
 import { computePose, hash01, MELEE_KINDS, type VmPose } from './animate'
 import { buildWatch, buildWeaponModel, resolveKind, VM_SCALE, type WeaponModel } from './weapons'
-import { armStyle, orientBetween, Rig, VM_GLOW_ORDER, type V3 } from './kit'
+import { armStyle, orientBetween, prepareViewmodelObject, Rig, VM_GLOW_ORDER, type V3 } from './kit'
 import { registerViewmodelProvider, type ViewmodelInput, type ViewmodelInstance, type ViewmodelProvider } from './provider'
 
 const DEG = Math.PI / 180
@@ -90,6 +90,8 @@ export function createPlaceholder(input: ViewmodelInput): PlaceholderInstance {
     watchAnchor = new THREE.Group()
     watchAnchor.name = 'vmWatch'
     watchAnchor.add(watchRig.root)
+    // Built after ViewmodelLayer prepared the instance: give the watch the same render order and depth flags
+    prepareViewmodelObject(watchAnchor)
     eye.add(watchAnchor)
     return watchAnchor
   }

@@ -218,11 +218,17 @@ const isMapMeta = (value: unknown): value is MapMeta =>
   (value as MapMeta).schema === 'dribble.map-meta' &&
   (value as MapMeta).version === 1
 
+/** fetchMapMeta's marker for "conversion.json could not be read": resolve null without caching it. */
+const NO_CONVERSION = Symbol('no conversion.json')
+
 /**
- * Cached per folder; null when the map has no folder or no map-meta.json. A missing file, a body that is
- * not JSON (the dev server and the Netlify rewrite answer a missing file with index.html and 200) and a
- * schema mismatch are cached as null, like a loaded file. Only a failed request is not cached: it
- * resolves null, getLoadedMapMeta() stays undefined and the next call retries.
+ * Cached per folder; null when the map has no folder or no map-meta.json. Only a folder whose conversion.json
+ * lists `files.meta` is requested (X1): the bsp-to-glb maps and koth_product_final list it, the other textured
+ * folders (the 6v6 sample's cp_snakewater_final1 and the rest) do not, so they never send a request that would
+ * 404. A missing file, a body that is not JSON (the dev server and the Netlify rewrite answer a missing file with
+ * index.html and 200) and a schema mismatch are cached as null, like a loaded file. A failed request, and a
+ * conversion.json that could not be read, are not cached: they resolve null, getLoadedMapMeta() stays undefined
+ * and the next call retries.
  */
 export function fetchMapMeta(map: string): Promise<MapMeta | null> {
   const folder = getMapFolder(map)
@@ -232,10 +238,16 @@ export function fetchMapMeta(map: string): Promise<MapMeta | null> {
   if (!request) {
     const created: Promise<MapMeta | null> = fetchMapConversion(map)
       .then(conversion => {
-        const url = getMapFileUrl(map, conversion?.files?.meta ?? 'map-meta.json')
+        if (!conversion) return NO_CONVERSION
+        const file = conversion.files?.meta
+        const url = file ? getMapFileUrl(map, file) : undefined
         return url ? fetchJsonFile(url) : null
       })
       .then(json => {
+        if (json === NO_CONVERSION) {
+          if (pending.get(folder) === created) pending.delete(folder)
+          return null
+        }
         const meta = isMapMeta(json) ? json : null
         if (pending.get(folder) === created) resolved.set(folder, meta)
         return meta

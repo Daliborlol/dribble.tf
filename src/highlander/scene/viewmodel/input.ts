@@ -156,25 +156,29 @@ function reloadHistory(x: HighlanderExtras, p: number, tick: number, drawTick: n
 }
 
 // Per-tick event windows and reload phases: they only change when the integer tick does, so frames within a tick
-// reuse them.
-let windowX: HighlanderExtras | null = null
-let windowKey = ''
-let windowFire: number[] = []
-let windowAnim: AnimEvent[] = []
-let windowReload: ReloadHistory = { clipUpTicks: [] }
+// reuse them. Kept per extras object in a WeakMap (contract 12.3, X1 memory audit): a module variable holding the
+// last extras would keep a previous demo's extras alive after the next demo loads.
+interface EventWindow { key: string; fire: number[]; anim: AnimEvent[]; reload: ReloadHistory }
+const eventWindows = new WeakMap<HighlanderExtras, EventWindow>()
 
 export function buildViewmodelInput(x: HighlanderExtras, demo: AsyncParser, p: number, classId: number, team: 'red' | 'blue', weapon: ActiveWeapon, tickF: number): ViewmodelInput {
   const tick = Math.floor(tickF)
   const key = `${p}:${tick}:${weapon.since}`
-  if (key !== windowKey || x !== windowX) {
-    windowX = x
-    windowKey = key
+  let win = eventWindows.get(x)
+  if (!win || win.key !== key) {
     const anim = animEvents(x, p, tick - RELOAD_LOOKBACK, tick + 1)
     const fire = fireTicks(x, p, tick - RELOAD_LOOKBACK, tick + 1)
-    windowFire = fire.filter(f => f >= tick - 40)
-    windowAnim = anim.filter(e => e.tick >= tick - 60)
-    windowReload = reloadHistory(x, p, tick, weapon.since, anim, fire)
+    win = {
+      key,
+      fire: fire.filter(f => f >= tick - 40),
+      anim: anim.filter(e => e.tick >= tick - 60),
+      reload: reloadHistory(x, p, tick, weapon.since, anim, fire),
+    }
+    eventWindows.set(x, win)
   }
+  const windowFire = win.fire
+  const windowAnim = win.anim
+  const windowReload = win.reload
   const wstate = weaponStateAt(x, p, tick)
   const misc = miscAt(x, p, tick)
   return {

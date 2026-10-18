@@ -11,6 +11,7 @@ import { itemKind } from '@highlander/items'
 import { getHlSetting } from '@highlander/extras/hooks'
 import { byPlayerRange, eventRange, sinceTick, trackIndexAt, xformAt } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import { sentryMuzzleAt, tracerBarrel } from '@highlander/buildings/render'
 
 import { hash } from './time'
 import { deflectIndexAt, directionAt, flamesAliveAt, positionAt, projectilesDrawnAt, projectileTeamAt } from './projectileData'
@@ -232,7 +233,11 @@ export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number,
   return out
 }
 
-export interface SentryTracerFx { row: number; tick: number; age: number; sentry: number; pivot: Vec3; start: Vec3; end: Vec3; opacity: number; color: string }
+export interface SentryTracerFx {
+  row: number; tick: number; age: number; sentry: number; pivot: Vec3; start: Vec3; end: Vec3; opacity: number; color: string
+  /** X1: 'barrel' when the line starts at F2's drawn barrel tip (sentryMuzzleAt), 'reach' for the constant fallback */
+  startFrom?: 'barrel' | 'reach'
+}
 
 /** SENTRYGUN_EYE_OFFSET_LEVEL_1..3 (tf_shareddefs.h): the turret pivot above the sentry origin. */
 const SENTRY_EYE = [32, 32, 40, 46]
@@ -270,8 +275,11 @@ function tracerOrdinal(x: HighlanderExtras, row: number): number {
 /**
  * Sentry "Tracer" effects with age < 3. The networked start is the dummy (999, 999, 999) of
  * CBaseEntity::ComputeTracerStartPosition (the client uses the muzzle attachment), so the line starts at the
- * barrel tip: from the pivot (origin + (0, 0, 32 / 40 / 46 by level), x0.75 for minis) 29 or 35 units toward the
- * end point, to the side of the firing barrel at levels 2 and 3.
+ * barrel tip F2 draws at the tracer's tick: sentryMuzzleAt(x, sentry, tick, tracerBarrel(x, row)) (X1 wiring,
+ * contract 12.4), the same point as F2's muzzle flash and the `buildings.tracerMuzzle` probe. When F2 does not draw
+ * the sentry at that tick (sentryMuzzleAt returns false) the line falls back to F3's reach: from the pivot (origin +
+ * (0, 0, 32 / 40 / 46 by level), x0.75 for minis) 29 or 35 units toward the end point, to the side of the firing
+ * barrel at levels 2 and 3.
  */
 export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTracerFx[] {
   const tr = x.tempents.tracers
@@ -290,23 +298,29 @@ export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTrace
     const level = mini ? 1 : Math.min(3, Math.max(1, si >= 0 ? bl.state.level[si] : 1))
     const scale = mini ? SENTRY_MINI_SCALE : 1
     _pivot.z += SENTRY_EYE[level] * scale
-    _start.copy(_pivot)
-    _to.set(tr.ex[i], tr.ey[i], tr.ez[i]).sub(_pivot)
-    const length = _to.length()
-    if (length > 1) {
-      _to.multiplyScalar(1 / length)
-      _start.addScaledVector(_to, Math.min(SENTRY_BARREL_REACH[level] * scale, length))
-      const horizontal = Math.hypot(_to.x, _to.y)
-      if (level >= 2 && horizontal > 1e-6) {
-        // the barrels sit along the turret's left axis, which stays horizontal while the turret pitches
-        const side = (tracerOrdinal(x, i) % 2 === 0 ? -1 : 1) * SENTRY_BARREL_SIDE
-        _start.x += (-_to.y / horizontal) * side
-        _start.y += (_to.x / horizontal) * side
+    let startFrom: 'barrel' | 'reach' = 'reach'
+    const barrel = tracerBarrel(x, i)
+    if (barrel >= 0 && sentryMuzzleAt(x, j, tick, barrel, _start)) {
+      startFrom = 'barrel'
+    } else {
+      _start.copy(_pivot)
+      _to.set(tr.ex[i], tr.ey[i], tr.ez[i]).sub(_pivot)
+      const length = _to.length()
+      if (length > 1) {
+        _to.multiplyScalar(1 / length)
+        _start.addScaledVector(_to, Math.min(SENTRY_BARREL_REACH[level] * scale, length))
+        const horizontal = Math.hypot(_to.x, _to.y)
+        if (level >= 2 && horizontal > 1e-6) {
+          // the barrels sit along the turret's left axis, which stays horizontal while the turret pitches
+          const side = (tracerOrdinal(x, i) % 2 === 0 ? -1 : 1) * SENTRY_BARREL_SIDE
+          _start.x += (-_to.y / horizontal) * side
+          _start.y += (_to.x / horizontal) * side
+        }
       }
     }
     out.push({
       row: i, tick, age, sentry: j, pivot: vec(_pivot), start: vec(_start), end: [tr.ex[i], tr.ey[i], tr.ez[i]],
-      opacity: 0.8 * (1 - age / SENTRY_TRACER_TICKS), color: TRACER_COLOR,
+      opacity: 0.8 * (1 - age / SENTRY_TRACER_TICKS), color: TRACER_COLOR, startFrom,
     })
   }
   return out

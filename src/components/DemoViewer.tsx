@@ -1,4 +1,4 @@
-import { Component, createRef, useRef, useEffect, useState, useCallback, Suspense } from 'react'
+import { Component, createRef, memo, useRef, useEffect, useState, useCallback, Suspense } from 'react'
 
 // THREE related imports
 import * as THREE from 'three'
@@ -76,6 +76,29 @@ const RTS_CAMERA_OFFSET = new THREE.Vector3(0, 250, 1000)
 const RTS_TARGET_DISTANCE = 1500
 const ENABLE_DEBUG_MAP_OFFSET = false
 const MARKER_COLOR = '#37ff5f'
+
+// Children of the per-tick render whose props never change between ticks (X1): DemoViewer re-renders on every store
+// update, about once per frame while playing. Each reads its own state through hooks, so skipping the parent's
+// re-render changes nothing they draw.
+const MemoLights = memo(Lights)
+const MemoCanvasKeyHandler = memo(CanvasKeyHandler)
+const MemoWorld = memo(World)
+const MemoStickers = memo(Stickers)
+const MemoSkybox = memo(Skybox)
+const MemoCrosshair = memo(Crosshair)
+const MemoFpsCounter = memo(FpsCounter)
+const MemoPlaybackPanel = memo(PlaybackPanel)
+
+/**
+ * The player-outline pass. Memoized (X1): @react-three/postprocessing's EffectComposer rebuilds its passes in a
+ * layout effect keyed on `children`, so re-rendering it with fresh JSX children on every tick removed and re-added
+ * the outline pass every frame (addPass, configure) even while outlines were off.
+ */
+const OutlineComposer = memo(({ enabled }: { enabled: boolean }) => (
+  <EffectComposer enabled={enabled} autoClear={false}>
+    <Outline blendFunction={BlendFunction.SCREEN} visibleEdgeColor={0xffffff} hiddenEdgeColor={0xffffff} xRay={true} />
+  </EffectComposer>
+))
 
 const roundOffset = (x: number, y: number, z: number) => ({
   x: Math.round(x),
@@ -375,7 +398,7 @@ const Controls = () => {
   )
 }
 
-const PerfProbe = ({ enabled }: { enabled: boolean }) => {
+const PerfProbe = memo(({ enabled }: { enabled: boolean }) => {
   const { gl } = useThree()
 
   useFrame(() => {
@@ -388,7 +411,7 @@ const PerfProbe = ({ enabled }: { enabled: boolean }) => {
   })
 
   return null
-}
+})
 
 const MapCenterMarker = () => {
   const center = useStore(state => state.scene.bounds.defaultRtsCenter)
@@ -436,7 +459,7 @@ const MapCenterMarker = () => {
 const DOUBLE_TAP_SEEK_TICKS = 50
 const DOUBLE_TAP_TIMEOUT = 300
 
-const DoubleTapSeek = () => {
+const DoubleTapSeek = memo(() => {
   const isMobile = useIsMobile()
   const lastTapRef = useRef<{ time: number; side: 'left' | 'right' } | null>(null)
   const [ripple, setRipple] = useState<{ side: 'left' | 'right'; key: number } | null>(null)
@@ -505,7 +528,7 @@ const DoubleTapSeek = () => {
       )}
     </div>
   )
-}
+})
 
 // FocusedPlayer wrapper - adjusts positioning for mobile
 const FocusedPlayerLayer = (props: {
@@ -526,8 +549,10 @@ const FocusedPlayerLayer = (props: {
   )
 }
 
-// Panel toolbar - functional component so we can use useIsMobile hook
-const PanelToolbar = ({ hasDemoLoaded }: { hasDemoLoaded: boolean }) => {
+// Panel toolbar - functional component so we can use useIsMobile hook. Memoized (X1): its only prop is a boolean,
+// and the panels read their own state, so the per-tick DemoViewer render no longer re-renders the settings,
+// about, setups, match killfeed and bookmarks panels.
+const PanelToolbar = memo(({ hasDemoLoaded }: { hasDemoLoaded: boolean }) => {
   const isMobile = useIsMobile()
 
   if (isMobile) {
@@ -571,7 +596,7 @@ const PanelToolbar = ({ hasDemoLoaded }: { hasDemoLoaded: boolean }) => {
       )}
     </>
   )
-}
+})
 
 //
 // ─── COMPONENT ──────────────────────────────────────────────────────────────────
@@ -738,7 +763,6 @@ class DemoViewer extends Component<DemoViewerProps> {
     const { demo, map } = this.props
     const INTERP_DELAY_TICKS = 2
     const renderTick = Math.max(1, playback.tick - INTERP_DELAY_TICKS)
-    const MAX_PROJECTILES_FOR_HIGH_QUALITY_INTERPOLATION = 16
     // Cap Retina/high-density DPR so fill-rate does not erase later draw-call wins.
     const canvasDpr =
       typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 1.25)
@@ -772,27 +796,17 @@ class DemoViewer extends Component<DemoViewerProps> {
       const projectilesNextTick = demo.getProjectilesAtTick(renderTick + 1)
       const projectilesNextById = new Map(projectilesNextTick.map(p => [p.entityId, p]))
 
-      const useHighQualityProjectileInterpolation =
-        projectilesCurrentTick.length <= MAX_PROJECTILES_FOR_HIGH_QUALITY_INTERPOLATION
-      const projectilesPrevTick = useHighQualityProjectileInterpolation
-        ? demo.getProjectilesAtTick(Math.max(renderTick - 1, 1))
-        : []
-      const projectilesNext2Tick = useHighQualityProjectileInterpolation
-        ? demo.getProjectilesAtTick(renderTick + 2)
-        : []
-      const projectilesPrevById = new Map(projectilesPrevTick.map(p => [p.entityId, p]))
-      const projectilesNext2ById = new Map(projectilesNext2Tick.map(p => [p.entityId, p]))
-
+      // Projectiles.tsx reads only the current and next samples. The previous and second-next scans (two more
+      // full projectile-cache passes per render) fed positionPrev and positionNext2, which nothing reads (X1);
+      // the fields stay in the InterpolatedProjectile shape as aliases of the samples it does read.
       projectilesThisTick = projectilesCurrentTick.map(projectile => {
         const nextProjectile = projectilesNextById.get(projectile.entityId)
-        const prevProjectile = projectilesPrevById.get(projectile.entityId)
-        const next2Projectile = projectilesNext2ById.get(projectile.entityId)
+        const positionNext = nextProjectile?.position ?? projectile.position
         return {
           ...projectile,
-          positionPrev: prevProjectile?.position ?? projectile.position,
-          positionNext: nextProjectile?.position ?? projectile.position,
-          positionNext2:
-            next2Projectile?.position ?? nextProjectile?.position ?? projectile.position,
+          positionPrev: projectile.position,
+          positionNext,
+          positionNext2: positionNext,
           rotationNext: nextProjectile?.rotation ?? projectile.rotation,
         }
       })
@@ -811,24 +825,24 @@ class DemoViewer extends Component<DemoViewerProps> {
         >
           {/* Base scene elements */}
 
-          <Lights map={map} />
+          <MemoLights map={map} />
           <Controls />
           <PerfProbe enabled={this.perfLoggingEnabled} />
-          <CanvasKeyHandler />
+          <MemoCanvasKeyHandler />
 
           {/* World Map */}
 
           <Suspense fallback={null}>
-            <World map={map} mode={settings.scene.mode} />
+            <MemoWorld map={map} mode={settings.scene.mode} />
           </Suspense>
 
           {ENABLE_DEBUG_MAP_OFFSET && <MapCenterMarker />}
 
-          <Stickers />
+          <MemoStickers />
 
           {/* Skybox */}
 
-          {settings.ui.showSkybox && <Skybox map={map} />}
+          {settings.ui.showSkybox && <MemoSkybox map={map} />}
 
           {/* Actors */}
 
@@ -836,14 +850,7 @@ class DemoViewer extends Component<DemoViewerProps> {
             <Selection>
               <Actors actors={actorsThisTick} renderTick={renderTick} />
 
-              <EffectComposer enabled={settings.ui.playerOutlines} autoClear={false}>
-                <Outline
-                  blendFunction={BlendFunction.SCREEN}
-                  visibleEdgeColor={0xffffff}
-                  hiddenEdgeColor={0xffffff}
-                  xRay={true}
-                />
-              </EffectComposer>
+              <OutlineComposer enabled={settings.ui.playerOutlines} />
             </Selection>
           </Suspense>
 
@@ -862,17 +869,17 @@ class DemoViewer extends Component<DemoViewerProps> {
 
         {/* Normal React (non-THREE.js) UI elements */}
 
-        {settings.ui.showStats && <FpsCounter />}
+        {settings.ui.showStats && <MemoFpsCounter />}
 
         <div className="ui-layer pointer-events-none items-center justify-center">
-          <Crosshair />
+          <MemoCrosshair />
         </div>
 
         <div className="ui-layers" ref={this.uiLayers}>
           <DoubleTapSeek />
 
           <div className="ui-layer mb-4 items-end justify-center text-center">
-            <PlaybackPanel />
+            <MemoPlaybackPanel />
           </div>
 
           {ENABLE_DEBUG_MAP_OFFSET && (

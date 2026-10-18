@@ -1,11 +1,14 @@
 // The settings F1 reads (contract sections 5 F1 and 6.3), as one flat object of primitives.
-// React code builds it from useHlSetting selectors (rule 4: selectors return primitives); useFrame callbacks and
-// probes read it from the store with readFxSettings().
+// React code reads it with useFxSettings (rule 4: the selector returns a primitive); useFrame callbacks and probes
+// read it from the store with readFxSettings().
+//
+// X1: one selector per actor instead of twelve. The selector encodes the twelve values into one string key, and a
+// small cache keyed by that string hands every actor the same FxSettings object for the same values (built from
+// the key alone, never from a store snapshot), so the object changes only when a value changes.
 
 import { useMemo } from 'react'
 
 import { getState, useStore } from '@zus/store'
-import { useHlSetting } from '@highlander/extras/hooks'
 import { DEFAULT_HIGHLANDER_SETTINGS, type HighlanderSettings } from '@highlander/settings'
 
 export type DisguiseViewSetting = HighlanderSettings['players']['disguiseView']
@@ -56,36 +59,46 @@ function build(
   }
 }
 
-/** The current settings, for non-React code (useFrame callbacks, probes). */
-export function readFxSettings(): FxSettings {
-  const settings = getState().settings
+type StoreSettings = ReturnType<typeof getState>['settings']
+
+/** One character per boolean ('1', '0', '-' for anything else), the number and the view as text. */
+const b = (v: unknown) => (v === true ? '1' : v === false ? '0' : '-')
+const n = (v: unknown) => (typeof v === 'number' ? String(v) : '')
+const s = (v: unknown) => (typeof v === 'string' ? v : '')
+
+/** The twelve values as one primitive (the store selector's result). */
+export function fxSettingsKey(settings: StoreSettings): string {
   const hl = settings.highlander
   const pl = hl?.players
-  return build(
-    hl?.enabled, pl?.conditions, pl?.fxUber, pl?.fxCrit, pl?.fxDebuffs, pl?.fxOverheal,
-    pl?.cloak, pl?.cloakFloor, pl?.disguiseView, pl?.nameplateExtras, pl?.nameplateWeapon,
-    settings.ui?.nameplate?.enabled
+  return (
+    b(hl?.enabled) + b(pl?.conditions) + b(pl?.fxUber) + b(pl?.fxCrit) + b(pl?.fxDebuffs) + b(pl?.fxOverheal) +
+    b(pl?.cloak) + b(pl?.nameplateExtras) + b(pl?.nameplateWeapon) + b(settings.ui?.nameplate?.enabled) +
+    '|' + n(pl?.cloakFloor) + '|' + s(pl?.disguiseView)
   )
 }
 
-/** The same values through primitive selectors; the returned object changes only when a value changes. */
-export function useFxSettings(): FxSettings {
-  const enabled = useHlSetting<boolean>('enabled')
-  const conditions = useHlSetting<boolean>('players.conditions')
-  const fxUber = useHlSetting<boolean>('players.fxUber')
-  const fxCrit = useHlSetting<boolean>('players.fxCrit')
-  const fxDebuffs = useHlSetting<boolean>('players.fxDebuffs')
-  const fxOverheal = useHlSetting<boolean>('players.fxOverheal')
-  const cloak = useHlSetting<boolean>('players.cloak')
-  const cloakFloor = useHlSetting<number>('players.cloakFloor')
-  const disguiseView = useHlSetting<DisguiseViewSetting>('players.disguiseView')
-  const nameplateExtras = useHlSetting<boolean>('players.nameplateExtras')
-  const nameplateWeapon = useHlSetting<boolean>('players.nameplateWeapon')
-  const nameplates = useStore(s => s.settings.ui?.nameplate?.enabled)
+const unb = (c: string) => (c === '1' ? true : c === '0' ? false : undefined)
+const cache = new Map<string, FxSettings>()
 
-  return useMemo(
-    () =>
-      build(enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon, nameplates),
-    [enabled, conditions, fxUber, fxCrit, fxDebuffs, fxOverheal, cloak, cloakFloor, disguiseView, nameplateExtras, nameplateWeapon, nameplates]
-  )
+/** The FxSettings of a key, shared by every caller with the same key. */
+function fromKey(key: string): FxSettings {
+  const hit = cache.get(key)
+  if (hit) return hit
+  const [flags, floor, disguiseView] = key.split('|')
+  const at = (i: number) => unb(flags.charAt(i))
+  const value = build(at(0), at(1), at(2), at(3), at(4), at(5), at(6), floor === '' ? undefined : Number(floor), disguiseView, at(7), at(8), at(9))
+  if (cache.size >= 32) cache.clear()
+  cache.set(key, value)
+  return value
+}
+
+/** The current settings, for non-React code (useFrame callbacks, probes). */
+export function readFxSettings(): FxSettings {
+  return fromKey(fxSettingsKey(getState().settings))
+}
+
+/** The same values through one primitive selector; the returned object changes only when a value changes. */
+export function useFxSettings(): FxSettings {
+  const key = useStore(state => fxSettingsKey(state.settings))
+  return useMemo(() => fromKey(key), [key])
 }

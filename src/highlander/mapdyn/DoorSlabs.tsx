@@ -8,7 +8,7 @@ import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useMapMeta } from '@highlander/map/mapMeta'
 import { useInstance, useStore } from '@zus/store'
 
-import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
+import { drawn, frameTickF, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { buildSlabs, slabMatrixAt, type Slab } from './slabs'
 
@@ -18,14 +18,13 @@ const _matrix = new THREE.Matrix4()
 let activeSlabs: Slab[] = []
 export const getActiveSlabs = () => activeSlabs
 
-export const DoorSlabs = React.memo(({ renderTick }: { renderTick: number }) => {
+export const DoorSlabs = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.movers') !== false
   const mapNodes = useInstance(s => s.mapNodes)
   const map = useStore(s => s.scene.map)
   // Only bsp-to-glb maps have brush-entity nodes (and a map-meta.json); others never request it.
   const meta = useMapMeta(mapNodes && mapNodes.size > 0 ? map : '')
-  const tickRef = useRenderTickRef(renderTick)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.movers
@@ -43,7 +42,7 @@ export const DoorSlabs = React.memo(({ renderTick }: { renderTick: number }) => 
 
   useFrame(() => {
     if (!mesh || !x) return
-    const tickF = tickFOf(tickRef.current)
+    const tickF = frameTickF()
     if (tickF === lastTickF.current) return
     lastTickF.current = tickF
     let n = 0

@@ -2,15 +2,15 @@
 // the carried-building box on an engineer, blueprints and the destruction blasts. Each is one component with a
 // fixed pool of objects that useFrame assigns from render.ts, so nothing remounts per tick.
 
-import React, { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { BUILDING_TYPE } from '@highlander/extras/enums'
 import { useExtras } from '@highlander/extras/hooks'
 import { getActor } from '@highlander/scene/actorRegistry'
-import { useInstance } from '@zus/store'
 
 import { glyphBadgeTexture, glyphOf, pxPerUnitAt, screenScale } from './label'
 import { basic, BOX, BOX_EDGES, DARK_METAL, getFlashTexture, INVALID, METAL, PLANE, solid, TEAM_DARK, TEAM_FX, type TeamKey } from './parts'
@@ -30,7 +30,9 @@ import {
 } from './render'
 import { baseHealth, basePosition, baseTeam, povRenderedEntityId } from './scene'
 
-type TickRef = MutableRefObject<number>
+// Every frame reads the tick and frameProgress together from the store (frameTime). A renderTick prop would lag
+// playback.tick by a frame and step back at tick boundaries.
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
 const _a = new THREE.Vector3()
 const _b = new THREE.Vector3()
@@ -75,7 +77,7 @@ function useBeamGeometry() {
  * quad per healed player, from the dispenser top to his chest (+41), 1.5 units wide but at least BEAM_MIN_PX on
  * screen, TEAM_FX at BEAM_OPACITY, no animation.
  */
-export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => {
+export const DispenserBeams = React.memo(() => {
   const x = useExtras()
   const red = useBeamGeometry()
   const blue = useBeamGeometry()
@@ -84,8 +86,7 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
 
   useFrame(({ camera, size }) => {
     if (!x) return
-    const tick = tickRef.current
-    const tickF = tick + useInstance.getState().frameProgress
+    const { tick, tickF } = frameTime(_time)
     const pov = povRenderedEntityId()
     _cam.setFromMatrixPosition(camera.matrixWorld)
     const counts = { red: 0, blue: 0 }
@@ -153,7 +154,7 @@ const _cameraQuat = new THREE.Quaternion()
  * beside it the carried building's glyph on a round team token (label.ts), which keeps the carry readable from the
  * default RTS camera where the box is a few pixels wide.
  */
-export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
+export const CarryBoxes = React.memo(() => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
   const badges = useRef<(THREE.Mesh | null)[]>([])
@@ -166,7 +167,7 @@ export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
 
   useFrame(({ camera, size }) => {
     if (!x) return
-    const tick = tickRef.current
+    const { tick } = frameTime(_time)
     const pov = povRenderedEntityId()
     // world orientation: the POV camera sits inside an actor
     camera.getWorldQuaternion(_cameraQuat)
@@ -257,13 +258,13 @@ const lineMaterial = (color: string) => {
  * TEAM_FX at 0.3; state 3 (invalid spot) in red. Hulls: sentry 40 x 40 x 66, dispenser 40 x 40 x 55,
  * teleporter 48 x 48 x 12.
  */
-export const Blueprints = React.memo(({ tickRef }: { tickRef: TickRef }) => {
+export const Blueprints = React.memo(() => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
 
   useFrame(() => {
     if (!x) return
-    const tick = tickRef.current
+    const { tick } = frameTime(_time)
     let used = 0
     for (const bp of blueprintsAt(x, tick)) {
       if (used >= BLUEPRINT_POOL) break
@@ -320,7 +321,7 @@ const SMALL_SCALE = 0.35
  * carried blows up at its engineer. The flash is an additive fireball sprite (contract 1.5: glows are additive, no
  * depth write): a hot core in the flash colour with an orange rim, so it reads as a burst rather than as a flat disc.
  */
-export const Destructions = React.memo(({ tickRef }: { tickRef: TickRef }) => {
+export const Destructions = React.memo(() => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
   // the flash fades per blast, so each slot owns its material
@@ -336,7 +337,7 @@ export const Destructions = React.memo(({ tickRef }: { tickRef: TickRef }) => {
 
   useFrame(({ camera, size }) => {
     if (!x) return
-    const tickF = tickRef.current + useInstance.getState().frameProgress
+    const { tickF } = frameTime(_time)
     const dt = x.meta.intervalPerTick
     let used = 0
     for (const e of destructionsAt(x, tickF, basePosition)) {

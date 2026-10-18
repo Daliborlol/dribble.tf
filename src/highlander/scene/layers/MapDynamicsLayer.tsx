@@ -14,17 +14,20 @@ import { Pickups } from '@highlander/mapdyn/Pickups'
 import { ResupplyLockers } from '@highlander/mapdyn/ResupplyLockers'
 import '@highlander/mapdyn/probes'
 
-export const MapDynamicsLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+// The parts read the tick and frameProgress together from the store in useFrame (mapdyn/frame.ts frameTickF), so
+// they take no renderTick prop: the prop lags playback.tick by a frame.
+
+export const MapDynamicsLayer = React.memo((_props: { renderTick: number }) => {
   const x = useExtras()
   if (!x) return null
   return (
     <group name="mapDynamics">
-      <BrushMovers renderTick={renderTick} />
-      <DoorSlabs renderTick={renderTick} />
+      <BrushMovers />
+      <DoorSlabs />
       <ResupplyLockers />
-      <Pickups renderTick={renderTick} />
-      <DeathMarkers renderTick={renderTick} />
-      <Drops renderTick={renderTick} />
+      <Pickups />
+      <DeathMarkers />
+      <Drops />
     </group>
   )
 })

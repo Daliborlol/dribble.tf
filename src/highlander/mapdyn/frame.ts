@@ -1,16 +1,9 @@
 // Frame helpers and the drawn-state record the F6 probes report.
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 
-import { useInstance } from '@zus/store'
-
-/** renderTick as a ref, so useFrame callbacks read the latest prop without re-subscribing. */
-export function useRenderTickRef(renderTick: number) {
-  const ref = useRef(renderTick)
-  ref.current = renderTick
-  return ref
-}
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 
 export interface InstancedMeshOptions {
   name?: string
@@ -50,9 +43,16 @@ export function useInstancedMesh(
   return mesh
 }
 
-/** tickF = renderTick + frameProgress (contract section 1.2); frameProgress is 0 while paused. */
-export function tickFOf(renderTick: number): number {
-  return renderTick + (useInstance.getState().frameProgress || 0)
+const _time: FrameTime = { tick: 0, tickF: 0 }
+
+/**
+ * tickF = renderTick + frameProgress of the current frame (contract section 1.2), both read from the store
+ * (frameTime() in combat/time.ts). The `renderTick` prop reaches React a frame after DemoViewer advances
+ * playback.tick and frameProgress, so adding this frame's frameProgress to the prop stepped back by up to a tick
+ * at every tick boundary. frameProgress counts only while playing with scene.interpolateFrames on, like the actors.
+ */
+export function frameTickF(): number {
+  return frameTime(_time).tickF
 }
 
 export type KitMode = 'full' | 'overlay' | 'none'

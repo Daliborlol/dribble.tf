@@ -34,7 +34,7 @@ import {
   PICKUP_FLOOR_OFFSET,
   PICKUP_YAW_RATE,
 } from './constants'
-import { drawn, kitModeOf, tickFOf, useInstancedMesh, useRenderTickRef, type KitMode } from './frame'
+import { drawn, frameTickF, kitModeOf, useInstancedMesh, type KitMode } from './frame'
 import { MATERIALS, RING_MATERIAL, UNIT_BOX, UNIT_BOX_FRAME, createRingGeometry } from './geometry'
 import {
   buildKitEntries,
@@ -108,7 +108,7 @@ export interface ActiveKits extends KitEntries {
 let active: ActiveKits = { ...NO_KITS, mode: 'none', surface: null }
 export const getActiveKits = () => active
 
-export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
+export const Pickups = React.memo(() => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.pickups') !== false
   const mapState = useInstance(s => s.mapStatus.state)
@@ -119,7 +119,6 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
   // item spots that confirm map kits. Old textured maps have no meta file and never request it.
   const wantMeta = !!x && (!x.meta.available.pickups || (mapState === 'ready' && pipeline === 'bsp-to-glb'))
   const meta = useMapMeta(wantMeta ? map : '')
-  const tickRef = useRenderTickRef(renderTick)
   const lastTickF = useRef(NaN)
   // POV camera position of the last drawn frame (NaN: no POV camera): moving items near it are hidden, so a camera
   // change redraws them even while the tick stands still (paused, switching between RTS and POV or between players)
@@ -167,7 +166,7 @@ export const Pickups = React.memo(({ renderTick }: { renderTick: number }) => {
 
   useFrame(() => {
     if (!x || capacity === 0) return
-    const tickF = tickFOf(tickRef.current)
+    const tickF = frameTickF()
     const eye = moving.length > 0 ? povEyePosition(_eye) : null
     const le = lastEye.current
     // NaN never equals itself, so the first POV frame after another camera always redraws

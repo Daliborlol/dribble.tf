@@ -9,8 +9,8 @@ import { useFrame } from '@react-three/fiber'
 import { Billboard } from '@react-three/drei'
 
 import { BUILDING_TYPE } from '@highlander/extras/enums'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
-import { useInstance } from '@zus/store'
 
 import { BuildingLabel, glyphOf, LABEL_SIZE, screenScale } from './label'
 import {
@@ -56,8 +56,9 @@ const SAPPER_SPARK = 30
 
 export interface BuildingObjectProps {
   instance: number
-  tickRef: MutableRefObject<number>
 }
+
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
 /** Swap the materials of every part mesh (userData.part) between the solid and the construction variant. */
 function applyGhost(root: THREE.Object3D, ghost: boolean) {
@@ -352,7 +353,7 @@ function updateTeleporter(refs: TeleporterRefs, d: BuildingDraw) {
 
 // ─── the building ─────────────────────────────────────────────────────────────
 
-export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectProps) => {
+export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => {
   const x = useExtras()
   const labels = useHlSetting<boolean>('buildings.labels')
   const sentryRange = useHlSetting<boolean>('buildings.sentryRange')
@@ -399,7 +400,7 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
   useFrame(({ camera, size }) => {
     const g = root.current
     if (!x || !g || !body.current) return
-    const tickF = tickRef.current + useInstance.getState().frameProgress
+    const { tick, tickF } = frameTime(_time)
     const d = buildingDraw(x, instance, tickF, { rangeRing: sentryRange, enemyCentre })
     g.visible = d.drawn
     // the transform follows the data even while hidden (carried), so the scene never keeps a stale pose
@@ -435,7 +436,7 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
     }
     if (range.current) range.current.visible = d.rangeRing
     if (labelCanvas && label.current.group) {
-      updateLabel(label.current, labelCanvas, d, x.buildings.builder[instance], frames, camera, size.height, povLabelContext(x, tickRef.current))
+      updateLabel(label.current, labelCanvas, d, x.buildings.builder[instance], frames, camera, size.height, povLabelContext(x, tick))
     }
   })
 

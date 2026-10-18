@@ -1,6 +1,6 @@
 # Highlander implementation contract
 
-Version 2.1, 2026-10-17 (section 11 lists the amendments after the foundation merge). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
+Version 2.2, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
 `../dribble-parser`. It was written from the four research documents in this folder, all of which were present:
 `parser-probe.md`, `maps.md`, `tf2-reference.md` and `frontend.md`. It also reflects a read of the current code
 (`dribble-parser/src/lib.rs`, the Analyse/Data layer, `store.ts`, `actions.ts`, `DemoViewer.tsx`, `Actors.tsx`,
@@ -3062,6 +3062,135 @@ ubers (59, 60), cleavers (14), stun balls (15) or Short Circuit orbs (20): tasks
   stay invisible, M2 renders the PAK props, and the final report shows the effect with screenshots.
 - `1428628` and `1429417` are the tug-of-war demos; whether the base viewer loads `1429417` is recorded in the final
   report (the base parser binary is outside this contract, D2).
+
+## 12. Amendments after the feature-wave merge (version 2.2)
+
+F1 to F6, M2 and the extra task B1 (base-parse fallback) are merged on `highlander` at `0ac066d`; the parser's
+`highlander` is at `96deea0`, which adds the wasm export `parse_demo_cache_fallback`. These amendments bind X1, X2,
+P2, B2 and DOCS and override the text above where they differ. The final reports of wave 1 (APIs, deviations, data
+facts, measurements) are in `$S/handoff/wave1.md`; read the parts your task touches.
+
+### 12.1 Accepted deviations of wave 1
+
+| task | accepted deviation |
+|---|---|
+| F1 | Tint priority tests `UBER_FADING` before `UBER` (the SDK keeps cond 5 while cond 8 is set). Flames: radius 13, cones r 5 h 24, outward lean 0.24 rad, a vertex-colour gradient with normal blending. Stun stars at z 64, radius 12 while nameplates are on (z 92 without). Drips at radius 14. |
+| F1 | Marked for death: with Highlander plates the MARKED tag carries a skull glyph and no 3D skull is drawn; with plain plates the skull hangs below the plate, right of the head; without plates it sits at z 100 on a light disc. DECLOAK tag and ring need CLOAKED clear. The 0.6 plate dimming needs `players.cloak`. |
+| F1 | `NameplateExtra.teamOverride`; a forced `'pov'` view without a POV subject falls back to `'true'`; the game-accurate hiding rules of the F1 report (no crit tint, aura, CRIT/MARKED tag or cloak bar on a spy drawn as his disguise, and so on); rage tags BANNER, MMMPH, FOCUS; probes `fx.plates` and `fx.frameCache`. |
+| F2 | Sentry calibration fits on firing samples. The aim acceptance is "at least 80 % of attacking samples, excluding building, carried, upgrading, redeploying and wrangled entries, scored on the drawn, interpolated pose" (80.1 % on 1438891 and 1440442). `AIM_AT_ENEMY` stays false. |
+| F2 | Status label: one 62 x 26 canvas quad centred about top + 18, kept 80 to 130 px wide on screen; in POV hidden for the POV subject's own buildings while the weapon HUD lists them, and faded between 300 and 120 units from the camera. Range ring: a 40-unit band (1060 to 1100) drawn on top at opacity 0.25. Dispenser beams at least 2 px at opacity 0.4. Destruction flash: an additive fireball sprite of at least 48 px (24 for sapper pops). Additions: carry badge, cap stripe, dispenser screen off while sapped or disabled, the sapper outside the construction scale. |
+| F3 | Deviations 1 to 12 of the F3 report: detonated base projectiles are not drawn between hidden and deleted, but landed healing bolts are, until min(deleted, hidden + 3 s), at the wall or riding the hit player; airblast front ring; the POV owner's flames and airblast at 40 %; muzzle flashes from a gun-kind whitelist; the settings mapping; zero-extent flame boxes; minimum ribbon widths (1.5 px, tracers 1.2 px); soft glow shader; syringe needles 6 x 1.6 x 1.6 with a 0.06 s TEAM_FX streak; base healing-bolt trail in TEAM_TRAIL; `combat.fx` empty with Highlander off; sentry tracers start at F2's barrel tip. |
+| F4 | Deviations 1 to 11 of the F4 report: `povFovAt` for the POV camera and scope (12.2 item 6); the scope is active for the whole ZOOMED interval; reload dip with a 7-degree lift; hand shapes; a view-space studio light; sniper-dot minimum sizes; the dead-POV killer comes only from the base death record; knife swings also on CUSTOM_GESTURE; builder HUD text; whole-clip reload timing; sentry kills aim the death camera at the engineer. |
+| F5 | OVERTIME is hidden while WAITING_FOR_PLAYERS is set. MedicPanel: two lines (state word with value, "popped m:ss ago"; with two medics on a team, the name plus a U/K/Q/V chip). |
+| F6 | (a) the textured koth_product and snakewater GLBs carry no field kits, so they get placeholders (baked detection kept); (b) resupply placeholders at the locker prop; (c) nodes with no alive instance are hidden; (d) kits rest on the analysed floor, M2 props included; (e) mid-air death markers drop to the floor below, ground deaths keep the origin, tick-0 ragdolls are skipped; (f) no slab for logic doors or 3D-skybox doors; (g) only `models/items/{medkit,ammopack}_*` kits on map spots are drawn (thrown and dropped items: P2); (h) one kit per spot, estimated rings never full, stale instances hidden; (i) the floor analysis skips brush-entity nodes. Tetsudo mover coverage 94.74 % is accepted (two static trigger_catapult brushes; coverage of changing movers is 100 %). |
+| M2 | Rendered prop counts exclude 3D-skybox copies (vigil 88, proot 57, eruption 54 dynamic). Meshes per model, skin, sun cluster and lighting pattern, plus one merged batch with exact lighting. The alpha material rule of the M2 report. Untextured mode keeps the props' unlit textured material. Triangle order is reversed from the VTX order, and the converter fails the props pass below 90 % drawn-triangle winding agreement. |
+| B1 | The fallback (parser2 first; a result with at most 1 tick or no players is parsed again by `parse_demo_cache_fallback` with the map's BSP bounds) and its AGENTS.md note, which DOCS keeps. |
+
+### 12.2 Orchestrator decisions
+
+1. Teammate-death camera, replacing F4's "anything else" row for this case: when the teammate a dead player spectates
+   dies (IN_EYE with a dead target, and the tournament DEATHCAM fallback of `tf_player.cpp:13777-13786`), the POV
+   shows a death camera at that teammate's death spot (his base position at his death tick - 1 plus his eye height)
+   looking at his base killer (`latestDeath`), with the header "Spectating <teammate>". It ends at the next misc
+   entry whose target is alive, or at the focused player's respawn. `PovSubject` gains an optional
+   `deathOfEntityId`. X1 implements it.
+2. Control points that wait on an earlier capture show their padlock: P2 exports `m_iPreviousPoints` and F5's
+   `pointLockedAt` follows TF2's `TeamMayCapturePoint`.
+3. Thrown lunchbox items and dropped kits move: P2 exports their motion and draws them in F6's pickups layer.
+4. The plate rule becomes `(^|/)models/(items|workshop)/(.*/)?plate[^/]*\.mdl$`, and the chocolate, banana and
+   fishcake plates are small health kits (P2).
+5. `1428628`: parser2 starts 55.2 s after the demo start and leaves 56.6 s at the end without positions. B2 decides
+   from data whether delayed starts go to the fallback.
+6. Tickbase lead: SendPropTime values written during a player's user command (`m_flFOVTime`,
+   `m_flChargeBeginTime`, `m_flInvisChangeCompleteTime`) run 3 to 4 ticks ahead of server time. Not fixed in the data;
+   `povFovAt` stays; DOCS records it.
+7. Performance target: section 5 X1 stands. Smoke runs at `0ac066d` with every setting on: 56 fps on 1438891 (50 %,
+   RTS, 1x), 60 fps (vsync cap) on 1434434, 1440442 and 1429417; 0 console errors; page peaks 1.0 to 1.7 GB.
+
+### 12.3 Facts later tasks must use
+
+- Memory rule: no module-level variable may hold a parsed demo, an extras object or a store snapshot. Memoise in a
+  WeakMap keyed by the extras object or the demo, or in an object owned by a mounted component. F1 (`FxFrameCache`),
+  F2 (`buildingsAt`) and F5 (`getHudSnapshot`, `rosterAt`) follow it.
+- Wave-1 APIs (details in `wave1.md`): F2 `sentryMuzzleAt`, `tracerBarrel`, `poseAimAt`, `povLabelContext`;
+  F3 `setOwnMuzzleSource`, `ownMuzzleAt`, `boltLanding`, `landedPoseAt`, `getProjectileSource` (cached per extras
+  and demo; it must run before the base projectile cache is released); F4 `getPovSubject`, `latestDeath`,
+  `povFovAt`, `prepareViewmodelObject`, `vmShared.live.muzzleWorld` (`scene/viewmodel/shared.ts`), render orders
+  (depth clear 1e6, viewmodel meshes 1e6 + 1, glows 1e6 + 2); F5 `getHudSnapshot` and the objective, scoreboard and
+  killfeed model modules; F6 `SurfaceJob`, `useMapSurface`, `buildKitEntries`.
+- Base caches: `positionScale` differs per cache (parser2 1024, fallback 32); read each cache's own value. On
+  fallback demos `ticks` is the last written tick + 1, and `endTick`, `endDemoTick`, `shots` and `activeWeaponDef`
+  are absent. `parsedDemo.parserFallback` and `parserFallbackInfo` describe the fallback.
+- For X2: `Projectiles.tsx` in extras mode needs only `entityId`, `type` and `teamNumber` from the base list, and it
+  draws a base entity in its landed phase (hidden <= tick < `landedEnd`), so the adapter keeps entities through
+  [hidden, deleted). On 1429417 the fallback's projectile cache is 641 of 702 MB of base caches.
+- `tempents.tracers.sx/sy/sz` is (999, 999, 999) on sentry tracers: start them at the drawn barrel.
+- `players.medigun.charge` is stored as charge x 1000.
+- Harness and disk: `/tmp` is a tmpfs with a per-user quota of about 5 GB shared by every agent, and it filled
+  during wave 1 (EDQUOT). Put harness outputs, `TMPDIR` and large scratch files under
+  `/home/dalibor/programming/personal/dribble.tf-wt/<task>-out/` (never directly in
+  `/home/dalibor/programming/personal/`), and symlink them from `$S/shots/<task>-*` when useful. In zsh, write
+  `--query a=b` literally (a variable holding it reaches shot.mjs as one argument). `reqfail net::ERR_ABORTED` lines
+  on player GLBs are noise. In plans, a camera set by one step survives later steps and the perf pass. Run
+  `flock $S/heavy.lock <command>` directly (a flock around `bash -c` trips a safety check).
+
+### 12.4 Wave 2 and wave 3 tasks
+
+Order: X1, P2 and B2 run in parallel (disjoint files); X2 starts after X1 and B2 are merged; DOCS runs last; a final
+verification follows.
+
+**X1 additions** (on top of section 5 X1):
+- Extra files owned: a new folder `src/highlander/integration/`; integration edits in `src/highlander/combat/combatData.ts`
+  and `combat/view.ts` (F3), `src/highlander/pov/subject.ts` and the POV and death-camera code in
+  `src/highlander/scene/layers/PovLayer.tsx` and `src/highlander/hud/**/PovWeaponHud*` (F4),
+  `src/highlander/players/fxSettings.ts` (F1), `src/highlander/buildings/model.ts` (F2, only when a measurement
+  shows the cache thrashing between hudTick and renderTick), `src/highlander/map/mapMeta.ts` (M1),
+  and `public/models/maps/koth_product_final/conversion.json` (only `files.meta`). `PanelToolbar` lives in
+  `DemoViewer.tsx`, which X1 already owns. X1 must not touch P2's or B2's files.
+- Wiring: F3's sentry tracers start at `sentryMuzzleAt(x, tracers.sentry[row], tracers.tick[row], tracerBarrel(x, row), out)`;
+  F3's own-eyes hitscan tracers start at F4's viewmodel muzzle through `setOwnMuzzleSource`, gated on the POV
+  subject; decision 12.2 item 1.
+- `fetchMapMeta` skips the request when `conversion.json` has no `files.meta` (no 404 on textured maps such as the 6v6
+  sample's snakewater); koth_product's `conversion.json` gets `files.meta: "map-meta.json"`.
+- Cross-feature checks in the merged build, each with a screenshot and a probe: F1 uber shells and crit auras seen in
+  POV with F4's depth clear; F2 labels against F4's viewmodel; F4's engineer panel rows and F5's building badges with
+  F2's real data; F6 kit floors with M2 props on tetsudo, ashville and proot; sentry tracers leaving F2's drawn barrel;
+  DOM nameplates against F2's canvas labels in crowded fights (decide and record).
+- Audit `src/highlander/**` for the 12.3 memory rule and fix what it finds (any HL file, recorded per file).
+- Performance: section 5 X1 numbers with every HL setting on, plus the same points with `highlander.enabled` false.
+  When the base viewer alone misses 40 fps at a measured point, optimise the paths X1 owns first; if it still misses,
+  report both numbers with a CPU profile that shows where the time goes.
+
+**P2 parser data follow-ups** (owner: the parser repo, `src/libs/hlextras/*`, `src/highlander/extras/types.ts`,
+`getters.ts`, `hydrate.ts`, `findTicks.ts`, the extras checker and expectations under `scripts/hl/`, F5's
+`src/highlander/objectives/objectiveModel.ts` (`pointLockedAt` only), F6's `src/highlander/mapdyn/pickups.ts`,
+`Pickups.tsx` and their probes). Parser branch `hl/p2` from the parser's `highlander` (`96deea0`): every hlextras
+rebuild must keep `parse_demo_cache_fallback`.
+1. Pickup motion: pickups whose origin changes after creation (thrown lunchbox items, dropped kits) get an xform track
+   like drops; static pickups keep empty tracks. A getter returns the position at `tickF`.
+2. The plate rule and sizes of 12.2 item 4.
+3. `DT_BaseTeamObjectiveResource.m_iPreviousPoints` (8 points x 8 teams x 3 slots): exported for RED and BLU per point,
+   as a track if any of the 133 demos changes it within a demo, else as static arrays (survey it). `pointLockedAt`
+   then follows `CTFGameRules::TeamMayCapturePoint` (SDK): a point is locked for a team while any previous point of
+   that team's list is not owned by the team.
+4. F6 draws thrown and dropped health and ammo items along their motion and at rest, with the kit placeholder of their
+   size, until they are deleted or picked up.
+5. Unchanged groups stay byte-identical on 1434434 and the 6v6 sample; the checker and the 133-demo survey cover the
+   new fields; the TS types change additively.
+
+**B2 delayed-start fallback** (owner: `src/components/Analyse/Data/ParseWorker.ts` and `AsyncParser.ts` (the fallback
+trigger only), `scripts/hl/parser2-survey.mjs` and new `scripts/hl/` checks): measure how late parser2 starts on every
+local demo (start tick against the first demo packet). If routing demos that start late (threshold from the data;
+1428628 starts 55.2 s late) to the fallback gives the whole timeline with correct positions, aligned extras and no
+memory regression beyond 300 MB, add that routing; otherwise record the measurement and change nothing.
+
+**X2**: section 5 X2, with the 12.3 facts.
+
+**DOCS**: `AGENTS.md` (Highlander overview, settings, probes and the debug bridge, the harness, the converter with
+`props.glb`, the base-parser fallback, known limits including stock props, decals, the tickbase lead and the rare
+kinds without a local demo) and a new `specs/highlander/STATUS.md` (per contract task: what is implemented, the
+acceptance state, accepted deviations, follow-ups from section 9's "later" rows). DOCS does not edit sections 0 to 12
+of this contract.
 
 ## Appendix A. `src/highlander/extras/enums.ts`
 

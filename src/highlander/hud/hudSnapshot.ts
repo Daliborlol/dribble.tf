@@ -41,6 +41,7 @@ import { useMapMeta, type MapMeta } from '@highlander/map/mapMeta'
 import { bannerAt, type BannerView } from '@highlander/objectives/banner'
 import { countAtOrBefore } from '@highlander/objectives/deaths'
 import { formatK } from '@highlander/objectives/format'
+import { stopwatchIndex } from '@highlander/objectives/stopwatch'
 import { objectiveModeOf, objectiveViewAt, type ObjectiveView } from '@highlander/objectives/objectiveModel'
 import { kadAt, scoreboardAt, scoreIndex, type ScoreboardView } from '@highlander/objectives/scoreboardModel'
 
@@ -119,7 +120,7 @@ export interface MedicRow {
   vacc: { charges: number; resist: number } | null
   /** percentage points ahead of the other team's medic, only on the leading team and when both are alive */
   advantage: number | null
-  /** seconds since this team's last uber, null when none yet */
+  /** seconds since this medic's last uber in the current round, null when none yet */
   lastUberAgo: number | null
 }
 
@@ -389,12 +390,19 @@ export function computeHudSnapshot(
     else if (diff < 0) redBest.advantage = -diff
   }
   if (x) {
-    const ubers = scoreIndex(demo, x).teamUbers
-    for (const [team, rows] of [[3, medics.blue], [2, medics.red]] as const) {
-      const list = ubers[team] ?? []
+    // Each medic's own latest uber at or before the tick, counted only from the current round's start: the
+    // stopwatch side swap and round restarts never carry another medic's or the previous round's uber over.
+    const index = scoreIndex(demo, x)
+    const starts = stopwatchIndex(x).roundStarts
+    const nStarts = countAtOrBefore(starts, tick)
+    const roundStart = nStarts > 0 ? starts[nStarts - 1] : -Infinity
+    const pOf = new Map<number, number>()
+    for (const r of [...blue, ...red]) pOf.set(r.entityId, r.p)
+    for (const r of [...medics.blue, ...medics.red]) {
+      const list = index.ubers[pOf.get(r.entityId) ?? -1] ?? []
       const n = countAtOrBefore(list, tick)
-      const ago = n > 0 ? (tick - list[n - 1]) * ipt : null
-      for (const r of rows) r.lastUberAgo = ago
+      const last = n > 0 ? list[n - 1] : -Infinity
+      r.lastUberAgo = last >= roundStart && Number.isFinite(last) ? (tick - last) * ipt : null
     }
   }
 

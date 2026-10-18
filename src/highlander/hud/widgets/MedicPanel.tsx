@@ -1,6 +1,6 @@
 // Medic panel (contract section 5 F5): one 30 px row per medic under each team column (at most two). Medigun
 // type, the charge as a bar, the state BUILDING / READY / ACTIVE with seconds left, the uber advantage on the
-// leading team when both medics live, and the time since this team's last uber. Values come from the HUD
+// leading team when both medics live, and the time since that medic's last uber this round. Values come from the HUD
 // snapshot (MedicRow); this component calls no getter.
 //
 // Two lines: the type (or, when a team has two medics, the medic's name and a type letter), the advantage and

@@ -319,23 +319,25 @@ under the Vite dev server. Everything it returns is plain JSON.
 | `stores.useStore`, `stores.useInstance` | the Zustand stores, for ad-hoc reads |
 | `hl.status()` | `{ status, progress, error, meta }` of the Highlander extras (meta without convars) |
 | `hl.waitReady(ms = 90000)` | resolves with `'ready'`, `'error'` or `'disabled'`, or the current status at the timeout |
-| `hl.probes()` | names of the registered probes (59 at b6688f4) |
+| `hl.probes()` | names of the registered probes (65 with X2's `memory.*` probes) |
 | `hl.probe(name, ...args)` | runs a probe |
 | `hl.at(tick?)` | the `players.at` probe |
 | `hl.findTicks(kind, { limit = 20, player, team })` | cache ticks where something happens |
 | `hl.cameraNear(entityId, tick?, distance = 350)` | an RTS pose behind and above a player, for `camera` |
 
-Probes return the values a feature draws at a tick, so plans can check data instead of pixels. At b6688f4:
+Probes return the values a feature draws at a tick, so plans can check data instead of pixels:
 `actors.registry`; `buildings.at`, `.draw`, `.of`, `.scene`, `.summary`, `.tracerMuzzle(row)`, `.track`;
 `combat.critGlow`, `.fx`; `extras.plan`, `.summary`, `.restart`, `.load`, `.call`; `eyeHeight.at`;
 `fx.actor(entityId)`, `.frameCache`, `.overlays`, `.plates`; `hud.layout`, `.rows`, `.scoreboard`,
 `.snapshotStats`; `killfeed.lines`; `map.meta`, `.nodes`, `.propInstances`, `.props`, `.status`;
 `mapdyn.kits`, `.markers`, `.movers`, `.moving(tick?, floors?)`, `.pickups`, `.slabs`, `.state`, `.summary`,
-`.surface`; `nameplates.cap(bool)`, `.declutter`; `objective.hud`; `objectives.scene`; `players.at`;
+`.surface`; `memory.base(tick?)`, `.digest(from?, to?)`, `.drawn`, `.projectiles`, `.release`, `.split`;
+`nameplates.cap(bool)`, `.declutter`; `objective.hud`; `objectives.scene`; `players.at`;
 `pov.hud`, `.state`, `.wallDistance`, `.wallScan`; `projectiles.at`, `.landed`, `.meshes`, `.source`,
 `.trails`; `scope.state`; `sniper.dots`; `stopwatch.games`; `timeline.markers`; `viewmodel.debug`, `.state`.
-`extras.restart`, `extras.load`, `extras.call` and `viewmodel.debug` change state; `pov.wallScan` and
-`pov.wallDistance` are slow. `hl.probes()` is the authoritative list.
+`extras.restart`, `extras.load`, `extras.call`, `viewmodel.debug` and `memory.release` (it frees the base
+projectile cache for good) change state; `pov.wallScan`, `pov.wallDistance` and `memory.digest` are slow. The smoke
+sweep skips all of them. `hl.probes()` is the authoritative list.
 
 `hl.findTicks` kinds: `cloak`, `decloak`, `disguise`, `disguising`, `feign`, `backstab`, `headshot`, `uber`,
 `kritz`, `quickfix`, `vacc`, `crit`, `minicrit`, `burning`, `jarate`, `milk`, `marked`, `bonk`, `overheal`,
@@ -348,7 +350,10 @@ Probes return the values a feature draws at a tick, so plans can check data inst
 the earliest of the top windows first, not the busiest one.
 
 Useful query parameters: `perf=true` (the app's `[Perf]` lines), `hlExtrasBudget=<MB>` (a small budget makes
-the extras memory plan skip or exclude groups).
+the extras memory plan skip or exclude groups), `hlProjectileRelease=manual` (the base projectile cache stays
+until the `memory.release` probe frees it, so one page can measure both sides). Without it the release lands
+about 2 s after the extras are ready: a plan that reads `memory.projectiles` right after `hl.waitReady()` sees
+`pending`.
 
 ## GPU backends
 

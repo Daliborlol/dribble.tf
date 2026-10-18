@@ -23,8 +23,22 @@ export const LOCKER_OPACITY = 0.9
  */
 export const LOCKER_SIZE = { width: 60, depth: 30, height: 96 }
 
-/** item_*kit_* respawn delay (tf_gamerules.cpp ITEM_RESPAWN_TIME), used only when the demo ends first. */
+/** item_*kit_* respawn delay (tf_gamerules.cpp ITEM_RESPAWN_TIME), used only when the instance ends first. */
 export const ITEM_RESPAWN_SECONDS = 10
+/**
+ * Slack on that estimate: a taken kit whose instance ends less than this after the estimated return (round
+ * restart, demo end) counts as "ended first"; one that lives on longer without coming back left for good.
+ */
+export const ITEM_RESPAWN_SLACK_SECONDS = 1
+/**
+ * Kits thrown or dropped by players (lunchbox throws, Candy Cane kills) live at most TF_POWERUP_LIFETIME
+ * (tf_powerup.h, 30 s), so a kit-model instance that lives longer is a map kit.
+ */
+export const DROPPED_KIT_MAX_SECONDS = 31
+/** Pickup instances whose origins lie this close are one kit spot (a map kit keeps its exact origin). */
+export const KIT_SPOT_RADIUS = 4
+/** A pickup within this distance of a map-meta item origin stands on that map spot. */
+export const META_ITEM_RADIUS = 8
 
 /** Health kit body [width, height] per size (small, medium, large). */
 export const HEALTH_SIZE: readonly [number, number][] = [
@@ -53,9 +67,16 @@ export const PICKUP_BOB_RATE = 0.1 // rad per tick
 export const PICKUP_YAW_RATE = 0.03 // rad per tick
 /** Map pickups have their origin this far above the floor (item model origin, measured on vigil). */
 export const PICKUP_FLOOR_OFFSET = 11.2
+/**
+ * The map surface analysis (surface.ts) advances at most this many triangles per frame and per analysis,
+ * so a map load or a props.glb arrival never pays the whole pass in one frame.
+ */
+export const SURFACE_TRIANGLES_PER_FRAME = 40000
 
 /** Death markers (contract F6): 330 ticks, an X of two 24 x 3 x 1 bars. */
 export const DEATH_MARKER_TICKS = 330
+/** The marker of a mid-air death drops to the highest floor at most this far below the ragdoll origin. */
+export const DEATH_MARKER_DROP = 1500
 export const DEATH_MARKER_BAR = { length: 24, width: 3, height: 1 }
 export const DEATH_MARKER_GIB_COLOR = '#b01515'
 /** Ticks the marker takes to grow in and to shrink away (presentation only, still a pure function of tickF). */

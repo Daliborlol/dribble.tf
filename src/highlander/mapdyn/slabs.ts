@@ -3,7 +3,8 @@
 // localMins/localMaxs, attached to the door's mover transform.
 //
 // Render-mode-10 doors without geometry and without a door prop draw nothing in game (logic doors such as
-// tow_tetsudo's Dispcontrol helpers), so they get no slab either.
+// tow_tetsudo's Dispcontrol helpers), so they get no slab either. Neither do doors outside the map's world
+// bounds: they belong to the 3D skybox (pl_vigil's dome_door_l/r), which the viewer hides.
 
 import * as THREE from 'three'
 
@@ -13,6 +14,19 @@ import { getMapNodeInfo } from '@highlander/map/mapNodes'
 
 import { RENDER_MODE_NONE } from './constants'
 import { angleQuaternion, moverIndexOf, sampleMover, type MoverSample } from './movers'
+
+/** A slab centre this far outside map-meta worldBounds (Source units) belongs to the 3D skybox. */
+const WORLD_BOUNDS_MARGIN = 64
+
+function outsideWorld(meta: MapMeta, p: THREE.Vector3): boolean {
+  const b = meta.worldBounds
+  if (!b?.boundaryMin || !b?.boundaryMax) return false
+  const m = WORLD_BOUNDS_MARGIN
+  return (
+    p.x < b.boundaryMin.x - m || p.y < b.boundaryMin.y - m || p.z < b.boundaryMin.z - m ||
+    p.x > b.boundaryMax.x + m || p.y > b.boundaryMax.y + m || p.z > b.boundaryMax.z + m
+  )
+}
 
 export interface Slab {
   bspModel: number
@@ -47,11 +61,15 @@ export function buildSlabs(
     if (info.renderMode === RENDER_MODE_NONE && door.props.length === 0) continue
     const min = info.localMins, max = info.localMaxs
     if (!Array.isArray(min) || !Array.isArray(max)) continue
+    const center = new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2)
+    const staticQuat = angleQuaternion(info.angles, new THREE.Quaternion())
+    const sourceCenter = center.clone().applyQuaternion(staticQuat).add(new THREE.Vector3(...info.origin))
+    if (outsideWorld(meta, sourceCenter)) continue
     seen.add(bspModel)
     out.push({
       bspModel,
       name: info.targetname ?? door.name,
-      center: new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2),
+      center,
       size: new THREE.Vector3(
         Math.max(1, max[0] - min[0]),
         Math.max(1, max[1] - min[1]),
@@ -63,7 +81,7 @@ export function buildSlabs(
         info.origin[1] - origin.y,
         info.origin[2] - origin.z
       ),
-      staticQuat: angleQuaternion(info.angles, new THREE.Quaternion()),
+      staticQuat,
       staticVisible: info.initiallyVisible !== false,
     })
   }

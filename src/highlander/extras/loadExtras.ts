@@ -45,10 +45,12 @@ function stopWorker(): void {
   running = null
 }
 
-/** D4: terminate a running extras parse. Any message it still sends is dropped. */
-export function cancelHighlanderExtras(): void {
+/** D4: terminate a running extras parse. Any message it still sends is dropped. True when a parse was running. */
+export function cancelHighlanderExtras(): boolean {
+  const wasRunning = running !== null
   requestId++
   stopWorker()
+  return wasRunning
 }
 
 /** Section 3.4. Never throws into the caller; every terminal path terminates the worker. */

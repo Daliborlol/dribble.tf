@@ -54,7 +54,9 @@ export const onUploadDemoAction = async (files: File[]) => {
 }
 
 export const parseDemoAction = async (fileBuffer: ArrayBuffer) => {
-  cancelHighlanderExtras() // D4: the previous demo's extras must not run beside this base parse
+  // D4: the previous demo's extras must not run beside this base parse
+  const previousDemo = useInstance.getState().parsedDemo
+  const cancelledExtras = cancelHighlanderExtras()
   const wantExtras = getState().settings.highlander?.enabled !== false
 
   try {
@@ -89,6 +91,13 @@ export const parseDemoAction = async (fileBuffer: ArrayBuffer) => {
 
     return parsedDemo
   } catch (error) {
+    // The loaded demo stays on screen, but its extras parse was cancelled and its file buffer went with the
+    // worker: give it a terminal status, so the notice says why and nothing waits for 'ready'.
+    const instance = useInstance.getState()
+    if (cancelledExtras && previousDemo && instance.parsedDemo === previousDemo && instance.extrasStatus === 'loading') {
+      instance.setExtras(undefined)
+      instance.setExtrasStatus('error', 100, 'cancelled by the failed load of another file; reload the demo')
+    }
     dispatch({ type: 'PARSE_DEMO_ERROR', payload: error })
     throw error
   }

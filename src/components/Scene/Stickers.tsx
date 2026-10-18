@@ -22,6 +22,7 @@ import {
   StickerTeam,
 } from '@constants/types'
 import { useIsMobile } from '@utils/hooks'
+import { isDrawnUnder } from '@utils/raycast'
 
 const STICKER_GROUP_NAME = 'stickers'
 const STICKER_MARKER_NAME = 'sticker-marker'
@@ -731,7 +732,7 @@ function getSurfaceHitFromScreen({
   nextRaycaster.setFromCamera(nextPointer, camera)
 
   const intersections = nextRaycaster.intersectObject(world, true)
-  const intersection = intersections.find(item => item.object.visible)
+  const intersection = intersections.find(item => isDrawnUnder(item.object, world))
 
   if (!intersection) return null
 

@@ -1,5 +1,17 @@
 import * as THREE from 'three'
 
+/**
+ * True when `object` and every ancestor up to `root` are visible. The Raycaster ignores `visible`, and the map
+ * hides brush-entity and 3D-skybox nodes on their parent, not on the `<name>_mesh` child that the ray hits.
+ */
+export function isDrawnUnder(object: THREE.Object3D, root: THREE.Object3D): boolean {
+  for (let node: THREE.Object3D | null = object; node; node = node.parent) {
+    if (!node.visible) return false
+    if (node === root) return true
+  }
+  return true
+}
+
 export function getWorldIntersectionFromScreen({
   camera,
   domElement,
@@ -30,7 +42,7 @@ export function getWorldIntersectionFromScreen({
   raycaster.setFromCamera(pointer, camera)
 
   const intersections = raycaster.intersectObject(world, true)
-  const hit = intersections.find(intersection => intersection.object.visible)
+  const hit = intersections.find(intersection => isDrawnUnder(intersection.object, world))
 
   return hit ? hit.point.clone() : null
 }

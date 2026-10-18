@@ -7,23 +7,42 @@ import { ProjectileCache, CachedProjectile } from './ProjectileCache'
 import { ChatEntry, Header, PlayerRef, Round, Vector, World } from './Types'
 import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
-/** Posted by the base worker when parser2 produced no timeline (ticks <= 1 or no players). */
+/**
+ * Posted by the base worker when parser2's result is not used: it has no timeline (ticks <= 1 or no players, task
+ * B1), or it starts DELAYED_START_FALLBACK_SECONDS or more after the 100-packet warmup (task B2, ParseWorker.ts
+ * delayedStartOf; then `parser2` also says where it started and the world bounds it read).
+ */
 export interface ParserFallbackRequest {
   map: string
+  trigger: 'no-timeline' | 'delayed-start'
   reason: string
-  parser2: { ticks: number; players: number; parseMs: number }
+  parser2: {
+    ticks: number
+    players: number
+    parseMs: number
+    startTick?: number
+    startDemoTick?: number
+    firstPacketTick?: number | null
+    warmupEndTick?: number
+    delaySeconds?: number
+    world?: World
+  }
 }
 
 /**
  * The fork's fallback cache builder replaced parser2 for this demo (`parsedDemo.parserFallbackInfo`). It starts
- * the cache even when the demo's world bounds stay zero (tow_tetsudo's plhud.nut uses them for HUD values) and
- * offsets positions by `bounds.boundaryMin`. Its output has positionScale 32 instead of parser2's 1024 and no
- * endTick, endDemoTick, shots or activeWeaponDef, which nothing reads.
+ * the cache at the end of the 100-packet warmup even when the demo's world bounds are still zero (tow_tetsudo's
+ * plhud.nut uses them for HUD values) and then offsets positions by `bounds.boundaryMin`. Its output has
+ * positionScale 32 instead of parser2's 1024 and no endTick, endDemoTick, shots or activeWeaponDef, which nothing
+ * reads.
  */
 export interface ParserFallbackInfo extends ParserFallbackRequest {
-  /** The map's bounds: its OVERWRITE_MAP_BOUNDARIES entry, else its conversion.json worldBounds. */
+  /**
+   * The map's bounds: its OVERWRITE_MAP_BOUNDARIES entry, else its conversion.json worldBounds, else (after a
+   * delayed start) the world bounds parser2 read, the scene origin its result would have had.
+   */
   bounds?: { boundaryMin: Vector; boundaryMax: Vector }
-  boundsSource: 'override' | 'conversion' | 'none'
+  boundsSource: 'override' | 'parser2' | 'conversion' | 'none'
   /** The cache started without world bounds (false when the demo's own bounds became ready). */
   startedWithoutWorld: boolean
   parseMs: number
@@ -33,10 +52,14 @@ export interface ParserFallbackInfo extends ParserFallbackRequest {
 export type ParserFallbackWork = ParserFallbackRequest &
   Pick<ParserFallbackInfo, 'bounds' | 'boundsSource'>
 
+const isZeroBounds = (w: World) =>
+  [w.boundaryMin, w.boundaryMax].every(v => v.x === 0 && v.y === 0 && v.z === 0)
+
 /** Bounds for the fallback parse; never rejects. */
 async function resolveFallbackBounds(
-  map: string
+  request: ParserFallbackRequest
 ): Promise<Pick<ParserFallbackInfo, 'bounds' | 'boundsSource'>> {
+  const { map } = request
   // The override first: ParseWorker shifts positions to it anyway, so offsetting by it makes that shift zero
   const override = getMapBoundaries(map)
   if (override) {
@@ -56,6 +79,17 @@ async function resolveFallbackBounds(
         boundaryMax: { ...worldBounds.boundaryMax },
       },
       boundsSource: 'conversion',
+    }
+  }
+  // After a delayed start on a map without a converted folder: the bounds parser2 read (its scene origin)
+  const parser2World = request.parser2.world
+  if (parser2World && !isZeroBounds(parser2World)) {
+    return {
+      bounds: {
+        boundaryMin: { ...parser2World.boundaryMin },
+        boundaryMax: { ...parser2World.boundaryMax },
+      },
+      boundsSource: 'parser2',
     }
   }
   return { boundsSource: 'none' } // unknown map: positions stay in Source coordinates
@@ -205,12 +239,12 @@ export class AsyncParser {
             return
           }
           if (event.data.fallbackRequest) {
-            // parser2 produced no timeline. Its wasm heap is only freed with its worker (D18), so the fallback
-            // parse runs in a fresh one, with the file the worker handed back.
+            // parser2 produced no timeline or started it late. Its wasm heap is only freed with its worker (D18),
+            // so the fallback parse runs in a fresh one, with the file the worker handed back.
             worker.terminate()
             const request = event.data.fallbackRequest as ParserFallbackRequest
             const buffer = event.data.fileBuffer as ArrayBuffer
-            void resolveFallbackBounds(request.map).then(where => {
+            void resolveFallbackBounds(request).then(where => {
               console.warn(
                 `[parser] ${request.reason} on ${request.map || 'this demo'}: parsing again with the fallback cache builder (${where.boundsSource} bounds)`
               )

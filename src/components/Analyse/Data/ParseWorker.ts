@@ -18,9 +18,9 @@ import { POSITION_FIXED_SCALE } from './PositionEncoding'
 declare function postMessage(message: any, transfer?: any[]): void
 
 // Messages in: { buffer } parses with parser2; { buffer, fallback: ParserFallbackWork } parses with the fork's
-// fallback export. Messages out: { progress }, { error }, the CachedDemo, or, when parser2 produced no timeline,
-// { fallbackRequest: ParserFallbackRequest, fileBuffer }: AsyncParser then ends this worker (its parser2 heap
-// cannot shrink) and posts the file to a fresh one with the map's bounds.
+// fallback export. Messages out: { progress }, { error }, the CachedDemo, or, when parser2 produced no timeline or
+// started it late (delayedStartOf), { fallbackRequest: ParserFallbackRequest, fileBuffer }: AsyncParser then ends
+// this worker (its parser2 heap cannot shrink) and posts the file to a fresh one with the map's bounds.
 
 type WasmPlayerCache = {
   position: Uint32Array[]
@@ -98,6 +98,90 @@ const ensureFallbackWasm = () => {
  */
 const hasTimeline = (result: WasmResult) => result.ticks > 1 && (result.players?.length ?? 0) > 0
 
+/** Both cache builders start after this many warmup packets with players (lib.rs parse_demo_cache_internal). */
+export const WARMUP_PACKETS = 100
+
+/**
+ * A parser2 start at least this many seconds after the warmup end goes to the fallback (task B2). Survey of the 133
+ * local demos (scripts/hl/parser2-survey.mjs --parser2): parser2 starts exactly at the warmup end on all 131 demos
+ * it starts normally (delay 0 ticks); 1428628 (tow_tetsudo) starts 55.2 s after it. Below a few seconds the second
+ * parse (as long as parser2's own, 0.6 to 5 s) costs more than the lost seconds are worth.
+ */
+export const DELAYED_START_FALLBACK_SECONDS = 5
+
+// SDK public/demofile/demoformat.h: demoheader_t (1072 bytes, "HL2DEMO", DEMO_PROTOCOL 3), then frames of
+// `cmd u8, tick i32`; dem_signon and dem_packet carry democmdinfo_t (76 bytes) and two sequence numbers.
+const DEMO_HEADER_BYTES = 1072
+const DEMO_PROTOCOL = 3
+const MESSAGE_META_BYTES = 84
+
+/**
+ * Frame scan of a demo file (header 1072 bytes, then frames of `type u8, tick i32` plus a type-specific body; the
+ * same walk as scripts/hl/lib/demo-frames.mjs). Returns the tick of the first Message frame and of the
+ * WARMUP_PACKETS-th frame: the warmup end, where the cache builders start when the players exist from the first
+ * frame (they do on every local demo): demo tick 94 at 66 Hz, 188 on the 33 Hz 6v6 sample. A tick is null when the
+ * file has no such Message frame or is not an HL2DEMO file of demo protocol 3. Reads only frame headers.
+ */
+export function demoWarmup(bytes: Uint8Array): { firstPacketTick: number | null; warmupEndTick: number | null } {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const size = bytes.byteLength
+  let firstPacketTick: number | null = null
+  const stamp = String.fromCharCode(...bytes.subarray(0, 8))
+  if (size < DEMO_HEADER_BYTES || stamp !== 'HL2DEMO\0' || view.getInt32(8, true) !== DEMO_PROTOCOL) {
+    return { firstPacketTick, warmupEndTick: null }
+  }
+  let offset = DEMO_HEADER_BYTES
+  for (let frame = 1; offset + 5 <= size; frame++) {
+    const type = view.getUint8(offset)
+    if (type === 7) break // Stop
+    const tick = view.getInt32(offset + 1, true)
+    let next: number
+    if (type === 1 || type === 2) {
+      if (offset + 5 + MESSAGE_META_BYTES + 4 > size) break
+      next = offset + 5 + MESSAGE_META_BYTES + 4 + view.getUint32(offset + 5 + MESSAGE_META_BYTES, true)
+    } else if (type === 3) next = offset + 5
+    else if (type === 4 || type === 6 || type === 8) {
+      if (offset + 9 > size) break
+      next = offset + 9 + view.getUint32(offset + 5, true)
+    } else if (type === 5) {
+      if (offset + 13 > size) break
+      next = offset + 13 + view.getUint32(offset + 9, true)
+    } else break // not a demo frame
+    if (next > size) break // a cut frame: the parsers stop before it
+    if (type === 2 && firstPacketTick === null) firstPacketTick = tick
+    if (frame === WARMUP_PACKETS) return { firstPacketTick, warmupEndTick: type === 2 ? tick : null }
+    offset = next
+  }
+  return { firstPacketTick, warmupEndTick: null }
+}
+
+export interface DelayedStart {
+  firstPacketTick: number | null
+  warmupEndTick: number
+  startDemoTick: number
+  /** Seconds between the warmup end and parser2's start: the part of the demo the fallback recovers. */
+  delaySeconds: number
+}
+
+/**
+ * parser2 starts only once the world bounds are non-zero. tow_tetsudo's plhud.nut uses them for HUD values, and on
+ * 1428628 they arrive 55.2 s after the warmup. parser2 then skips that part of the demo and, because it sizes its
+ * timeline from its own start by the header's tick count, leaves an equally long tail without positions. The fork's
+ * fallback export starts at the warmup end. Returns the delay when it reaches DELAYED_START_FALLBACK_SECONDS.
+ */
+export function delayedStartOf(
+  result: Pick<WasmResult, 'startDemoTick' | 'intervalPerTick'>,
+  bytes: Uint8Array
+): DelayedStart | null {
+  const { startDemoTick, intervalPerTick } = result
+  if (!Number.isFinite(startDemoTick) || !(intervalPerTick > 0)) return null
+  const { firstPacketTick, warmupEndTick } = demoWarmup(bytes)
+  if (warmupEndTick === null) return null
+  const delaySeconds = (startDemoTick - warmupEndTick) * intervalPerTick
+  if (!(delaySeconds >= DELAYED_START_FALLBACK_SECONDS)) return null
+  return { firstPacketTick, warmupEndTick, startDemoTick, delaySeconds }
+}
+
 const shiftVectorCache = (
   arrays: Uint32Array[],
   deltaXFixed: number,
@@ -171,8 +255,36 @@ onmessage = async (event: MessageEvent) => {
       const players = empty.players?.length ?? 0
       const request: ParserFallbackRequest = {
         map: empty.header?.map ?? '',
+        trigger: 'no-timeline',
         reason: `parser2 produced ${empty.ticks} tick${empty.ticks === 1 ? '' : 's'} and ${players} players`,
         parser2: { ticks: empty.ticks, players, parseMs: Math.round(parseMs) },
+      }
+      postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
+      return
+    }
+    const delayed = fallback ? null : delayedStartOf(result as WasmResult, new Uint8Array(buffer))
+    if (delayed) {
+      // parser2's output (heap and typed arrays) goes with this worker; the fallback recovers the skipped seconds
+      const late = result as WasmResult
+      const firstPacket =
+        delayed.firstPacketTick === null
+          ? ''
+          : `, ${((delayed.startDemoTick - delayed.firstPacketTick) * late.intervalPerTick).toFixed(1)} s after the first packet`
+      const request: ParserFallbackRequest = {
+        map: late.header?.map ?? '',
+        trigger: 'delayed-start',
+        reason: `parser2 started at demo tick ${delayed.startDemoTick}, ${delayed.delaySeconds.toFixed(1)} s after its warmup ended at demo tick ${delayed.warmupEndTick}${firstPacket}`,
+        parser2: {
+          ticks: late.ticks,
+          players: late.players.length,
+          parseMs: Math.round(parseMs),
+          startTick: late.startTick,
+          startDemoTick: late.startDemoTick,
+          firstPacketTick: delayed.firstPacketTick,
+          warmupEndTick: delayed.warmupEndTick,
+          delaySeconds: +delayed.delaySeconds.toFixed(2),
+          world: { boundaryMin: { ...late.world.boundaryMin }, boundaryMax: { ...late.world.boundaryMax } },
+        },
       }
       postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
       return

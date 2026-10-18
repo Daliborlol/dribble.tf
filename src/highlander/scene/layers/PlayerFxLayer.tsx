@@ -8,7 +8,7 @@ import { createPortal, useFrame } from '@react-three/fiber'
 
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { actorAt } from '@highlander/players/actorState'
-import { fxFrameContext } from '@highlander/players/frameContext'
+import { FxFrameCache } from '@highlander/players/frameContext'
 import type { OverlayState } from '@highlander/players/fxState'
 import { OverlayRig } from '@highlander/players/overlayRig'
 import { mountedRigs } from '@highlander/players/probes'
@@ -17,9 +17,10 @@ import { allActors, useActorRegistryVersion, type ActorHandles } from '@highland
 interface ActorOverlayProps {
   handles: ActorHandles
   tickRef: React.MutableRefObject<number>
+  frameCache: FxFrameCache
 }
 
-const ActorOverlay = React.memo(({ handles, tickRef }: ActorOverlayProps) => {
+const ActorOverlay = React.memo(({ handles, tickRef, frameCache }: ActorOverlayProps) => {
   const { entityId } = handles
   const rig = useMemo(() => new OverlayRig(entityId), [entityId])
   // The per-tick state only changes with the frame context version (tick, settings, POV); frames in between
@@ -35,7 +36,7 @@ const ActorOverlay = React.memo(({ handles, tickRef }: ActorOverlayProps) => {
   }, [entityId, rig])
 
   useFrame(() => {
-    const ctx = fxFrameContext(tickRef.current)
+    const ctx = frameCache.get(tickRef.current)
     if (!ctx) {
       rig.update(null, 0)
       return
@@ -60,15 +61,27 @@ export const PlayerFxLayer = React.memo(({ renderTick }: { renderTick: number })
   const tickRef = useRef(renderTick)
   tickRef.current = renderTick
 
+  // One frame context per frame for all overlays. It references the extras and the demo, so it is cleared as
+  // soon as the extras change (a new demo sets them to undefined before its extras parse), while the overlays
+  // are off, and when the layer unmounts (Highlander off)
+  const frameCache = useMemo(() => new FxFrameCache(), [])
+  const active = !!x && !!x.meta.available.cond && (conditions || cloak)
+  useEffect(() => () => frameCache.clear(), [x, active, frameCache])
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const actors = useMemo(() => Array.from(allActors()), [registryVersion])
 
-  if (!x || !x.meta.available.cond || (!conditions && !cloak)) return null
+  if (!active) return null
 
   return (
     <>
       {actors.map(handles => (
-        <ActorOverlay key={`${handles.entityId}:${handles.group.uuid}`} handles={handles} tickRef={tickRef} />
+        <ActorOverlay
+          key={`${handles.entityId}:${handles.group.uuid}`}
+          handles={handles}
+          tickRef={tickRef}
+          frameCache={frameCache}
+        />
       ))}
     </>
   )

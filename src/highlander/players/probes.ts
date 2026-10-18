@@ -2,6 +2,7 @@
 //   fx.actor(entityId, tick?)  the ActorFx plus inv, invE, the disguise view in effect and what the scene draws
 //   fx.overlays(tick?)         [{ entityId, name, effects, drawn }] for every mounted actor
 //   fx.plates()                the Highlander nameplate items in the DOM (name shown, badge, tags, bars)
+//   fx.frameCache()            whether the overlay layer holds a frame context (extras and demo references)
 // `tick` is a cache tick (default: the current renderTick). The computed parts are pure functions of the tick;
 // `rendered` and `drawn` read the live scene, so evaluate them after seeking and a few frames.
 
@@ -13,6 +14,7 @@ import { HL } from '@highlander/extras/enums'
 import { getActor, allActors } from '@highlander/scene/actorRegistry'
 
 import { actorAt, type ActorInputs } from './actorState'
+import { heldFxFrameContexts } from './frameContext'
 import { readFxSettings } from './fxSettings'
 import { overlayNames } from './fxState'
 import { currentPovSubject, povCameraOwnerEntityId, povInfoOf } from './pov'
@@ -137,6 +139,14 @@ registerHlProbe('fx.overlays', (tickArg?: number) => {
   return jsonSafe(rows)
 })
 
+// Whether the overlay layer still holds a frame context (which references the extras and the demo); it must drop
+// it while the extras are unset (a new demo's parse), while the overlays are off and with Highlander off
+registerHlProbe('fx.frameCache', () => ({
+  held: heldFxFrameContexts(),
+  extrasStatus: useInstance.getState().extrasStatus,
+  mountedRigs: mountedRigs.size,
+}))
+
 registerHlProbe('fx.plates', () => {
   if (typeof document === 'undefined') return []
   return Array.from(document.querySelectorAll<HTMLElement>('[data-hl-plate]')).map(el => {
@@ -154,6 +164,7 @@ registerHlProbe('fx.plates', () => {
       badge: el.querySelector<HTMLElement>('[data-hl-badge]')?.innerText ?? null,
       badgeTeam: el.querySelector<HTMLElement>('[data-hl-badge]')?.dataset.hlBadgeTeam ?? null,
       tags: Array.from(el.querySelectorAll<HTMLElement>('[data-hl-tag]')).map(t => t.innerText),
+      tagIcons: Array.from(el.querySelectorAll<HTMLElement>('[data-hl-tag-icon]')).map(t => t.dataset.hlTagIcon ?? ''),
       weaponIcon: el.querySelector<HTMLElement>('[data-hl-weapon]')?.dataset.hlWeapon ?? null,
       cloakPct: el.querySelector<HTMLElement>('[data-hl-cloak]')?.dataset.hlCloak ?? null,
       chargePct: el.querySelector<HTMLElement>('[data-hl-charge]')?.dataset.hlCharge ?? null,

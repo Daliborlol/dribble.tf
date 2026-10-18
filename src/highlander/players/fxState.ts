@@ -353,7 +353,11 @@ export function computeNameplateExtra(input: FxInput, state: FxState): Nameplate
       }
     }
   }
-  const decloakAt = a.cond && classId === SPY ? recentFlagEdge(x, p, tick, HL.CLOAKED, false, DECLOAK_TAG_TICKS) : null
+  // flagClearedSince(HL.CLOAKED) within the window: only while the spy is uncloaked, so a recloak ends the tag
+  const decloakAt =
+    a.cond && classId === SPY && (flags & HL.CLOAKED) === 0
+      ? recentFlagEdge(x, p, tick, HL.CLOAKED, false, DECLOAK_TAG_TICKS)
+      : null
   if (decloakAt !== null) tags.push('DECLOAK')
   const medicCall = misc !== null && misc.saveMeTick >= 0 && tick - misc.saveMeTick < MEDIC_CALL_TICKS
   if (medicCall) tags.push('MEDIC!')
@@ -374,8 +378,8 @@ export function computeNameplateExtra(input: FxInput, state: FxState): Nameplate
     any = true
   }
 
-  // A cloaked spy's plate dims (the 'pov' enemy rule above hides it instead)
-  if (extra.opacity === undefined && inv > 0.5) {
+  // A cloaked spy's plate dims with the cloak fade (the 'pov' enemy rule above hides it instead)
+  if (s.cloak && extra.opacity === undefined && inv > 0.5) {
     extra.opacity = 0.6
     any = true
   }
@@ -412,7 +416,7 @@ export interface OverlayState {
   smokeTick: number | null
   /** CLOAKED falling-edge tick while the decloak ring lasts, else null */
   decloakTick: number | null
-  /** nameplates are shown: they cover the space above the head, so the stun stars circle below them */
+  /** nameplates are shown: they cover the space above the head, so the stun stars and the skull move below them */
   plates: boolean
 }
 
@@ -453,7 +457,9 @@ export function computeOverlays(input: FxInput, state: FxState): OverlayState | 
     spy && s.cloak && !(enemyEyes && state.cloaked)
       ? recentFlagEdge(x, p, tick, HL.DISGUISING, true, DISGUISE_SMOKE_TICKS)
       : null
-  const decloakTick = spy && s.cloak ? recentFlagEdge(x, p, tick, HL.CLOAKED, false, DECLOAK_RING_TICKS) : null
+  // flagClearedSince(HL.CLOAKED): only while the spy is uncloaked, so a recloak ends the ring
+  const decloakTick =
+    spy && s.cloak && !on(HL.CLOAKED) ? recentFlagEdge(x, p, tick, HL.CLOAKED, false, DECLOAK_RING_TICKS) : null
 
   const o: OverlayState = {
     team: state.drawnTeam,
@@ -469,8 +475,10 @@ export function computeOverlays(input: FxInput, state: FxState): OverlayState | 
     jarate: debuffs && on(HL.JARATED),
     milk: debuffs && on(HL.MILKED),
     gas: debuffs && state.gas,
-    // the game hides the mark-for-death icon on stealthed and disguised players (C_TFPlayer::UpdatedMarkedForDeathEffect)
-    marked: debuffs && !unseen && on(HL.MARKED) && !state.cloaked && !on(HL.DISGUISED),
+    // The game hides the mark-for-death icon on stealthed and disguised players (C_TFPlayer::UpdatedMarkedForDeathEffect).
+    // While nameplates show the Highlander items, the plate's MARKED tag (with a skull) carries it instead: the plate
+    // covers the space above the head where the skull would float.
+    marked: debuffs && !unseen && on(HL.MARKED) && !state.cloaked && !on(HL.DISGUISED) && !(s.nameplates && s.nameplateExtras),
     stun: debuffs && !unseen && on(HL.STUNNED),
     overheal: overheal && !unseen && on(HL.OVERHEALED),
     teleport: overheal && !unseen && on(HL.TELEPORTED),

@@ -146,6 +146,8 @@ interface PlateBodyProps {
 
 const PlateBody = React.memo((p: PlateBodyProps) => {
   const weaponIconUrl = useWeaponIconUrl(p.weaponIcon || undefined)
+  // The MARKED tag carries the marked-for-death skull, which would float above the head behind this plate
+  const skullUrl = useWeaponIconUrl(p.tags.includes('MARKED') ? 'skull' : undefined)
   const hasBadge = p.disguiseCls >= 0
   // class 0: disguising without the desired class (no local tables), or a disguise whose class is unknown
   const disguiseLabel = p.disguiseCls > 0 ? `as ${className(p.disguiseCls)}` : p.disguising ? 'disguising' : 'disguised'
@@ -168,6 +170,14 @@ const PlateBody = React.memo((p: PlateBodyProps) => {
               className="rounded-sm px-[3px] text-[9px] font-bold leading-[11px]"
               style={tagStyle(tag, p.shownTeam)}
             >
+              {tag === 'MARKED' && skullUrl && (
+                <img
+                  data-hl-tag-icon="skull"
+                  src={skullUrl}
+                  alt=""
+                  className="-ml-[1px] mr-[1px] inline-block h-[11px] w-auto align-top"
+                />
+              )}
               {tag}
             </span>
           ))}

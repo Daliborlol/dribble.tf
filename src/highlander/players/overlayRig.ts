@@ -8,7 +8,7 @@
 
 import * as THREE from 'three'
 
-import { TEAM_FX } from '@highlander/constants'
+import { LEGACY_EYE_HEIGHT, TEAM_FX } from '@highlander/constants'
 
 import {
   BLEED_COLOR,
@@ -182,6 +182,15 @@ const _flameAxis = new THREE.Vector3()
 /** Stun stars: the contract's circle above the head (z 92, radius 10), or just under the nameplate, which covers it. */
 const STUN = { z: 92, radius: 10, zUnderPlate: 64, radiusUnderPlate: 12 }
 
+/**
+ * Marked-for-death skull: 18 units at the contract's z 100 without nameplates. A nameplate grows upwards from
+ * ActorDimensions.z * 0.85 (Actors.tsx, LEGACY_EYE_HEIGHT is ActorDimensions.z) and would cover it, so under a
+ * plate the skull hangs from the plate's lower edge, right of the head. The sprite centre offsets it in screen
+ * space, which clears the plate from every camera angle. (Plates with the Highlander items show a MARKED tag with
+ * a skull instead, and computeOverlays then draws no skull at all.)
+ */
+const SKULL = { size: 18, z: 100, plateZ: LEGACY_EYE_HEIGHT * 0.85, centerUnderPlate: [-0.75, 1.05] as const }
+
 const DRIP_ANGLE: Record<'bleeding' | 'jarate' | 'milk' | 'gas', number> = { bleeding: 0, jarate: 0.5, milk: 1, gas: 1.5 }
 
 export class OverlayRig {
@@ -319,11 +328,18 @@ export class OverlayRig {
     this.drips('milk', o.milk, tickF)
     this.drips('gas', o.gas, tickF)
 
-    // Marked for death: the skull above the head
+    // Marked for death: the skull above the head, or hanging from the nameplate's lower edge
     const marked = this.part('marked', o.marked, () => new THREE.Sprite(getSkullMaterial()))
     if (marked) {
-      marked.position.set(0, 0, 100)
-      marked.scale.set(18, 18, 1)
+      const sprite = marked as THREE.Sprite
+      sprite.scale.set(SKULL.size, SKULL.size, 1)
+      if (o.plates) {
+        sprite.position.set(0, 0, SKULL.plateZ)
+        sprite.center.set(SKULL.centerUnderPlate[0], SKULL.centerUnderPlate[1])
+      } else {
+        sprite.position.set(0, 0, SKULL.z)
+        sprite.center.set(0.5, 0.5)
+      }
     }
 
     // Stun: three stars circling over the head

@@ -1,6 +1,13 @@
-// Per-frame inputs shared by every PlayerFxLayer overlay (and the fx.overlays probe): extras, base demo, settings,
-// the POV subject and the actor rendered from his own povCamera. Built once per frame by whichever overlay asks
-// first, so 18 actors do not each recompute the POV subject.
+// Per-frame inputs shared by every PlayerFxLayer overlay: extras, base demo, settings, the POV subject and the
+// actor rendered from his own povCamera. PlayerFxLayer owns one FxFrameCache and hands it to its overlays: the
+// first overlay that asks in a frame builds the context, and the other 17 reuse it instead of each recomputing
+// the POV subject.
+//
+// The cache keeps only the inputs it compares, never a store or instance snapshot, and PlayerFxLayer clears it
+// whenever the extras change, while the overlays are off and when it unmounts. So it never keeps a previous demo
+// alive, for example through the next demo's extras parse or after a load with Highlander off.
+
+import type * as THREE from 'three'
 
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { getState, useInstance } from '@zus/store'
@@ -23,38 +30,89 @@ export interface FxFrameContext {
   version: number
 }
 
-let cache: { tick: number; store: unknown; inst: unknown; ctx: FxFrameContext | null } | null = null
-let key: unknown[] = []
-let version = 0
+/** Last version handed out. Module-wide, so a new or cleared cache never repeats a version an overlay holds. */
+let lastVersion = 0
+/** Caches that hold a context right now (the fx.frameCache probe); 0 once the overlays are gone. */
+let heldContexts = 0
+export const heldFxFrameContexts = () => heldContexts
 
-function sameKey(next: unknown[]): boolean {
-  if (next.length !== key.length) return false
-  for (let i = 0; i < next.length; i++) if (next[i] !== key[i]) return false
-  return true
-}
+type Settings = ReturnType<typeof getState>['settings']
 
-/** The frame context at `renderTick`, or null while the extras or the demo are missing. */
-export function fxFrameContext(renderTick: number): FxFrameContext | null {
-  const inst = useInstance.getState()
-  const store = getState()
-  if (cache && cache.tick === renderTick && cache.store === store && cache.inst === inst) return cache.ctx
+export class FxFrameCache {
+  private ctx: FxFrameContext | null = null
+  // What `ctx` was built from. povSubjectAt is a pure function of (extras, demo, focused entity, tick, pov
+  // settings), and povCameraOwnerEntityId reads the controls mode, the focused object and the camera override.
+  private progress = 0
+  private settingsRef: Settings | null = null
+  private mode: string | null = null
+  private focused: THREE.Object3D | undefined = undefined
+  private override: THREE.Object3D | undefined = undefined
 
-  let ctx: FxFrameContext | null = null
-  const x = inst.extrasStatus === 'ready' ? inst.extras : undefined
-  const demo = inst.parsedDemo
-  if (x && demo) {
+  /** The frame context at `renderTick`, or null while the extras or the demo are missing. */
+  get(renderTick: number): FxFrameContext | null {
+    const inst = useInstance.getState()
+    const x = inst.extrasStatus === 'ready' ? inst.extras : undefined
+    const demo = inst.parsedDemo
+    if (!x || !demo) {
+      this.clear()
+      return null
+    }
+
+    const store = getState()
+    const settingsRef = store.settings
+    const mode = store.scene.controls.mode
+    const { frameProgress: progress, focusedObject: focused, povCameraOverride: override } = inst
+    const prev = this.ctx
+    if (
+      prev &&
+      prev.tick === renderTick &&
+      prev.x === x &&
+      prev.demo === demo &&
+      this.progress === progress &&
+      this.settingsRef === settingsRef &&
+      this.mode === mode &&
+      this.focused === focused &&
+      this.override === override
+    ) {
+      return prev
+    }
+
     const settings = readFxSettings()
     const pov = povInfoOf(demo, currentPovSubject(x, demo, renderTick), renderTick)
     const povOwner = povCameraOwnerEntityId()
-    const nextKey = [renderTick, x, demo, store.settings, pov?.p ?? -2, pov?.entityId ?? -2, pov?.team ?? -2, povOwner ?? -2]
-    if (!sameKey(nextKey)) {
-      key = nextKey
-      version++
-    }
-    const progress = inst.frameProgress
+    // The per-tick overlay state depends on the tick, the extras, the demo, the settings, the POV subject and
+    // his team, and the POV owner; frames that only move frameProgress keep the version
+    const sameState =
+      !!prev &&
+      prev.tick === renderTick &&
+      prev.x === x &&
+      prev.demo === demo &&
+      this.settingsRef === settingsRef &&
+      (prev.pov?.p ?? -2) === (pov?.p ?? -2) &&
+      (prev.pov?.entityId ?? -2) === (pov?.entityId ?? -2) &&
+      (prev.pov?.team ?? -2) === (pov?.team ?? -2) &&
+      prev.povOwner === povOwner
+    const version = sameState && prev ? prev.version : ++lastVersion
     const tickF = renderTick + (progress > 0 && progress < 1 ? progress : 0)
-    ctx = { x, demo, tick: renderTick, tickF, settings, pov, povOwner, version }
+
+    if (!prev) heldContexts++
+    this.progress = progress
+    this.settingsRef = settingsRef
+    this.mode = mode
+    this.focused = focused
+    this.override = override
+    this.ctx = { x, demo, tick: renderTick, tickF, settings, pov, povOwner, version }
+    return this.ctx
   }
-  cache = { tick: renderTick, store, inst, ctx }
-  return ctx
+
+  /** Drops the context and every input it holds (extras, demo, settings, scene objects). */
+  clear(): void {
+    if (this.ctx) heldContexts--
+    this.ctx = null
+    this.progress = 0
+    this.settingsRef = null
+    this.mode = null
+    this.focused = undefined
+    this.override = undefined
+  }
 }

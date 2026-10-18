@@ -1,6 +1,6 @@
 {
  "mapName": "tow_tetsudo_b10c",
- "timestamp": "2026-10-17T17:02:34.230Z",
+ "timestamp": "2026-10-18T01:29:53.812Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,12 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 473,
+  "stock": 1242,
+  "stockSolid": 511,
+  "dynamic": 2
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +130,7 @@
   "leaves": 6965
  },
  "stats": {
-  "exportMs": 2090,
+  "exportMs": 2109,
   "sourceFaces": 12274,
   "sourceTriangles": 51764,
   "keptTriangles": 49903,
@@ -143,7 +150,423 @@
   "glbBytes": 648604,
   "lightmapBytes": 857318,
   "metaBytes": 42992,
-  "visibilityBytes": 417470
+  "visibilityBytes": 417470,
+  "props": {
+   "ms": 2521,
+   "bytes": 4485868,
+   "skybox": 0,
+   "dynamicSkipped": {
+    "parented": 4,
+    "named": 3
+   },
+   "unconvertible": 0,
+   "models": 38,
+   "clusters": 128,
+   "patternSplits": 29,
+   "bakeDemand": {
+    "before": 557586,
+    "after": 397809,
+    "budget": 250000
+   },
+   "nodes": 115,
+   "instancedNodes": 69,
+   "bakedInstances": 124,
+   "primitives": 160,
+   "vertices": 438325,
+   "triangles": 396685,
+   "renderedTriangles": 861317,
+   "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9998,
+    "drawnTriangles": 657193,
+    "modelAgree": 0.9995,
+    "modelTriangles": 40114
+   },
+   "lighting": {
+    "exact": 346,
+    "estimated": 129,
+    "mismatched": 0,
+    "baked": 124,
+    "shared": 74,
+    "worstDrawnError": 0.62,
+    "bakeVerticesLeft": 173,
+    "set": "hdr",
+    "exposure": 0.5,
+    "floor": 0.015,
+    "worstSharedError": 2.108
+   },
+   "materials": {
+    "pak": 31,
+    "neutral": 4,
+    "neutralNames": [
+     "arctic_door_01",
+     "barricade",
+     "powercable_truss",
+     "powercables"
+    ],
+    "table": [
+     {
+      "name": "arctic_door_01",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "arctic_machinery_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.041,
+       0.048,
+       0.053
+      ]
+     },
+     {
+      "name": "european_sedan_skin5",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.109,
+       0.149,
+       0.067
+      ]
+     },
+     {
+      "name": "urban_tyre",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.017,
+       0.015,
+       0.014
+      ]
+     },
+     {
+      "name": "andon_post_lantern01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.042,
+       0.025,
+       0.022
+      ]
+     },
+     {
+      "name": "andon_post_lantern02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.031,
+       0.032,
+       0.038
+      ]
+     },
+     {
+      "name": "tf_bamboo01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.058,
+       0.115,
+       0.018
+      ]
+     },
+     {
+      "name": "tf_bamboo_leaf01",
+      "source": "pak",
+      "kind": "translucent",
+      "coverage": 0.17,
+      "alpha": 0.17,
+      "albedo": [
+       0.166,
+       0.331,
+       0.057
+      ]
+     },
+     {
+      "name": "tf_bamboo_card01",
+      "source": "pak",
+      "kind": "translucent",
+      "coverage": 0.142,
+      "alpha": 0.15,
+      "albedo": [
+       0.069,
+       0.131,
+       0.028
+      ]
+     },
+     {
+      "name": "asian_screen01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.483,
+       0.316,
+       0.232
+      ]
+     },
+     {
+      "name": "asian_screen01b",
+      "source": "pak",
+      "kind": "translucent",
+      "coverage": 1,
+      "alpha": 0.749,
+      "albedo": [
+       0.737,
+       0.555,
+       0.426
+      ]
+     },
+     {
+      "name": "asian_screen02b",
+      "source": "pak",
+      "kind": "translucent",
+      "coverage": 1,
+      "alpha": 0.749,
+      "albedo": [
+       0.532,
+       0.506,
+       0.441
+      ]
+     },
+     {
+      "name": "hanging_rope_lanterns01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.14,
+       0.036,
+       0.024
+      ]
+     },
+     {
+      "name": "hanging_rope_lanterns02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.063,
+       0.088,
+       0.12
+      ]
+     },
+     {
+      "name": "japanese_stool01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.091,
+       0.059,
+       0.045
+      ]
+     },
+     {
+      "name": "kawara_roof_supports01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.026,
+       0.017,
+       0.015
+      ]
+     },
+     {
+      "name": "kawara_roof_tile03",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.009,
+       0.008,
+       0.011
+      ]
+     },
+     {
+      "name": "shoji_wall_screen01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.258,
+       0.208,
+       0.166
+      ]
+     },
+     {
+      "name": "temple_column01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.08,
+       0.006,
+       0.006
+      ]
+     },
+     {
+      "name": "temple_column02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.003,
+       0.01,
+       0.028
+      ]
+     },
+     {
+      "name": "lantern_wall01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.071,
+       0.058,
+       0.036
+      ]
+     },
+     {
+      "name": "jerrypipe_set",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.061,
+       0.067,
+       0.067
+      ]
+     },
+     {
+      "name": "asian_truck_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.1,
+       0.053,
+       0.04
+      ]
+     },
+     {
+      "name": "truck_tyre",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.008,
+       0.008,
+       0.008
+      ]
+     },
+     {
+      "name": "asian_truck_01_skin2",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.086,
+       0.072,
+       0.068
+      ]
+     },
+     {
+      "name": "asian_truck_01_skin3",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.1,
+       0.053,
+       0.04
+      ]
+     },
+     {
+      "name": "asian_truck_01_skin4",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.087,
+       0.073,
+       0.068
+      ]
+     },
+     {
+      "name": "bamboo_sack",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.229,
+       0.175,
+       0.15
+      ]
+     },
+     {
+      "name": "barricade",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "blackboard",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.064,
+       0.054,
+       0.049
+      ]
+     },
+     {
+      "name": "rail_crossing",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.135,
+       0.085,
+       0.023
+      ]
+     },
+     {
+      "name": "road_sign_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.244,
+       0.124,
+       0.021
+      ]
+     },
+     {
+      "name": "shelf_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.115,
+       0.072,
+       0.044
+      ]
+     },
+     {
+      "name": "powercable_truss",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "powercables",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "NATURE/BLENDGRAVELTOGRASS_TETSUDO": {

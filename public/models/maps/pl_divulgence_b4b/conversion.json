@@ -1,6 +1,6 @@
 {
  "mapName": "pl_divulgence_b4b",
- "timestamp": "2026-10-17T17:01:42.012Z",
+ "timestamp": "2026-10-18T01:28:19.830Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,11 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 105,
+  "stock": 1487,
+  "stockSolid": 426
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +129,7 @@
   "leaves": 11666
  },
  "stats": {
-  "exportMs": 1850,
+  "exportMs": 1830,
   "sourceFaces": 18515,
   "sourceTriangles": 78156,
   "keptTriangles": 74704,
@@ -143,7 +149,314 @@
   "glbBytes": 1264252,
   "lightmapBytes": 977892,
   "metaBytes": 52564,
-  "visibilityBytes": 911444
+  "visibilityBytes": 911444,
+  "props": {
+   "ms": 352,
+   "bytes": 578752,
+   "skybox": 0,
+   "dynamicSkipped": {},
+   "unconvertible": 0,
+   "models": 23,
+   "clusters": 52,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 29164,
+    "after": 29164,
+    "budget": 250000
+   },
+   "nodes": 30,
+   "instancedNodes": 1,
+   "bakedInstances": 75,
+   "primitives": 42,
+   "vertices": 50034,
+   "triangles": 47971,
+   "renderedTriangles": 48151,
+   "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9995,
+    "drawnTriangles": 48151,
+    "modelAgree": 0.9994,
+    "modelTriangles": 16229
+   },
+   "lighting": {
+    "exact": 104,
+    "estimated": 1,
+    "mismatched": 0,
+    "baked": 75,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 220836,
+    "set": "hdr",
+    "exposure": 1.8624,
+    "floor": 0.015,
+    "worstSharedError": 1.48
+   },
+   "materials": {
+    "pak": 8,
+    "neutral": 16,
+    "neutralNames": [
+     "rink_wood_001",
+     "wood_floor001",
+     "wood_bridge001",
+     "metalgrate013a2",
+     "ibeam001b",
+     "rollupdoor001",
+     "blast_door_frame01",
+     "blast_door",
+     "tree_pine_stack",
+     "steeldoor001",
+     "spawnroom_door",
+     "wall027b",
+     "wood_floor002",
+     "concretefloor003",
+     "wall028",
+     "officedoor002"
+    ],
+    "table": [
+     {
+      "name": "rink_wood_001",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "wood_floor001",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "wood_bridge001",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "metalgrate013a2",
+      "source": "neutral",
+      "kind": "translucent",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "ibeam001b",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "rollupdoor001",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "blast_door_frame01",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "blast_door",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "tank002",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.023,
+       0.023,
+       0.023
+      ]
+     },
+     {
+      "name": "wirematerial",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.066,
+       0.066,
+       0.066
+      ]
+     },
+     {
+      "name": "silo_top001",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.021,
+       0.021,
+       0.018
+      ]
+     },
+     {
+      "name": "hose001",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.023,
+       0.023,
+       0.023
+      ]
+     },
+     {
+      "name": "mounteddeerhead01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.219,
+       0.179,
+       0.133
+      ]
+     },
+     {
+      "name": "tree_pine_stack",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "steeldoor001",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "spawnroom_door",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "woodammo",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.062,
+       0.047,
+       0.033
+      ]
+     },
+     {
+      "name": "woodhealth",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.062,
+       0.046,
+       0.033
+      ]
+     },
+     {
+      "name": "beer_barrel",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.086,
+       0.063,
+       0.051
+      ]
+     },
+     {
+      "name": "wall027b",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.061,
+       0.088,
+       0.11
+      ]
+     },
+     {
+      "name": "wood_floor002",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "concretefloor003",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "wall028",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "officedoor002",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "WOOD/WOOD_FLOOR002": {

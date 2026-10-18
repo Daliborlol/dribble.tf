@@ -1,6 +1,6 @@
 {
  "mapName": "koth_ashville_final1",
- "timestamp": "2026-10-17T17:01:20.962Z",
+ "timestamp": "2026-10-18T01:27:58.100Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -48,6 +49,11 @@
    33,
    33
   ]
+ },
+ "props": {
+  "pak": 204,
+  "stock": 841,
+  "stockSolid": 434
  },
  "lightEnvironment": {
   "ambient": {
@@ -128,7 +134,7 @@
   "leaves": 4770
  },
  "stats": {
-  "exportMs": 2486,
+  "exportMs": 2482,
   "sourceFaces": 6457,
   "sourceTriangles": 24500,
   "keptTriangles": 23347,
@@ -148,7 +154,356 @@
   "glbBytes": 451428,
   "lightmapBytes": 494346,
   "metaBytes": 12801,
-  "visibilityBytes": 229932
+  "visibilityBytes": 229932,
+  "props": {
+   "ms": 769,
+   "bytes": 2884372,
+   "skybox": 0,
+   "dynamicSkipped": {
+    "named": 4,
+    "unsupported": 12
+   },
+   "unconvertible": 0,
+   "models": 22,
+   "clusters": 73,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 233798,
+    "after": 233798,
+    "budget": 250000
+   },
+   "nodes": 38,
+   "instancedNodes": 13,
+   "bakedInstances": 123,
+   "primitives": 38,
+   "vertices": 321456,
+   "triangles": 249951,
+   "renderedTriangles": 268100,
+   "skippedPrimitives": 2,
+   "winding": {
+    "agree": 0.9956,
+    "drawnTriangles": 236344,
+    "modelAgree": 0.9964,
+    "modelTriangles": 35564
+   },
+   "lighting": {
+    "exact": 166,
+    "estimated": 38,
+    "mismatched": 38,
+    "baked": 123,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 16202,
+    "set": "hdr",
+    "exposure": 2,
+    "floor": 0.015,
+    "worstSharedError": 1.153
+   },
+   "materials": {
+    "pak": 26,
+    "neutral": 2,
+    "neutralNames": [
+     "bomb_redmond",
+     "bomb_blutarch"
+    ],
+    "table": [
+     {
+      "name": "groundlight001_sheet_off",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.111,
+       0.1,
+       0.115
+      ]
+     },
+     {
+      "name": "miningcrate001",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.116,
+       0.084,
+       0.062
+      ]
+     },
+     {
+      "name": "miningcrate002",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.086,
+       0.063,
+       0.047
+      ]
+     },
+     {
+      "name": "mop_and_bucket01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.047,
+       0.047,
+       0.041
+      ]
+     },
+     {
+      "name": "unform_locker01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.066,
+       0.039,
+       0.031
+      ]
+     },
+     {
+      "name": "unform_locker01_skin2",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.049,
+       0.042,
+       0.038
+      ]
+     },
+     {
+      "name": "vent",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.175,
+       0.166,
+       0.106
+      ]
+     },
+     {
+      "name": "barrel03",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.428,
+       0.23,
+       0.042
+      ]
+     },
+     {
+      "name": "3pylon_diffuse",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.014,
+       0.009,
+       0.006
+      ]
+     },
+     {
+      "name": "crate_tarp_2",
+      "source": "pak",
+      "kind": "opaque",
+      "coverage": 1,
+      "alpha": 1,
+      "albedo": [
+       0.048,
+       0.044,
+       0.029
+      ]
+     },
+     {
+      "name": "frontline_consoles",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.154,
+       0.09,
+       0.061
+      ]
+     },
+     {
+      "name": "frontline_consoles_blue",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.084,
+       0.122,
+       0.117
+      ]
+     },
+     {
+      "name": "boxing_sack",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.127,
+       0.021,
+       0.019
+      ]
+     },
+     {
+      "name": "models/props_hydro/barrel_crate",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.199,
+       0.135,
+       0.091
+      ]
+     },
+     {
+      "name": "dumptruck",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.067,
+       0.038,
+       0.021
+      ]
+     },
+     {
+      "name": "portable_toilet_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.164,
+       0.097,
+       0.079
+      ]
+     },
+     {
+      "name": "portable_toilet_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.149,
+       0.19,
+       0.17
+      ]
+     },
+     {
+      "name": "computer_glass",
+      "source": "neutral",
+      "kind": "opaque",
+      "skip": "additive",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "computer_low_drive",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.144,
+       0.113,
+       0.077
+      ]
+     },
+     {
+      "name": "computer_low_drive_blu",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.114,
+       0.133,
+       0.108
+      ]
+     },
+     {
+      "name": "file_cabinet_001",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.167,
+       0.078,
+       0.063
+      ]
+     },
+     {
+      "name": "file_cabinet_001b",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.057,
+       0.139,
+       0.167
+      ]
+     },
+     {
+      "name": "intercom",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.194,
+       0.191,
+       0.153
+      ]
+     },
+     {
+      "name": "bomb_redmond",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "bomb_blutarch",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "gas_pump01a",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.258,
+       0.144,
+       0.122
+      ]
+     },
+     {
+      "name": "gas_pump01b",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.129,
+       0.19,
+       0.257
+      ]
+     },
+     {
+      "name": "train_container",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.1,
+       0.11,
+       0.129
+      ]
+     },
+     {
+      "name": "train_container_red",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.192,
+       0.079,
+       0.047
+      ]
+     }
+    ]
+   },
+   "warnings": []
+  }
  },
  "materials": {
   "NATURE/BLENDGROUNDTOGRASS007": {

@@ -1,6 +1,6 @@
 {
  "mapName": "pl_eruption_b15",
- "timestamp": "2026-10-17T17:02:06.028Z",
+ "timestamp": "2026-10-18T01:28:45.158Z",
  "pipeline": "bsp-to-glb",
  "converter": {
   "name": "bsp-to-glb",
@@ -25,7 +25,8 @@
   "model": "world.glb",
   "lightmap": "lightmap.webp",
   "visibility": "visibility.json",
-  "meta": "map-meta.json"
+  "meta": "map-meta.json",
+  "props": "props.glb"
  },
  "lightmap": {
   "file": "lightmap.webp",
@@ -43,6 +44,12 @@
   "styles": "sum-enabled-styles",
   "enabledNamedStyles": [],
   "darkNamedStyles": []
+ },
+ "props": {
+  "pak": 145,
+  "stock": 1452,
+  "stockSolid": 494,
+  "dynamic": 54
  },
  "lightEnvironment": {
   "ambient": {
@@ -123,7 +130,7 @@
   "leaves": 6198
  },
  "stats": {
-  "exportMs": 2659,
+  "exportMs": 2635,
   "sourceFaces": 16259,
   "sourceTriangles": 243936,
   "keptTriangles": 242066,
@@ -143,7 +150,347 @@
   "glbBytes": 1820056,
   "lightmapBytes": 1018234,
   "metaBytes": 60923,
-  "visibilityBytes": 833206
+  "visibilityBytes": 833206,
+  "props": {
+   "ms": 529,
+   "bytes": 882788,
+   "skybox": 0,
+   "dynamicSkipped": {
+    "animated": 1,
+    "unsupported": 1
+   },
+   "unconvertible": 0,
+   "models": 30,
+   "clusters": 57,
+   "patternSplits": 0,
+   "bakeDemand": {
+    "before": 46058,
+    "after": 46058,
+    "budget": 250000
+   },
+   "nodes": 47,
+   "instancedNodes": 12,
+   "bakedInstances": 113,
+   "primitives": 52,
+   "vertices": 72829,
+   "triangles": 78276,
+   "renderedTriangles": 92080,
+   "skippedPrimitives": 0,
+   "winding": {
+    "agree": 0.9677,
+    "drawnTriangles": 92076,
+    "modelAgree": 0.8621,
+    "modelTriangles": 21529,
+    "low": [
+     {
+      "model": "models/models/props/props_eruption/war_room_hanginglight.mdl",
+      "agree": 0.324,
+      "triangles": 3360,
+      "instances": 1
+     },
+     {
+      "model": "models/models/props/props_eruption/war_room_tablebase.mdl",
+      "agree": 0.05,
+      "triangles": 480,
+      "instances": 1
+     },
+     {
+      "model": "models/models/props/props_eruption/war_room_tabletop.mdl",
+      "agree": 0.718,
+      "triangles": 850,
+      "instances": 1
+     }
+    ]
+   },
+   "lighting": {
+    "exact": 145,
+    "estimated": 54,
+    "mismatched": 0,
+    "baked": 113,
+    "shared": 0,
+    "worstDrawnError": 0,
+    "bakeVerticesLeft": 203942,
+    "set": "hdr",
+    "exposure": 0.9919,
+    "floor": 0.015,
+    "worstSharedError": 2.237
+   },
+   "materials": {
+    "pak": 24,
+    "neutral": 2,
+    "neutralNames": [
+     "island_wall_base003",
+     "dev_measurewall01d"
+    ],
+    "table": [
+     {
+      "name": "island_wall_base003",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "island_gantry_metal003",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.297,
+       0.178,
+       0.051
+      ]
+     },
+     {
+      "name": "extol_metaltrim",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.03,
+       0.029,
+       0.03
+      ]
+     },
+     {
+      "name": "dev_measurewall01d",
+      "source": "neutral",
+      "kind": "opaque",
+      "albedo": [
+       0.254,
+       0.254,
+       0.254
+      ]
+     },
+     {
+      "name": "cliff_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.076,
+       0.073,
+       0.074
+      ]
+     },
+     {
+      "name": "cliff_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.092,
+       0.089,
+       0.089
+      ]
+     },
+     {
+      "name": "cliff_03",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.088,
+       0.085,
+       0.085
+      ]
+     },
+     {
+      "name": "cliffcorner_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.08,
+       0.077,
+       0.077
+      ]
+     },
+     {
+      "name": "cliffsmall_01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.064,
+       0.061,
+       0.062
+      ]
+     },
+     {
+      "name": "cliffsmall_02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.078,
+       0.075,
+       0.075
+      ]
+     },
+     {
+      "name": "cliffsmall_03",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.078,
+       0.076,
+       0.076
+      ]
+     },
+     {
+      "name": "rockmercenarypark01",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.051,
+       0.049,
+       0.049
+      ]
+     },
+     {
+      "name": "rockmercenarypark02",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.061,
+       0.058,
+       0.059
+      ]
+     },
+     {
+      "name": "rockmercenarypark03",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.048,
+       0.046,
+       0.047
+      ]
+     },
+     {
+      "name": "war_room_light",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.851,
+       0.883,
+       0.851
+      ]
+     },
+     {
+      "name": "war_room_hanginglights",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.042,
+       0.042,
+       0.04
+      ]
+     },
+     {
+      "name": "war_room_tablebase",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.237,
+       0.235,
+       0.229
+      ]
+     },
+     {
+      "name": "war_room_tabletop",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.054,
+       0.029,
+       0.019
+      ]
+     },
+     {
+      "name": "crane_mast",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.372,
+       0.192,
+       0.03
+      ]
+     },
+     {
+      "name": "dyn_blastingcaps",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.165,
+       0.144,
+       0.089
+      ]
+     },
+     {
+      "name": "flatbed_cart001",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.379,
+       0.303,
+       0.158
+      ]
+     },
+     {
+      "name": "guardrail",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.169,
+       0.181,
+       0.177
+      ]
+     },
+     {
+      "name": "guardrail_post",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.071,
+       0.078,
+       0.075
+      ]
+     },
+     {
+      "name": "rebar",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.014,
+       0.005,
+       0.002
+      ]
+     },
+     {
+      "name": "door_melted_a",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.129,
+       0.07,
+       0.046
+      ]
+     },
+     {
+      "name": "door_melted_b",
+      "source": "pak",
+      "kind": "opaque",
+      "albedo": [
+       0.273,
+       0.208,
+       0.162
+      ]
+     }
+    ]
+   },
+   "warnings": [
+    "models/models/props/props_eruption/war_room_hanginglight.mdl: only 32.4 % of 3360 triangles face along their vertex normals (1 instance(s))",
+    "models/models/props/props_eruption/war_room_tablebase.mdl: only 5.0 % of 480 triangles face along their vertex normals (1 instance(s))",
+    "models/models/props/props_eruption/war_room_tabletop.mdl: only 71.8 % of 850 triangles face along their vertex normals (1 instance(s))"
+   ]
+  }
  },
  "materials": {
   "NATURE/BLENDROCKGROUNDWALLISLAND_INTERIOR02": {

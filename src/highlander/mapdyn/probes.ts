@@ -42,7 +42,7 @@ import { getActiveKits, kitSurfaceOptions } from './Pickups'
 import { PICKUP_KIND_NAMES, PICKUP_SIZE_NAMES, newPickupSample, sampleKitSpot, samplePickup } from './pickups'
 import { slabMatrixAt } from './slabs'
 import { analyzeSpots, type SpotSurface } from './surface'
-import { getWorldGroup, movingMapNodes } from './useMapSurface'
+import { getSurfaceJobStats, getWorldGroup, movingMapNodes } from './useMapSurface'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 const r4 = (v: number) => Math.round(v * 10000) / 10000
@@ -223,7 +223,12 @@ registerHlProbe('mapdyn.surface', (remeasure?: boolean) => {
   const markers = getActiveMarkerGround()
   const airborne = x ? airborneMarkerSpots(x) : null
   const out: Record<string, unknown> = {
-    analysed: (kits.surface !== null || kits.entries.length === 0) && (markers?.analysed ?? true),
+    // both analyses finished and none re-running
+    analysed:
+      (kits.surface !== null || kits.entries.length === 0) &&
+      (markers?.analysed ?? true) &&
+      getSurfaceJobStats().pending === 0,
+    jobs: getSurfaceJobStats(),
     kits: surfaceSummary(kits.surface, kits.entries),
     markers: markers ? { airborne: markers.airborne, dropped: markers.dropped, analysed: markers.analysed } : null,
   }

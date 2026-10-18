@@ -32,6 +32,14 @@ interface Done {
   surface: SpotSurface
 }
 
+/** Analyses started, finished and still running (probe diagnostics). */
+const jobStats = { started: 0, finished: 0, pending: new Set<SurfaceJob>() }
+export const getSurfaceJobStats = () => ({
+  started: jobStats.started,
+  finished: jobStats.finished,
+  pending: jobStats.pending.size,
+})
+
 export function useMapSurface(spots: readonly Spot[] | null, options: SurfaceOptions | null): SpotSurface | null {
   const ready = useInstance(s => s.mapStatus.state === 'ready')
   const mapNodes = useInstance(s => s.mapNodes)
@@ -56,13 +64,21 @@ export function useMapSurface(spots: readonly Spot[] | null, options: SurfaceOpt
     pending.current = null
     const world = ready && spots && spots.length > 0 && options ? getWorldGroup() : undefined
     if (!world || !spots || !options) return
-    pending.current = { job: new SurfaceJob(world, spots, options, movingMapNodes()), spots, options }
+    const job = new SurfaceJob(world, spots, options, movingMapNodes())
+    pending.current = { job, spots, options }
+    jobStats.started++
+    jobStats.pending.add(job)
+    return () => {
+      jobStats.pending.delete(job)
+    }
   }, [ready, spots, options, mapNodes, staticProps, worldVersion])
 
   useFrame(() => {
     const run = pending.current
     if (!run || !run.job.step(SURFACE_TRIANGLES_PER_FRAME)) return
     pending.current = null
+    jobStats.finished++
+    jobStats.pending.delete(run.job)
     setDone({ spots: run.spots, options: run.options, surface: run.job.result() })
   })
 

@@ -12,14 +12,30 @@ export interface CachedProjectile {
   teamNumber: number
 }
 
-const ProjectileTypeMap: Record<number, string> = {
+/** Base cache type codes (`typeCache` values) and the names readers get. */
+export const ProjectileTypeMap: Record<number, string> = {
   1: 'rocket',
   2: 'pipebomb',
   3: 'stickybomb',
   4: 'healingBolt',
 }
 
-export class ProjectileCache {
+/**
+ * Read access to the base projectile rows: one slot per entity id (`projectileIds`), at most one row per slot and
+ * tick. The cache implements it, and so does the compact copy that replaces it once the Highlander extras serve the
+ * projectiles (task X2: AsyncParser.releaseProjectileCache, src/highlander/memory/projectileAdapter.ts).
+ */
+export interface ProjectileReader {
+  readonly projectileIds: readonly number[]
+  /** The row of slot `index` at `tick`, null when the slot holds no typed projectile then. */
+  getProjectile(tick: number, index: number): CachedProjectile | null
+  /** Every row at `tick`, in slot order. */
+  getProjectiles(tick: number): CachedProjectile[]
+  /** The type code (a ProjectileTypeMap key) of slot `index` at `tick`; meaningful where getProjectile is not null. */
+  getTypeCode(tick: number, index: number): number
+}
+
+export class ProjectileCache implements ProjectileReader {
   positionCache: VectorCache
   rotationCache: VectorCache
   teamNumberCache: SparseDataCache
@@ -65,6 +81,10 @@ export class ProjectileCache {
       teamNumber: this.teamNumberCache.get(index, tick),
       type: type,
     }
+  }
+
+  getTypeCode(tick: number, index: number): number {
+    return this.typeCache.get(index, tick)
   }
 
   getProjectiles(tick: number) {

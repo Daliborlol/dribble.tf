@@ -50,6 +50,9 @@ import {
   trailStyle,
 } from '@highlander/combat/trails'
 import '@highlander/combat/probes'
+// Data source (task X2): once the extras serve the projectiles, the base cache is released and its compact copy
+// serves `props.projectiles` (DemoViewer's getProjectilesAtTick) and the source split from then on.
+import '@highlander/memory/projectileMemory'
 
 //
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────────

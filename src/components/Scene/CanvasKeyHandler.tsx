@@ -32,6 +32,8 @@ const DISGUISE_VIEW_LABELS: Record<DisguiseView, string> = {
   pov: "POV player's view",
 }
 
+const highlanderOn = () => getState().settings.highlander?.enabled === true
+
 /** Toggle a boolean Highlander setting and show the new state in the playback panel. */
 const toggleHighlanderSetting = (path: string, label: string) => {
   const enabled = !get(getState().settings.highlander, path)
@@ -124,19 +126,20 @@ export const CanvasKeyHandler = () => {
             break
 
           // ─── Highlander (contract section 6.2 item 10) ───
+          // With Highlander off these keys do nothing (rule 7.4): no setting, no toast, and Tab keeps its default.
 
           case 'v':
-            if (event.repeat) break
+            if (!highlanderOn() || event.repeat) break
             toggleHighlanderSetting('pov.viewmodel', 'Viewmodel')
             break
 
           case 'i':
-            if (event.repeat) break
+            if (!highlanderOn() || event.repeat) break
             cycleDisguiseView()
             break
 
           case '4':
-            if (event.repeat) break
+            if (!highlanderOn() || event.repeat) break
             toggleHighlanderSetting('pov.chase', 'Chase camera')
             break
 
@@ -149,6 +152,7 @@ export const CanvasKeyHandler = () => {
             break
 
           case 'tab':
+            if (!highlanderOn()) break
             event.preventDefault() // Tab would move the focus away from the canvas
             useInstance.getState().setScoreboardOpen(true)
             break

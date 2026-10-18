@@ -97,10 +97,15 @@ fs.mkdirSync(stageDir, { recursive: true })
 let commitState = 'staging' // 'staging' | 'moving' | 'done'
 process.on('exit', code => {
   if (commitState === 'staging') console.error(`Conversion failed (exit ${code}); nothing in ${outDir} was changed`)
-  else if (commitState === 'moving') console.error(`Conversion failed (exit ${code}) while moving the outputs; ${outDir} is partly updated, rerun the conversion`)
+  else if (commitState === 'moving') {
+    const sky = skyCopies.length ? ` and the skybox folder(s) ${[...new Set(skyCopies.map(([, to]) => path.dirname(to)))].join(', ')} may already be replaced` : ''
+    console.error(`Conversion failed (exit ${code}) while moving the outputs; ${outDir} is partly updated${sky}, rerun the conversion`)
+  }
   if (keepTemp) console.log(`Temp kept: ${tempDir}`)
   else fs.rmSync(tempDir, { recursive: true, force: true })
 })
+// 'exit' handlers do not run on signals: exit through them so Ctrl-C and SIGTERM also clean the temp dir.
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(signal === 'SIGINT' ? 130 : 143))
 /** Pending skybox face copies: [staged png, destination], applied by commitOutputs. */
 const skyCopies = []
 /**
@@ -113,8 +118,13 @@ const commitOutputs = (files, remove = []) => {
   const place = (from, to) => {
     fs.mkdirSync(path.dirname(to), { recursive: true })
     const partial = path.join(path.dirname(to), `.${path.basename(to)}.${process.pid}.partial`)
-    fs.copyFileSync(from, partial)
-    fs.renameSync(partial, to)
+    try {
+      fs.copyFileSync(from, partial)
+      fs.renameSync(partial, to)
+    } catch (error) {
+      fs.rmSync(partial, { force: true })
+      throw error
+    }
   }
   commitState = 'moving'
   for (const [from, to] of skyCopies) place(from, to)

@@ -9,6 +9,8 @@
 // is enabled at round start, and only when none is in range the nearest disabled one. Forward rooms on
 // payload maps hold disabled spawns of the team that takes them over later (Blu_spawnpoint_C in RED's
 // opening room on pl_eruption_b15), so a disabled spawn must not outvote the room or an enabled spawn.
+// The colour is static: it is the room's round-start owner from the BSP, so a forward room that later
+// changes team through SetTeam keeps its round-start colour.
 
 import * as THREE from 'three'
 

@@ -1,6 +1,6 @@
 # Highlander implementation contract
 
-Version 2.4, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave, section 13 those after wave 2, section 14 those after wave 3). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
+Version 2.5, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave, section 13 those after wave 2, section 14 those after wave 3, section 15 those after the final verification). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
 `../dribble-parser`. It was written from the four research documents in this folder, all of which were present:
 `parser-probe.md`, `maps.md`, `tf2-reference.md` and `frontend.md`. It also reflects a read of the current code
 (`dribble-parser/src/lib.rs`, the Analyse/Data layer, `store.ts`, `actions.ts`, `DemoViewer.tsx`, `Actors.tsx`,
@@ -3369,6 +3369,36 @@ above where they differ. The wave-3 final reports are in `$S/handoff/wave3-resul
   `STATUS.md`.
 - **Fixes.** Confirmed findings are fixed on their own branches, each reviewed, then merged with the gates of 7.3 and
   7.4: tsc at the 10 known errors, build, smoke and the baseline plan through `compare-runs`.
+
+## 15. Amendments after the final verification (version 2.5)
+
+The final verification of 14.3 is done. Its two fix rounds and the follow-up `hl/fix-ticksync2` are merged on
+`hl/merge-w3`, which then became `highlander`. `specs/highlander/STATUS.md` ("Final verification") lists every
+finding, branch, merge commit and measurement; reports and reviews are in
+`../dribble.tf-wt/_scratch/final/{fixes.json,gapfixes.json}`. The parser's `highlander` stays at `41fe9f3`;
+`src/libs/hlextras` is built from the parser branch `hl/fix-parser` (`dd178d2`, one commit on `41fe9f3`), which
+the parser's `highlander` should take next.
+
+### 15.1 Accepted deviations of the final verification
+
+| rule or section | accepted deviation |
+|---|---|
+| 7.4 | With Highlander off, the base projectile path and `Stickers` free the GPU objects they used to strand (the smoke-trail `InstancedMesh`, MeshLine trails, explosion materials, sticker textures and sprite materials). The fallback sphere and legacy bolt share module-level geometry and materials, which hold no demo state (12.3 is about demos, extras and store snapshots). Nothing drawn changes (`hl/fix-misc`). |
+| 7.4 | With Highlander off, the S0 keys `V`, `I`, `4` and `Tab` do nothing, as at `598e328` (`hl/fix-state`). |
+| 7.4 | Actors stay keyed by entity id. While the focused player is not drawn, the player in his list slot stands in for him, as the index-keyed actors at `598e328` did, and focus returns to him once he is drawn again. A user's pick, even of the stand-in, replaces him (`hl/fix-state`). |
+| 7.4 | A failed load of another file that cancelled the loaded demo's extras leaves that demo at extras status `error` with a reason. D4's cancel before the next base parse stays (`hl/fix-state`). |
+| D12 | Every interpolating Highlander layer reads the tick and `frameProgress` from the store in the same frame (`frameTime()` in `combat/time.ts`, `frameTickF()` in `mapdyn/frame.ts`), never the `renderTick` prop plus the store's fraction. With `scene.interpolateFrames` off, buildings, map dynamics, the cart, capture arcs, sniper dots, the POV FOV, the viewmodel and the condition overlays snap to whole ticks like the actors. The POV subject, weapon and viewmodel key still come from the prop at React level and can lag the pose by one frame at a tick change (`hl/fix-ticksync`, `hl/fix-ticksync2`). |
+| 5 F4, F5 | Viewport rules (`hud/responsive.ts`): the POV weapon HUD sits above the FocusedPlayer card and the PlaybackPanel below 1024 px wide. Below 500 px tall it sits at the bottom edge left of the RED column from 1434 px wide and is hidden on narrower viewports. From 768 to 943 px wide the killfeed moves below the taller column, or shows 3 compact lines. Phone landscape still overlaps the columns with the base PlaybackPanel; that is a follow-up. Teleporter rows say "ready" only in READY to RECEIVING_RELEASE, and otherwise describe the partner ("exit building", "entry carried", "waiting", "no exit"). |
+| 5 F5 | The medic panel's "popped m:ss ago" is per medic and counts only ubers since the current round start. The scoreboard footer names the K/D and damage sources (the 14.2 footer item). |
+| 4, F6 | The map-meta payload path ends at the watcher's `goal_node`. An untagged resupply locker takes the team of the team-2/3 `func_respawnroom` that contains it, else the nearest spawn enabled at round start, and keeps that colour for the round. `convert-bsp.mjs` stages every output and moves it in only after every step succeeded, `conversion.json` last. |
+| 2.7 | The wasm parse no longer panics on a class number above 9 (`Class::Other`), which reverts the upstream `c7185e4`. `cargo test --lib` is the parser gate: the fork's 12 snapshot tests fail already at the upstream base `cb48015`. |
+
+### 15.2 Open follow-ups
+
+`STATUS.md` ("Follow-ups") is the list: phone-landscape column overlaps, pauses, damage numbers, third-person
+weapons, the tetsudo HUD counters, colour-blind team colours, decals and signage, map-registration in the converter,
+the base `console.log(parsedDemo)` that keeps loaded demos alive while a console holds them, and the parser snapshot
+tests. Nothing in this list blocks the merge.
 
 ## Appendix A. `src/highlander/extras/enums.ts`
 

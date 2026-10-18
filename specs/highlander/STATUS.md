@@ -200,12 +200,12 @@ The review covered the whole diff `009cdb0..highlander` plus the parser's `c7185
 - **`hl/fix-converter`** (`3b1d5e5`, `da631ab`, `fa7b23f`, `e14c469`): the map-meta payload path stops at the watcher's `goal_node`, so the pushed ribbon ends at the cart (pl_upward_f12 14543.1 -> 14447.1 units, pl_downfall_b13 13448.2 -> 13415.9; the other payload and tow maps reconvert byte-identical). An untagged resupply locker takes the team of the team-2 or team-3 `func_respawnroom` that contains it, else the nearest spawn enabled at round start, which turns eruption's `prop_locker_red_2` and divulgence's `prop_locker_any_2` and `any_3` from BLU to RED. `convert-bsp.mjs` stages every output in its temp dir and moves it in only after every step succeeded, `conversion.json` last; a failed or interrupted run leaves the previous package and removes the temp dir unless `--keep-temp`.
 - **`hl/fix-misc`** (`100fad7`, `3d60e12`, `c197ccd`, `5c2d931`): `PovLayer` imports `isDrawnUnder` instead of its own copy. The legacy projectile path and `Stickers` free their GPU objects: over 3 reloads of 1434434 geometries went 182 -> 206 with Highlander on and 168 -> 200 off, and now stay at 164 and 141 with 0 leaked objects. `check-adapter` and `check-fallback` reject unknown and valueless options with exit 2 before any parse, and `check-adapter --root` names what a checkout lacks (the adapter files or `node_modules`).
 
-**Deviations of the final verification** (not yet contract rows):
+**Deviations of the final verification** (accepted in contract 15.1):
 
 - Rule 7.4: with Highlander off the base path frees GPU memory it used to keep, the smoke-trail `InstancedMesh`, MeshLine trails, explosion materials, sticker textures and sprite materials, and the fallback sphere and legacy bolt now share module-level geometry and materials. Nothing drawn changes. With Highlander on, `ExtrasBaseProjectile`'s fallback to the legacy components uses the same shared objects (`hl/fix-misc`).
 - Rule 7.4, `hl/fix-state`: with Highlander off, `V`, `I`, `4` and `Tab` do nothing, as before S0.
 - With `scene.interpolateFrames` off, buildings and map dynamics snap to whole ticks like actors and F3; before, they interpolated whatever the setting said (`hl/fix-ticksync`).
-- Contract section 5 F4 and F5 do not describe the viewport rules of `hl/fix-hudlayout` above, nor the teleporter labels.
+- The viewport rules of `hl/fix-hudlayout` above and the teleporter labels (contract 15.1 rows "5 F4, F5").
 - Lockers keep the round-start owner's colour, so a forward room that changes team later keeps its first colour; the old rule was static too (`hl/fix-converter`, documented in `mapdyn/lockers.ts`).
 
 **14.2 and 11.5**: the scoreboard footer, the stale `1429417.json` text and the ported adapter check are done (above). The pre-Highlander viewer (`598e328`) cannot load 1429417: parser2 returns 1 tick and no players there. Highlander loads it through B1's fallback.

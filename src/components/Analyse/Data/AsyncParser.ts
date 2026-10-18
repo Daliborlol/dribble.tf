@@ -7,23 +7,42 @@ import { ProjectileCache, CachedProjectile } from './ProjectileCache'
 import { ChatEntry, Header, PlayerRef, Round, Vector, World } from './Types'
 import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
-/** Posted by the base worker when parser2 produced no timeline (ticks <= 1 or no players). */
+/**
+ * Posted by the base worker when parser2's result is not used: it has no timeline (ticks <= 1 or no players, task
+ * B1), or it starts DELAYED_START_FALLBACK_SECONDS or more after the 100-packet warmup (task B2, ParseWorker.ts
+ * delayedStartOf; then `parser2` also says where it started and the world bounds it read).
+ */
 export interface ParserFallbackRequest {
   map: string
+  trigger: 'no-timeline' | 'delayed-start'
   reason: string
-  parser2: { ticks: number; players: number; parseMs: number }
+  parser2: {
+    ticks: number
+    players: number
+    parseMs: number
+    startTick?: number
+    startDemoTick?: number
+    firstPacketTick?: number | null
+    warmupEndTick?: number
+    delaySeconds?: number
+    world?: World
+  }
 }
 
 /**
  * The fork's fallback cache builder replaced parser2 for this demo (`parsedDemo.parserFallbackInfo`). It starts
- * the cache even when the demo's world bounds stay zero (tow_tetsudo's plhud.nut uses them for HUD values) and
- * offsets positions by `bounds.boundaryMin`. Its output has positionScale 32 instead of parser2's 1024 and no
- * endTick, endDemoTick, shots or activeWeaponDef, which nothing reads.
+ * the cache at the end of the 100-packet warmup even when the demo's world bounds are still zero (tow_tetsudo's
+ * plhud.nut uses them for HUD values) and then offsets positions by `bounds.boundaryMin`. Its output has
+ * positionScale 32 instead of parser2's 1024 and no endTick, endDemoTick, shots or activeWeaponDef, which nothing
+ * reads.
  */
 export interface ParserFallbackInfo extends ParserFallbackRequest {
-  /** The map's bounds: its OVERWRITE_MAP_BOUNDARIES entry, else its conversion.json worldBounds. */
+  /**
+   * The map's bounds: its OVERWRITE_MAP_BOUNDARIES entry, else its conversion.json worldBounds, else (after a
+   * delayed start) the world bounds parser2 read, the scene origin its result would have had.
+   */
   bounds?: { boundaryMin: Vector; boundaryMax: Vector }
-  boundsSource: 'override' | 'conversion' | 'none'
+  boundsSource: 'override' | 'parser2' | 'conversion' | 'none'
   /** The cache started without world bounds (false when the demo's own bounds became ready). */
   startedWithoutWorld: boolean
   parseMs: number
@@ -33,10 +52,32 @@ export interface ParserFallbackInfo extends ParserFallbackRequest {
 export type ParserFallbackWork = ParserFallbackRequest &
   Pick<ParserFallbackInfo, 'bounds' | 'boundsSource'>
 
+/**
+ * The fallback parse after a delayed start failed, so parser2 parsed the demo again and its late timeline was loaded
+ * (`parsedDemo.parserFallbackFailure`; `parserFallback` stays false).
+ */
+export interface ParserFallbackFailure extends ParserFallbackWork {
+  error: string
+}
+
+/**
+ * A message to the base worker (ParseWorker.ts): parser2 first; the fallback after a fallbackRequest; parser2 again
+ * with `lateStart` (no delayed-start check) after the fallback of a delayed start failed.
+ */
+export interface ParseWorkerRequest {
+  buffer: ArrayBuffer
+  fallback?: ParserFallbackWork
+  lateStart?: true
+}
+
+const isZeroBounds = (w: World) =>
+  [w.boundaryMin, w.boundaryMax].every(v => v.x === 0 && v.y === 0 && v.z === 0)
+
 /** Bounds for the fallback parse; never rejects. */
 async function resolveFallbackBounds(
-  map: string
+  request: ParserFallbackRequest
 ): Promise<Pick<ParserFallbackInfo, 'bounds' | 'boundsSource'>> {
+  const { map } = request
   // The override first: ParseWorker shifts positions to it anyway, so offsetting by it makes that shift zero
   const override = getMapBoundaries(map)
   if (override) {
@@ -56,6 +97,17 @@ async function resolveFallbackBounds(
         boundaryMax: { ...worldBounds.boundaryMax },
       },
       boundsSource: 'conversion',
+    }
+  }
+  // After a delayed start on a map without a converted folder: the bounds parser2 read (its scene origin)
+  const parser2World = request.parser2.world
+  if (parser2World && !isZeroBounds(parser2World)) {
+    return {
+      bounds: {
+        boundaryMin: { ...parser2World.boundaryMin },
+        boundaryMax: { ...parser2World.boundaryMax },
+      },
+      boundsSource: 'parser2',
     }
   }
   return { boundsSource: 'none' } // unknown map: positions stay in Source coordinates
@@ -107,6 +159,7 @@ export interface CachedDemo {
   perf?: ParserPerformanceStats
   fileBuffer?: ArrayBuffer // the input file, handed back by the worker
   parserFallback?: ParserFallbackInfo // set when the fallback parse replaced parser2
+  parserFallbackFailure?: ParserFallbackFailure // set (on the main thread) when parser2 replaced a failed fallback
 }
 
 export class AsyncParser {
@@ -132,6 +185,8 @@ export class AsyncParser {
   /** True when parser2 could not start this demo and the fork's fallback cache builder parsed it. */
   parserFallback = false
   parserFallbackInfo?: ParserFallbackInfo
+  /** Set when the fallback after a delayed start failed and parser2's late timeline was loaded instead. */
+  parserFallbackFailure?: ParserFallbackFailure
   private fileBuffer?: ArrayBuffer
   private entityIndexMap?: Map<number, number>
 
@@ -164,6 +219,7 @@ export class AsyncParser {
       this.perf = cachedData.perf
       this.parserFallback = !!cachedData.parserFallback
       this.parserFallbackInfo = cachedData.parserFallback
+      this.parserFallbackFailure = cachedData.parserFallbackFailure
 
       if (cachedData.perf) {
         const toMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -190,8 +246,16 @@ export class AsyncParser {
 
   getCachedData(): Promise<CachedDemo> {
     return new Promise((resolve, reject) => {
-      // Runs once with parser2, and a second time with the fallback when parser2 hands the file back
-      const run = (message: { buffer: ArrayBuffer; fallback?: ParserFallbackWork }) => {
+      // The progress shown so far. A pass after the first continues from it to 100, so the shown value never falls
+      // back: on the delayed-start route parser2's pass reaches about 96 % before the fallback pass starts.
+      let shown = 0
+      let firstPass = true
+      let fallbackFailure: ParserFallbackFailure | undefined
+      // Runs once with parser2; a second time with the fallback when parser2 hands the file back; a third time with
+      // parser2, keeping its late start, when the fallback of a delayed start fails
+      const run = (message: ParseWorkerRequest) => {
+        const base = firstPass ? null : shown
+        firstPass = false
         const worker = new Worker(new URL('./ParseWorker.ts', import.meta.url), { type: 'module' })
         worker.postMessage(message, [message.buffer])
         worker.onerror = (event: ErrorEvent) => {
@@ -199,18 +263,35 @@ export class AsyncParser {
           worker.terminate()
         }
         worker.onmessage = (event: MessageEvent) => {
-          if (event.data.error) {
-            reject(event.data.error)
+          const failed = event.data.fallbackFailed as { error: string } | undefined
+          if (failed && message.fallback?.trigger === 'delayed-start') {
+            // parser2's timeline of this demo exists, only late: load it instead of failing the whole load
+            worker.terminate()
+            const work = message.fallback
+            fallbackFailure = { ...work, error: String(failed.error) }
+            const late = work.parser2.delaySeconds
+            console.warn(
+              `[parser] the fallback cache builder failed on ${work.map || 'this demo'} (${fallbackFailure.error}): loading parser2's timeline${late === undefined ? '' : `, which starts ${late.toFixed(1)} s after the warmup`}`
+            )
+            try {
+              run({ buffer: event.data.fileBuffer as ArrayBuffer, lateStart: true })
+            } catch (error) {
+              reject(error instanceof Error ? error.message : String(error))
+            }
+            return
+          }
+          if (event.data.error || failed) {
+            reject(event.data.error || failed?.error)
             worker.terminate()
             return
           }
           if (event.data.fallbackRequest) {
-            // parser2 produced no timeline. Its wasm heap is only freed with its worker (D18), so the fallback
-            // parse runs in a fresh one, with the file the worker handed back.
+            // parser2 produced no timeline or started it late. Its wasm heap is only freed with its worker (D18),
+            // so the fallback parse runs in a fresh one, with the file the worker handed back.
             worker.terminate()
             const request = event.data.fallbackRequest as ParserFallbackRequest
             const buffer = event.data.fileBuffer as ArrayBuffer
-            void resolveFallbackBounds(request.map).then(where => {
+            void resolveFallbackBounds(request).then(where => {
               console.warn(
                 `[parser] ${request.reason} on ${request.map || 'this demo'}: parsing again with the fallback cache builder (${where.boundsSource} bounds)`
               )
@@ -223,7 +304,17 @@ export class AsyncParser {
             return
           }
           if (event.data.progress) {
-            this.progressCallback(event.data.progress)
+            const progress = event.data.progress as number
+            if (base === null) {
+              shown = Math.max(shown, progress)
+              this.progressCallback(progress)
+            } else {
+              const value = Math.floor(base + ((100 - base) * progress) / 100)
+              if (value > shown) {
+                shown = value
+                this.progressCallback(value)
+              }
+            }
             return
           }
           const cachedData: CachedDemo = event.data
@@ -235,8 +326,9 @@ export class AsyncParser {
           if (cachedData.perf) {
             cachedData.perf.transferMs = performance.now() - cachedData.now
           }
+          if (fallbackFailure) cachedData.parserFallbackFailure = fallbackFailure
 
-          resolve(event.data)
+          resolve(cachedData)
           // The wasm heap of the base parse is only freed with the worker (D18)
           worker.terminate()
         }

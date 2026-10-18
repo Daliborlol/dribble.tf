@@ -180,6 +180,7 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   const isMobile = useIsMobile()
   const narrow = useIsMobile(HUD_LAYOUT.killfeedNarrowBelow)
   const medicPanels = useHlSetting<boolean>('hud.medicPanel')
+  const compactStatuses = useHlSetting<boolean>('hud.compactStatuses')
   const vp = useViewport()
   const snap = useHudSnapshot(renderTick)
 
@@ -188,7 +189,8 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
     [demo, x, feign, objectives]
   )
   // 768 to 943 px wide: below the columns when there is room for every line, else 3 compact lines between them
-  const squeezed = !isMobile && vp.w < KILLFEED_SQUEEZE_BELOW
+  // only next to the compact columns (hud.compactStatuses off shows the old player list, whose geometry differs)
+  const squeezed = !isMobile && !!compactStatuses && vp.w < KILLFEED_SQUEEZE_BELOW
   const desktopLines = Math.max(1, maxLines)
   const belowTop = squeezed ? columnsBottom(snap, !!medicPanels) + 8 : 0
   const below = squeezed && vp.h - BOTTOM_CONTROLS_CLEARANCE - belowTop >= desktopLines * (HUD_LAYOUT.killfeedLineHeight + HUD_LAYOUT.killfeedLineGap)

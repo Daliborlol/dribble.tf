@@ -88,25 +88,33 @@ function teamOf(demo: AsyncParser, p: number, tick: number): Team | null {
 
 /**
  * A built teleporter's state, as the model's ready glow shows it (buildings/render.ts): 'ready' only while it can
- * send or receive (READY..RECEIVING_RELEASE), the seconds while recharging, and for IDLE (no partner, or the
- * partner still building) the missing end.
+ * send or receive (READY..RECEIVING_RELEASE), the seconds while recharging, and for IDLE what the other end is
+ * doing: missing ('no exit', 'no entrance'), still building, carried, or not linked yet ('waiting').
  */
-function teleporterDetail(b: BuildingView): string {
+function teleporterDetail(b: BuildingView, own: BuildingView[]): string {
   if (b.objState === TELE_STATE.RECHARGING) return b.rechargeLeft > 0.05 ? `${b.rechargeLeft.toFixed(1)}s` : 'ready'
   if (b.objState >= TELE_STATE.READY && b.objState <= TELE_STATE.RECEIVING_RELEASE) return 'ready'
-  if (b.objState === TELE_STATE.IDLE) return b.mode === 1 ? 'no entrance' : 'no exit'
+  if (b.objState === TELE_STATE.IDLE) {
+    const partner = own.find(o => o.type === 1 && o.mode !== b.mode)
+    const end = b.mode === 1 ? 'entry' : 'exit'
+    if (!partner) return b.mode === 1 ? 'no entrance' : 'no exit'
+    if (partner.carried) return `${end} carried`
+    if (partner.building) return `${end} building`
+    return 'waiting'
+  }
   if (b.objState === TELE_STATE.UPGRADING) return 'upgrading'
   return ''
 }
 
-function buildingRow(b: BuildingView): BuildingRow {
+/** One building row; own is every building of the same builder at the tick (the teleporter's partner). */
+function buildingRow(b: BuildingView, own: BuildingView[]): BuildingRow {
   const builtPct = b.built > 1 ? b.built / 255 : b.built
   let detail = ''
   if (b.carried) detail = 'carried'
   else if (b.building) detail = `building ${Math.round(builtPct * 100)}%`
   else if (b.type === 2) detail = `${b.shells}${b.level >= 3 ? ` · ${b.rockets}` : ''}`
   else if (b.type === 0) detail = `${b.metal} metal`
-  else if (b.type === 1) detail = teleporterDetail(b)
+  else if (b.type === 1) detail = teleporterDetail(b, own)
   return {
     type: b.type, mode: b.mode, level: b.level, health: b.health, maxHealth: b.maxHealth, mini: b.mini,
     sapped: b.sapped, carried: b.carried, building: b.building, builtPct, detail,
@@ -157,10 +165,12 @@ export function weaponHudAt(x: HighlanderExtras, demo: AsyncParser, subject: Pov
   }
 
   switch (classId) {
-    case 9: // engineer
+    case 9: { // engineer
       if (ammo) model.metal = ammo.metal
-      model.buildings = buildingsOf(x, p, tick).filter(b => b.type !== 3).map(buildingRow)
+      const own = buildingsOf(x, p, tick)
+      model.buildings = own.filter(b => b.type !== 3).map(b => buildingRow(b, own))
       break
+    }
     case 5: { // medic
       const m = x.meta.available.medigun ? medigunAt(x, p, tick) : null
       if (m) model.uber = { pct: m.charge, ready: m.charge >= 0.995, type: itemName(m.def), resist: m.type === 'vaccinator' ? RESIST[m.resist] ?? null : null }

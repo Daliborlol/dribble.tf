@@ -3,7 +3,7 @@ import { fetchMapConversion } from '@utils/mapAssets'
 import { getMapBoundaries } from '../MapBoundaries'
 import { PlayerCache, CachedPlayer } from './PlayerCache'
 import { BuildingCache, CachedBuilding } from './BuildingCache'
-import { ProjectileCache, CachedProjectile } from './ProjectileCache'
+import { ProjectileCache, CachedProjectile, ProjectileReader } from './ProjectileCache'
 import { ChatEntry, Header, PlayerRef, Round, Vector, World } from './Types'
 import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
@@ -177,6 +177,11 @@ export class AsyncParser {
   deaths: { [tick: string]: CachedDeath[] } = {}
   rounds!: Round[]
   buildingCache!: BuildingCache
+  /**
+   * The base projectile cache as parsed. Read base projectiles through projectileReader() or getProjectilesAtTick(),
+   * never through this field: once releaseProjectileCache() ran (task X2), its arrays are empty and the reader that
+   * replaced it serves every row.
+   */
   projectileCache!: ProjectileCache
   intervalPerTick!: number
   world!: World
@@ -187,8 +192,12 @@ export class AsyncParser {
   parserFallbackInfo?: ParserFallbackInfo
   /** Set when the fallback after a delayed start failed and parser2's late timeline was loaded instead. */
   parserFallbackFailure?: ParserFallbackFailure
+  /** True once releaseProjectileCache() dropped the projectile cache's typed arrays (task X2). */
+  projectileCacheReleased = false
   private fileBuffer?: ArrayBuffer
   private entityIndexMap?: Map<number, number>
+  /** Serves the projectile rows after releaseProjectileCache(). */
+  private projectileReplacement?: ProjectileReader
 
   constructor(buffer: ArrayBuffer, progressCallback: (progress: number) => void) {
     this.buffer = buffer
@@ -388,7 +397,46 @@ export class AsyncParser {
     return this.buildingCache.getBuildings(tick)
   }
 
+  /** The base projectile rows: the cache, or the reader that replaced it in releaseProjectileCache(). */
+  projectileReader(): ProjectileReader {
+    return this.projectileReplacement ?? this.projectileCache
+  }
+
+  /**
+   * Task X2: drops the typed arrays of the base projectile cache (205 to 641 MB on the measured demos) and lets
+   * `replacement` serve every later read (getProjectilesAtTick, projectileReader). The replacement must already hold
+   * every row it serves: the Highlander memory module builds it from the cache just before calling this, once the
+   * extras serve the projectiles. The emptied cache object stays, so a reader that still went to it directly would see
+   * no projectiles instead of failing. Returns the bytes released, 0 when the cache was already released.
+   */
+  releaseProjectileCache(replacement: ProjectileReader): number {
+    if (this.projectileCacheReleased) return 0
+    const pc = this.projectileCache
+    let bytes = 0
+    const freed = new Set<ArrayBufferLike>()
+    for (const cache of [pc.positionCache, pc.rotationCache, pc.teamNumberCache, pc.typeCache]) {
+      for (const array of cache.data) {
+        if (!array) continue
+        bytes += array.byteLength
+        // Free the backing store now instead of at a later garbage collection (during playback): ArrayBuffer
+        // transfer(0) detaches it. Every slot array is a whole buffer of its own (the worker transferred them).
+        const buffer = array.buffer as ArrayBufferLike & { transfer?: (length?: number) => ArrayBuffer }
+        if (freed.has(buffer) || array.byteOffset !== 0 || array.byteLength !== buffer.byteLength) continue
+        freed.add(buffer)
+        try {
+          buffer.transfer?.(0)
+        } catch {
+          // not transferable (an older browser or a shared buffer): dropping the reference below is enough
+        }
+      }
+      cache.data = []
+    }
+    this.projectileReplacement = replacement
+    this.projectileCacheReleased = true
+    return bytes
+  }
+
   getProjectilesAtTick(tick: number): CachedProjectile[] {
-    return this.projectileCache.getProjectiles(tick)
+    return this.projectileReader().getProjectiles(tick)
   }
 }

@@ -54,7 +54,8 @@ export function getProjectileSource(x: HighlanderExtras, demo: AsyncParser): Pro
   const n = pj.count
   const servedByBase = new Uint8Array(n)
   const baseType = new Uint8Array(n)
-  const pc = demo.projectileCache
+  // the base cache, or after X2 released it the adapter, which serves the same rows (memory/projectileAdapter.ts)
+  const pc = demo.projectileReader()
 
   if (pc && Array.isArray(pc.projectileIds) && pc.projectileIds.length > 0) {
     // one base slot per entity id (lib.rs ensure_projectile), reused across lifetimes
@@ -73,7 +74,7 @@ export function getProjectileSource(x: HighlanderExtras, demo: AsyncParser): Pro
       t = Math.min(Math.max(t, created), lastTick)
       if (!pc.getProjectile(t, slot)) continue
       servedByBase[j] = 1
-      baseType[j] = pc.typeCache.get(slot, t)
+      baseType[j] = pc.getTypeCode(t, slot)
     }
   }
 

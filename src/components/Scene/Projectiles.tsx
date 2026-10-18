@@ -50,6 +50,9 @@ import {
   trailStyle,
 } from '@highlander/combat/trails'
 import '@highlander/combat/probes'
+// Data source (task X2): once the extras serve the projectiles, the base cache is released and its compact copy
+// serves `props.projectiles` (DemoViewer's getProjectilesAtTick) and the source split from then on.
+import '@highlander/memory/projectileMemory'
 
 //
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────────
@@ -140,18 +143,19 @@ export interface ProjectileModelProps {
 }
 
 export const ProjectileModel = (props: ProjectileModelProps) => {
-  const [cachedScene, setCachedScene] = useState<any>()
-
   const modelKey = normalizeProjectileModelKey(props.type, props.team)
   const model = getAsset(`/models/projectiles/${modelKey}.glb`)
   const gltf = useGLTF(model, true)
 
-  if (!cachedScene) {
-    const cloned = SkeletonUtils.clone(gltf.scene)
-    setCachedScene(cloned)
-  }
+  // One clone per loaded model. A projectile component stays mounted when its entity id passes to a projectile of
+  // the other team (a seek across entity-id reuse), so the clone must follow the model, not the first mount (D12).
+  const scene = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene])
 
-  return <group>{cachedScene && <primitive object={cachedScene} />}</group>
+  return (
+    <group>
+      <primitive object={scene} />
+    </group>
+  )
 }
 
 const ProjectileFallback = ({ color = TRAIL_FALLBACK_COLOR }: { color?: string }) => (

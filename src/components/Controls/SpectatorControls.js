@@ -148,7 +148,16 @@ export class SpectatorControls {
     document.addEventListener('keyup', this._processKeyEvent)
     this.enabled = true
     this.camera.rotation.reorder('ZYX')
-    this.domElement.requestPointerLock({ unadjustedMovement: true })
+    // Raw mouse input where the platform has it; Linux Chromium rejects unadjustedMovement with NotSupportedError,
+    // so retry with a plain lock there (contract F4). A plain lock can still be refused (no user gesture, document
+    // not focused); that is not an error worth reporting either.
+    const lock = this.domElement.requestPointerLock({ unadjustedMovement: true })
+    if (lock && typeof lock.catch === 'function') {
+      lock.catch(() => {
+        const plain = this.domElement.requestPointerLock()
+        if (plain && typeof plain.catch === 'function') plain.catch(() => {})
+      })
+    }
   }
   disable() {
     if (!this.isEnabled()) return null

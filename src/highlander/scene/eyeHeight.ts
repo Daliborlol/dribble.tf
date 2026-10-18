@@ -1,4 +1,5 @@
-// POV eye height above the player origin (contract section 5 F4, eyeHeight.ts). First version by S0; F4 refines it.
+// POV eye height above the player origin (contract section 5 F4, eyeHeight.ts). First version by S0, refined by F4:
+// the probe reports which rule gave each height, and the extras lookup skips players without view data at once.
 
 import { getState, useInstance } from '@zus/store'
 import { DUCK_EYE_HEIGHT, EYE_HEIGHT, LEGACY_EYE_HEIGHT } from '@highlander/constants'
@@ -6,27 +7,47 @@ import { registerHlProbe } from '@highlander/debug'
 import { eyeZAt } from '@highlander/extras/getters'
 import { getHlSetting } from '@highlander/extras/hooks'
 
+export type EyeHeightSource = 'legacy' | 'view' | 'duck' | 'class'
+
+let lastSource: EyeHeightSource = 'class'
+
 /**
  * LEGACY_EYE_HEIGHT (83) when `enabled` or `pov.eyeHeight` is off. Otherwise the networked view offset
- * (`eyeZAt`) when the extras have it, else DUCK_EYE_HEIGHT while the base duck bit 0 is set, else the class
- * eye height. `tick` is a cache tick (the actor's renderTick).
+ * (`eyeZAt`: the real eye height, crouch transitions included) when the extras have it, else DUCK_EYE_HEIGHT while
+ * the base duck bit 0 is set, else the class eye height. `tick` is a cache tick (the actor's renderTick).
+ * Allocation-free: actors call it several times per frame.
  */
 export function getEyeHeight(entityId: number, classId: number, tick: number): number {
-  if (!getHlSetting<boolean>('enabled') || !getHlSetting<boolean>('pov.eyeHeight'))
+  if (!getHlSetting<boolean>('enabled') || !getHlSetting<boolean>('pov.eyeHeight')) {
+    lastSource = 'legacy'
     return LEGACY_EYE_HEIGHT
+  }
 
   const { parsedDemo, extras, extrasStatus } = useInstance.getState()
   const p = parsedDemo ? parsedDemo.playerIndexOfEntity(entityId) : -1
 
+  // eyeZAt is null while observing, while dead (view offset 14) and for players whose local tables never updated
   if (p >= 0 && extras && extrasStatus === 'ready' && extras.meta.available.view) {
     const eyeZ = eyeZAt(extras, p, tick)
-    if (eyeZ !== null && eyeZ > 0) return eyeZ
+    if (eyeZ !== null && eyeZ > 0) {
+      lastSource = 'view'
+      return eyeZ
+    }
   }
 
-  if (p >= 0 && parsedDemo && (parsedDemo.playerCache.getDuck(p, tick) & 1) !== 0)
+  if (p >= 0 && parsedDemo && (parsedDemo.playerCache.getDuck(p, tick) & 1) !== 0) {
+    lastSource = 'duck'
     return DUCK_EYE_HEIGHT
+  }
 
+  lastSource = 'class'
   return EYE_HEIGHT[classId] ?? LEGACY_EYE_HEIGHT
+}
+
+/** getEyeHeight plus the rule that produced it (probes). */
+export function eyeHeightWithSource(entityId: number, classId: number, tick: number): { height: number; source: EyeHeightSource } {
+  const height = getEyeHeight(entityId, classId, tick)
+  return { height, source: lastSource }
 }
 
 // Probe: the eye height every rendered player gets at a cache tick (default: the current renderTick).
@@ -39,12 +60,15 @@ registerHlProbe('eyeHeight.at', (tick?: number) => {
     .filter(({ connected, teamId }) => connected && (teamId === 2 || teamId === 3))
     .map(player => {
       const p = demo.playerIndexOfEntity(player.user.entityId)
+      const { height, source } = eyeHeightWithSource(player.user.entityId, player.classId, atTick)
       return {
         entityId: player.user.entityId,
         name: player.user.name,
         classId: player.classId,
+        alive: player.health > 0,
         duck: p >= 0 ? demo.playerCache.getDuck(p, atTick) : 0,
-        eyeHeight: getEyeHeight(player.user.entityId, player.classId, atTick),
+        eyeHeight: height,
+        source,
       }
     })
 })

@@ -51,7 +51,8 @@ export const MedicPanel = React.memo(({ medic: m, showName }: { medic: MedicRow;
     `${m.name}: ${m.typeName}${m.known ? '' : ' (type unknown)'}`,
     `${word}${value !== null ? ` ${value}` : ''}${m.state !== 'BUILDING' ? ` (${pct} %)` : ''}`,
     m.advantage ? `advantage +${m.advantage} %` : null,
-    m.lastUberAgo !== null ? `last uber ${formatAgo(m.lastUberAgo)} ago` : 'no uber yet',
+    // lastUberAgo counts only this round's ubers and needs extras; without extras nothing is known, so no line.
+    !m.known ? null : m.lastUberAgo !== null ? `last uber this round ${formatAgo(m.lastUberAgo)} ago` : 'no uber this round',
   ]
     .filter(Boolean)
     .join('\n')

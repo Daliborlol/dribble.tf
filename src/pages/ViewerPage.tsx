@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { motion } from 'framer-motion'
 
@@ -26,8 +26,12 @@ const ViewerPage = () => {
   const pendingSharedSetup = useStore(state => state.setups.pendingSharedSetup)
   const isMobile = useIsMobile()
 
-  const loadingDownloads = useStore(state =>
-    Array.from(state.downloads.values()).filter(({ status }) => status === 'loading')
+  // Select the Map itself (the reducer replaces it on every download change, other updates keep it): a selector that
+  // builds a new array re-rendered this page and DemoDrawing on every store update, i.e. every tick
+  const downloads = useStore(state => state.downloads)
+  const loadingDownloads = useMemo(
+    () => Array.from(downloads.values()).filter(({ status }) => status === 'loading'),
+    [downloads]
   )
 
   //

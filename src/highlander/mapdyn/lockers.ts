@@ -4,7 +4,11 @@
 // prop. The trigger volume (`mins`/`maxs`) is the 96 x 96 x 128 zone players stand in, not the cabinet, so
 // the placeholder sits at the locker prop instead: a TEAM_DARK cabinet with a lighter TEAM_HUD front, facing
 // the prop's yaw. Entries without a matching prop fall back to the trigger bounds. A trigger without a team
-// (team 0 on ashville, proot, divulgence and some others) takes the team of the nearest spawn point.
+// (team 0 on ashville, proot, divulgence and some others) takes the team of the func_respawnroom that
+// contains the cabinet when that room has one. Otherwise it takes the team of the nearest spawn point that
+// is enabled at round start, and only when none is in range the nearest disabled one. Forward rooms on
+// payload maps hold disabled spawns of the team that takes them over later (Blu_spawnpoint_C in RED's
+// opening room on pl_eruption_b15), so a disabled spawn must not outvote the room or an enabled spawn.
 
 import * as THREE from 'three'
 
@@ -24,7 +28,7 @@ export interface LockerBox {
 }
 
 const PANEL_INSET = 6
-/** func_regenerate without a team (KOTH maps, several payload maps): the team of the nearest spawn point. */
+/** func_regenerate without a team (KOTH maps, several payload maps): spawn points further away are ignored. */
 const SPAWN_TEAM_RANGE = 1500
 
 const centerOf = (min: number[], max: number[]): [number, number, number] => [
@@ -33,11 +37,31 @@ const centerOf = (min: number[], max: number[]): [number, number, number] => [
   (min[2] + max[2]) / 2,
 ]
 
-function nearestSpawnTeam(meta: MapMeta, at: readonly number[]): number {
+const contains = (box: { mins?: number[]; maxs?: number[] }, at: readonly number[]): boolean =>
+  Array.isArray(box.mins) && Array.isArray(box.maxs) && [0, 1, 2].every(i => at[i] >= box.mins![i] && at[i] <= box.maxs![i])
+
+/** The team of the smallest team-2/3 func_respawnroom whose bounds contain `at`, or 0. */
+function respawnRoomTeam(meta: MapMeta, at: readonly number[]): number {
+  let best = 0
+  let bestVolume = Infinity
+  for (const room of meta.respawnRooms ?? []) {
+    if ((room.team !== 2 && room.team !== 3) || !contains(room, at)) continue
+    const volume = [0, 1, 2].reduce((v, i) => v * (room.maxs![i] - room.mins![i]), 1)
+    if (volume < bestVolume) {
+      bestVolume = volume
+      best = room.team
+    }
+  }
+  return best
+}
+
+/** The team of the nearest spawn point within SPAWN_TEAM_RANGE; `enabledOnly` skips StartDisabled ones. */
+function nearestSpawnTeam(meta: MapMeta, at: readonly number[], enabledOnly: boolean): number {
   let best = 0
   let bestDistance = SPAWN_TEAM_RANGE
   for (const spawn of meta.spawns) {
     if (spawn.team !== 2 && spawn.team !== 3) continue
+    if (enabledOnly && spawn.disabled) continue
     const distance = Math.hypot(spawn.origin[0] - at[0], spawn.origin[1] - at[1], spawn.origin[2] - at[2])
     if (distance < bestDistance) {
       bestDistance = distance
@@ -45,6 +69,11 @@ function nearestSpawnTeam(meta: MapMeta, at: readonly number[]): number {
     }
   }
   return best
+}
+
+/** Team for a func_regenerate without one (see the header). */
+function untaggedLockerTeam(meta: MapMeta, at: readonly number[]): number {
+  return respawnRoomTeam(meta, at) || nearestSpawnTeam(meta, at, true) || nearestSpawnTeam(meta, at, false)
 }
 
 /** Body and front-panel boxes for every resupply entry (scene space). */
@@ -59,7 +88,7 @@ export function buildLockers(meta: MapMeta | null, origin: { x: number; y: numbe
   for (const r of meta.resupply) {
     const prop = r.locker ? props.get(r.locker) : undefined
     const at = prop?.origin ?? (Array.isArray(r.mins) && Array.isArray(r.maxs) ? centerOf(r.mins, r.maxs) : null)
-    const team = r.team === 2 || r.team === 3 ? r.team : at ? nearestSpawnTeam(meta, at) : 0
+    const team = r.team === 2 || r.team === 3 ? r.team : at ? untaggedLockerTeam(meta, at) : 0
     const key = teamKey(team)
     const body = new THREE.Color(key ? TEAM_DARK[key] : NEUTRAL)
     const panel = new THREE.Color(key ? TEAM_HUD[key] : NEUTRAL)

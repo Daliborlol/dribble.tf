@@ -5,8 +5,8 @@ import type {
   CachedDemo,
   ParserFallbackInfo,
   ParserFallbackRequest,
-  ParserFallbackWork,
   ParserPerformanceStats,
+  ParseWorkerRequest,
 } from './AsyncParser'
 import { PlayerCache } from './PlayerCache'
 import { BuildingCache } from './BuildingCache'
@@ -17,10 +17,13 @@ import { POSITION_FIXED_SCALE } from './PositionEncoding'
 
 declare function postMessage(message: any, transfer?: any[]): void
 
-// Messages in: { buffer } parses with parser2; { buffer, fallback: ParserFallbackWork } parses with the fork's
-// fallback export. Messages out: { progress }, { error }, the CachedDemo, or, when parser2 produced no timeline or
-// started it late (delayedStartOf), { fallbackRequest: ParserFallbackRequest, fileBuffer }: AsyncParser then ends
-// this worker (its parser2 heap cannot shrink) and posts the file to a fresh one with the map's bounds.
+// Messages in (ParseWorkerRequest): { buffer } parses with parser2; { buffer, fallback: ParserFallbackWork } parses
+// with the fork's fallback export; { buffer, lateStart: true } parses with parser2 and keeps a late start. Messages
+// out: { progress }, { error }, the CachedDemo, or, when parser2 produced no timeline or started it late
+// (delayedStartOf), { fallbackRequest: ParserFallbackRequest, fileBuffer }: AsyncParser then ends this worker (its
+// parser2 heap cannot shrink) and posts the file to a fresh one with the map's bounds. When that fallback parse fails
+// after a delayed start, parser2's late timeline is still worth showing, so the worker hands the file back with
+// { fallbackFailed: { error }, fileBuffer } instead of { error }, and AsyncParser parses it again with { lateStart }.
 
 type WasmPlayerCache = {
   position: Uint32Array[]
@@ -221,18 +224,30 @@ const sumBytes = (arrays: ArrayBufferView[]) => {
  * @param event
  */
 onmessage = async (event: MessageEvent) => {
+  const input = event.data as ParseWorkerRequest
+  const buffer = input.buffer
+  const fallback = input.fallback
+  // After a delayed start parser2's timeline exists, only late: when the fallback fails, hand the file back so that
+  // AsyncParser can load that timeline instead of failing the whole load. Both parsers copy the file into their wasm
+  // heap, so `buffer` is intact here unless a transfer already took it (byteLength 0).
+  const fail = (message: string) => {
+    if (fallback?.trigger === 'delayed-start' && buffer?.byteLength > 0) {
+      postMessage({ fallbackFailed: { error: message }, fileBuffer: buffer }, [buffer])
+    } else {
+      postMessage({ error: message })
+    }
+  }
   try {
-    const buffer = event.data.buffer as ArrayBuffer
-    const fallback = event.data.fallback as ParserFallbackWork | undefined
     await (fallback ? ensureFallbackWasm() : ensureWasm())
 
     const parseStart = performance.now()
-    // parser2 reaches 100 at the end of its parse (and reports nothing before that when its cache never starts). Hold
-    // that 100 back until the result has a timeline, so a demo that falls back does not show 100 % and start again.
-    let parser2Done = false
+    // Both builders reach 100 at the end of their parse (parser2 reports nothing before that when its cache never
+    // starts). Hold that 100 back until the result is the one this load keeps, so a demo that is parsed again does
+    // not show 100 % first.
+    let reached100 = false
     const onProgress = (progress: number) => {
-      if (!fallback && progress >= 100) {
-        parser2Done = true
+      if (progress >= 100) {
+        reached100 = true
         return
       }
       postMessage({ progress })
@@ -246,7 +261,7 @@ onmessage = async (event: MessageEvent) => {
     const parseMs = performance.now() - parseStart
 
     if (typeof result === 'string' || !result) {
-      postMessage({ error: result || 'Failed to parse demo.' })
+      fail(result || 'Failed to parse demo.')
       return
     }
 
@@ -262,7 +277,8 @@ onmessage = async (event: MessageEvent) => {
       postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
       return
     }
-    const delayed = fallback ? null : delayedStartOf(result as WasmResult, new Uint8Array(buffer))
+    const delayed =
+      fallback || input.lateStart ? null : delayedStartOf(result as WasmResult, new Uint8Array(buffer))
     if (delayed) {
       // parser2's output (heap and typed arrays) goes with this worker; the fallback recovers the skipped seconds
       const late = result as WasmResult
@@ -289,12 +305,17 @@ onmessage = async (event: MessageEvent) => {
       postMessage({ fallbackRequest: request, fileBuffer: buffer }, [buffer])
       return
     }
-    if (parser2Done) postMessage({ progress: 100 })
     if (fallback && !hasTimeline(result as WasmResult)) {
-      // Fewer than 100 packets with players: neither parser can start this demo, so it loads empty as before
       const empty = result as WasmResult
-      console.warn(`fallback parser: ${empty.ticks} tick(s) and ${empty.players?.length ?? 0} players as well`)
+      const counts = `${empty.ticks} tick(s) and ${empty.players?.length ?? 0} players`
+      if (fallback.trigger === 'delayed-start') {
+        fail(`the fallback cache builder produced ${counts}`) // parser2's late timeline is better than nothing
+        return
+      }
+      // Fewer than 100 packets with players: neither parser can start this demo, so it loads empty as before
+      console.warn(`fallback parser: ${counts} as well`)
     }
+    if (reached100) postMessage({ progress: 100 })
 
     const hydrateStart = performance.now()
 
@@ -482,6 +503,6 @@ onmessage = async (event: MessageEvent) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(error)
-    postMessage({ error: message })
+    fail(message)
   }
 }

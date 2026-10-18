@@ -52,6 +52,24 @@ export interface ParserFallbackInfo extends ParserFallbackRequest {
 export type ParserFallbackWork = ParserFallbackRequest &
   Pick<ParserFallbackInfo, 'bounds' | 'boundsSource'>
 
+/**
+ * The fallback parse after a delayed start failed, so parser2 parsed the demo again and its late timeline was loaded
+ * (`parsedDemo.parserFallbackFailure`; `parserFallback` stays false).
+ */
+export interface ParserFallbackFailure extends ParserFallbackWork {
+  error: string
+}
+
+/**
+ * A message to the base worker (ParseWorker.ts): parser2 first; the fallback after a fallbackRequest; parser2 again
+ * with `lateStart` (no delayed-start check) after the fallback of a delayed start failed.
+ */
+export interface ParseWorkerRequest {
+  buffer: ArrayBuffer
+  fallback?: ParserFallbackWork
+  lateStart?: true
+}
+
 const isZeroBounds = (w: World) =>
   [w.boundaryMin, w.boundaryMax].every(v => v.x === 0 && v.y === 0 && v.z === 0)
 
@@ -141,6 +159,7 @@ export interface CachedDemo {
   perf?: ParserPerformanceStats
   fileBuffer?: ArrayBuffer // the input file, handed back by the worker
   parserFallback?: ParserFallbackInfo // set when the fallback parse replaced parser2
+  parserFallbackFailure?: ParserFallbackFailure // set (on the main thread) when parser2 replaced a failed fallback
 }
 
 export class AsyncParser {
@@ -166,6 +185,8 @@ export class AsyncParser {
   /** True when parser2 could not start this demo and the fork's fallback cache builder parsed it. */
   parserFallback = false
   parserFallbackInfo?: ParserFallbackInfo
+  /** Set when the fallback after a delayed start failed and parser2's late timeline was loaded instead. */
+  parserFallbackFailure?: ParserFallbackFailure
   private fileBuffer?: ArrayBuffer
   private entityIndexMap?: Map<number, number>
 
@@ -198,6 +219,7 @@ export class AsyncParser {
       this.perf = cachedData.perf
       this.parserFallback = !!cachedData.parserFallback
       this.parserFallbackInfo = cachedData.parserFallback
+      this.parserFallbackFailure = cachedData.parserFallbackFailure
 
       if (cachedData.perf) {
         const toMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -224,8 +246,16 @@ export class AsyncParser {
 
   getCachedData(): Promise<CachedDemo> {
     return new Promise((resolve, reject) => {
-      // Runs once with parser2, and a second time with the fallback when parser2 hands the file back
-      const run = (message: { buffer: ArrayBuffer; fallback?: ParserFallbackWork }) => {
+      // The progress shown so far. A pass after the first continues from it to 100, so the shown value never falls
+      // back: on the delayed-start route parser2's pass reaches about 96 % before the fallback pass starts.
+      let shown = 0
+      let firstPass = true
+      let fallbackFailure: ParserFallbackFailure | undefined
+      // Runs once with parser2; a second time with the fallback when parser2 hands the file back; a third time with
+      // parser2, keeping its late start, when the fallback of a delayed start fails
+      const run = (message: ParseWorkerRequest) => {
+        const base = firstPass ? null : shown
+        firstPass = false
         const worker = new Worker(new URL('./ParseWorker.ts', import.meta.url), { type: 'module' })
         worker.postMessage(message, [message.buffer])
         worker.onerror = (event: ErrorEvent) => {
@@ -233,8 +263,25 @@ export class AsyncParser {
           worker.terminate()
         }
         worker.onmessage = (event: MessageEvent) => {
-          if (event.data.error) {
-            reject(event.data.error)
+          const failed = event.data.fallbackFailed as { error: string } | undefined
+          if (failed && message.fallback?.trigger === 'delayed-start') {
+            // parser2's timeline of this demo exists, only late: load it instead of failing the whole load
+            worker.terminate()
+            const work = message.fallback
+            fallbackFailure = { ...work, error: String(failed.error) }
+            const late = work.parser2.delaySeconds
+            console.warn(
+              `[parser] the fallback cache builder failed on ${work.map || 'this demo'} (${fallbackFailure.error}): loading parser2's timeline${late === undefined ? '' : `, which starts ${late.toFixed(1)} s after the warmup`}`
+            )
+            try {
+              run({ buffer: event.data.fileBuffer as ArrayBuffer, lateStart: true })
+            } catch (error) {
+              reject(error instanceof Error ? error.message : String(error))
+            }
+            return
+          }
+          if (event.data.error || failed) {
+            reject(event.data.error || failed?.error)
             worker.terminate()
             return
           }
@@ -257,7 +304,17 @@ export class AsyncParser {
             return
           }
           if (event.data.progress) {
-            this.progressCallback(event.data.progress)
+            const progress = event.data.progress as number
+            if (base === null) {
+              shown = Math.max(shown, progress)
+              this.progressCallback(progress)
+            } else {
+              const value = Math.floor(base + ((100 - base) * progress) / 100)
+              if (value > shown) {
+                shown = value
+                this.progressCallback(value)
+              }
+            }
             return
           }
           const cachedData: CachedDemo = event.data
@@ -269,8 +326,9 @@ export class AsyncParser {
           if (cachedData.perf) {
             cachedData.perf.transferMs = performance.now() - cachedData.now
           }
+          if (fallbackFailure) cachedData.parserFallbackFailure = fallbackFailure
 
-          resolve(event.data)
+          resolve(cachedData)
           // The wasm heap of the base parse is only freed with the worker (D18)
           worker.terminate()
         }

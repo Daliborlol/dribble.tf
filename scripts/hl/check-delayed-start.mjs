@@ -2,8 +2,13 @@
 // Delayed-start fallback check (task B2): what the viewer's base parse does with a demo and, when it routes the demo
 // to the fallback, how the fallback's timeline compares with parser2's.
 //
-//   flock $S/heavy.lock node scripts/hl/check-delayed-start.mjs <demo.dem> [--out summary.json] [--tmp <dir>]
+//   flock $S/heavy.lock node scripts/hl/check-delayed-start.mjs <demo.dem> --tmp <dir on a disk> [--out summary.json]
 //       [--root <checkout>] [--examples <n>] [--keep]
+//
+// --tmp is where the children dump the caches: about 5.6 x the demo file per base cache (1428628, 85 MB: 476 MB),
+// three of them after a delayed start. Without --tmp the OS temp dir is used, and the check refuses to start when that
+// is a tmpfs (RAM; /tmp here, with a per-user quota every process shares) and the demo is over 20 MB. The dumps are
+// removed when the check ends, also after a failure, unless --keep.
 //
 // One child process per base parse, so each heap is measured alone (the browser ends each worker):
 //   1. worker:   the real ParseWorker.ts of --root (default: this checkout), bundled with esbuild, its onmessage run
@@ -41,7 +46,6 @@
 // And for the fallback: coverage against the demo's warmup end and last packet, and memory (VmHWM of each child, the
 // cache bytes). Exit code 1 when a check fails.
 
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -51,7 +55,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { importBundled, parseArgs, REPO_ROOT, vmHwmKB } from './lib/bundle.mjs'
 import { scanDemoFrames } from './lib/demo-frames.mjs'
-import { loadParseWorker } from './lib/parse-worker.mjs'
+import { hashCachedDemo, loadParseWorker } from './lib/parse-worker.mjs'
 
 const { positional, flags } = parseArgs(process.argv.slice(2), ['keep'])
 const SCRIPT = fileURLToPath(import.meta.url)
@@ -101,39 +105,6 @@ function readDump(file) {
 }
 
 const typedBytes = lists => lists.reduce((n, list) => n + (list ?? []).reduce((m, a) => m + (a?.byteLength ?? 0), 0), 0)
-
-/** sha256 over a posted CachedDemo (every typed array's bytes, keys sorted), without now, perf and fileBuffer. */
-function hashCachedDemo(cd) {
-  const hash = crypto.createHash('sha256')
-  const walk = (v, top) => {
-    if (ArrayBuffer.isView(v)) {
-      hash.update(`<${v.constructor.name}:${v.length}>`)
-      hash.update(new Uint8Array(v.buffer, v.byteOffset, v.byteLength))
-    } else if (v instanceof ArrayBuffer) hash.update(`<ArrayBuffer:${v.byteLength}>`)
-    else if (v instanceof Map) {
-      hash.update('{map')
-      for (const [k, x] of v) {
-        hash.update(JSON.stringify(k))
-        walk(x, false)
-      }
-      hash.update('}')
-    } else if (Array.isArray(v)) {
-      hash.update('[')
-      v.forEach(x => walk(x, false))
-      hash.update(']')
-    } else if (v && typeof v === 'object') {
-      hash.update('{')
-      for (const k of Object.keys(v).sort()) {
-        if (top && (k === 'now' || k === 'perf' || k === 'fileBuffer')) continue
-        hash.update(`${JSON.stringify(k)}:`)
-        walk(v[k], false)
-      }
-      hash.update('}')
-    } else hash.update(JSON.stringify(v) ?? 'undefined')
-  }
-  walk(cd, true)
-  return hash.digest('hex')
-}
 
 /** Dump of a CachedDemo as ParseWorker.ts posts it (positions already shifted). */
 function dumpCachedDemo(file, cd, extra) {
@@ -694,11 +665,38 @@ function coverage(D, frames) {
 
 const demoPath = positional[0]
 if (!demoPath) {
-  console.error('usage: node scripts/hl/check-delayed-start.mjs <demo.dem> [--out summary.json] [--tmp dir] [--root checkout] [--examples n] [--keep]')
+  console.error('usage: node scripts/hl/check-delayed-start.mjs <demo.dem> --tmp <dir on a disk> [--out summary.json] [--root checkout] [--examples n] [--keep]')
   process.exit(2)
 }
 const EXAMPLES = Number(flags.examples ?? 5)
+{
+  const TMPFS_MAGIC = 0x01021994
+  const dir = os.tmpdir()
+  const demoMB = fs.statSync(demoPath).size / 1048576
+  let tmpfs = false
+  try {
+    tmpfs = fs.statfsSync(dir).type === TMPFS_MAGIC
+  } catch {}
+  if (!flags.tmp && tmpfs && demoMB > 20) {
+    console.error(
+      `check-delayed-start: the cache dumps of this ${Math.round(demoMB)} MB demo take up to ${Math.ceil(3 * 5.6 * demoMB)} MB, ` +
+        `and the default temp dir ${dir} is a tmpfs. Pass --tmp <dir on a disk>.`
+    )
+    process.exit(2)
+  }
+}
 const tmp = fs.mkdtempSync(path.join(flags.tmp ?? os.tmpdir(), 'b2-delayed-'))
+// Remove the dumps however the check ends: a failed child throws out of child(), and Ctrl-C or a kill ends the process
+const removeDumps = () => {
+  if (!flags.keep) fs.rmSync(tmp, { recursive: true, force: true })
+}
+process.on('exit', removeDumps)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    removeDumps()
+    process.exit(130)
+  })
+}
 const failures = []
 const child = (args, label) => {
   const t0 = performance.now()
@@ -811,7 +809,13 @@ if (!firstResult.fallbackRequest) {
     ticks: m.ticks, startTick: m.startTick, startDemoTick: m.startDemoTick, tickBase: m.tickBase, players: m.players.length,
     positionScale: m.positionScale, world: m.world, cacheMB: m.cacheMB, parseMs: m.parseMs ?? m.ms, wallMs, vmHwmMB: Math.round(m.vmHwmKB / 1024),
   })
-  summary.fallback = { ...brief(FB.meta, fallbackWallMs), parserFallback: FB.meta.parserFallback, fileBufferBack: FB.meta.fileBufferBack, progress: FB.meta.progress }
+  summary.fallback = {
+    ...brief(FB.meta, fallbackWallMs),
+    parserFallback: FB.meta.parserFallback,
+    fileBufferBack: FB.meta.fileBufferBack,
+    progress: FB.meta.progress,
+    sha256: FB.meta.sha256,
+  }
   if (!FB.meta.parserFallback) failures.push('the fallback CachedDemo has no parserFallback info')
   else if (FB.meta.parserFallback.reason !== request.reason) failures.push('parserFallback.reason is not the request reason')
   if (!FB.meta.fileBufferBack) failures.push('the fallback worker did not hand the file back')
@@ -955,7 +959,7 @@ if (!firstResult.fallbackRequest) {
 }
 
 if (flags.keep) summary.dumps = tmp
-else fs.rmSync(tmp, { recursive: true, force: true })
+else removeDumps()
 summary.ok = failures.length === 0
 summary.failures = failures
 summary.vmHwmMB = Math.round(vmHwmKB() / 1024)

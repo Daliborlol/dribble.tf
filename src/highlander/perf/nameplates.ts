@@ -1,8 +1,9 @@
 // Nameplate declutter (contract section 5 X1): at most the NAMEPLATE_CAP nameplates nearest the camera are drawn,
 // plus the focused player's, the POV subject's, the hovered player's and every pinned plate (F1 sets
 // NameplateExtra.pinned for disguised or disguising spies, cloaked spies, spies below 100 cloak, ubered players and a
-// MEDIC! call). The pass runs once per frame before the actors' own frame callbacks and only toggles `display` on
-// the plates' DOM nodes, so it adds no React work.
+// MEDIC! call). Only plates on screen compete for the NAMEPLATE_CAP slots: a player behind the camera or outside the
+// view never takes a slot from a visible one. The pass runs once per frame before the actors' own frame callbacks
+// and only toggles `display` on the plates' DOM nodes, so it adds no React work.
 //
 // The hovered player is the one whose body or plate is under the mouse pointer: his screen-space hull (feet to the
 // top of the plate, as wide as the 48-unit player hull) contains the pointer; the nearest such player wins. This is
@@ -21,6 +22,9 @@ export const NAMEPLATE_CAP = 12
 /** Hull used for the hover test, Hammer units (48 x 48 x 82 player hull; the plate sits above the head). */
 const HOVER_HALF_WIDTH = 24
 const HOVER_TOP = 83 * 0.85 + 40
+/** The plate anchor above the feet (Actors.tsx: ActorDimensions.z * 0.85) and the on-screen margin in NDC. */
+const PLATE_Z = 83 * 0.85
+const SCREEN_MARGIN = 1.05
 
 /** What an actor tells the pass about his plate; updated on every render of the actor. */
 export interface PlateState {
@@ -50,7 +54,7 @@ interface PlateEntry {
   distance: number
   rank: number
   shown: boolean
-  reason: 'near' | 'pinned' | 'followed' | 'hovered' | 'capped' | 'notDrawn'
+  reason: 'near' | 'pinned' | 'followed' | 'hovered' | 'capped' | 'offscreen' | 'notDrawn'
 }
 
 const entries = new Map<number, PlateEntry>()
@@ -98,6 +102,7 @@ export function trackPointer(dom: HTMLElement): () => void {
 
 const _camera = new THREE.Vector3()
 const _pos = new THREE.Vector3()
+const _ndc = new THREE.Vector3()
 const _feet = new THREE.Vector3()
 const _top = new THREE.Vector3()
 const _right = new THREE.Vector3()
@@ -132,8 +137,8 @@ function hoveredAt(camera: THREE.Camera, width: number, height: number): number 
 }
 
 /**
- * One declutter pass: rank the drawn plates by camera distance, show the NAMEPLATE_CAP nearest plus the exempt
- * ones, hide the rest. Writes the DOM only when a plate's state flips.
+ * One declutter pass: rank the drawn plates on screen by camera distance, show the NAMEPLATE_CAP nearest plus the
+ * exempt ones, hide the rest. Writes the DOM only when a plate's state flips.
  */
 export function declutterPlates(camera: THREE.Camera, width: number, height: number, opts: DeclutterOptions): void {
   passes++
@@ -148,6 +153,15 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
       continue
     }
     entry.distance = _camera.distanceTo(entry.group.getWorldPosition(_pos))
+    // off screen (behind the camera, beyond near/far, or outside the view): no slot, nothing to hide
+    _ndc.copy(_pos)
+    _ndc.z += PLATE_Z
+    _ndc.project(camera)
+    if (!(_ndc.z >= -1 && _ndc.z <= 1 && Math.abs(_ndc.x) <= SCREEN_MARGIN && Math.abs(_ndc.y) <= SCREEN_MARGIN)) {
+      entry.reason = 'offscreen'
+      entry.shown = true
+      continue
+    }
     order.push(entry)
   }
   order.sort((a, b) => a.distance - b.distance || a.entityId - b.entityId)
@@ -243,6 +257,8 @@ registerHlProbe('nameplates.declutter', () => {
     pointer: { ...pointer },
     drawn: rows.filter(r => r.drawn).length,
     shown: rows.filter(r => r.drawn && r.shown).length,
+    offscreen: rows.filter(r => r.reason === 'offscreen').length,
+    capped: rows.filter(r => r.reason === 'capped').length,
     rows,
   }
 })

@@ -9,7 +9,8 @@
 // `built` is the construction fraction 0..1, `rechargeLeft` the seconds until a recharging teleporter is ready.
 // Every value is a pure function of the extras and the tick. Fractional ticks are allowed: the state is read at
 // floor(tick) and the position is interpolated like the scene layer does. The returned arrays and objects are
-// shared between callers for the same (extras, tick) and must not be mutated.
+// shared between callers for the same (extras, tick) and must not be mutated. The cache holds no strong reference
+// to an extras object.
 
 import * as THREE from 'three'
 
@@ -95,14 +96,16 @@ export function buildingView(x: HighlanderExtras, j: number, tick: number): Buil
   }
 }
 
-// One-entry cache: the HUD snapshot, the POV panel and the probes often ask for the same tick in one frame.
-let cache: { x: HighlanderExtras; tick: number; rows: BuildingView[] } | null = null
+// One entry per extras object: the HUD snapshot, the POV panel and the probes often ask for the same tick in one
+// frame. A WeakMap, so the previous demo's extras (tens of MB of typed arrays) can be collected after a demo change.
+const cache = new WeakMap<HighlanderExtras, { tick: number; rows: BuildingView[] }>()
 
 /** Every building instance alive at tick, including sappers, map-placed and carried buildings. */
 export function buildingsAt(x: HighlanderExtras, tick: number): BuildingView[] {
-  if (cache && cache.x === x && cache.tick === tick) return cache.rows
+  const hit = cache.get(x)
+  if (hit && hit.tick === tick) return hit.rows
   const rows = buildingInstancesAt(x, Math.floor(tick)).map(j => buildingView(x, j, tick))
-  cache = { x, tick, rows }
+  cache.set(x, { tick, rows })
   return rows
 }
 

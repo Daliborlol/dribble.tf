@@ -166,6 +166,34 @@ export function getGlowTexture(): THREE.Texture {
   return glowTexture
 }
 
+let flashTexture: THREE.Texture | null = null
+
+/**
+ * Fireball for the destruction flash, for additive sprites: a hot core in the flash colour (FLASH, #ffd28a) that
+ * turns orange toward the rim and fades out. On bright ground the core saturates while the rim stays warm; on dark
+ * ground the whole burst reads orange.
+ */
+export function getFlashTexture(): THREE.Texture {
+  if (flashTexture) return flashTexture
+  const size = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+    g.addColorStop(0, 'rgba(255,240,214,1)')
+    g.addColorStop(0.3, 'rgba(255,210,138,0.9)')
+    g.addColorStop(0.65, 'rgba(255,128,40,0.5)')
+    g.addColorStop(1, 'rgba(255,80,16,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, size, size)
+  }
+  flashTexture = new THREE.CanvasTexture(canvas)
+  flashTexture.colorSpace = THREE.SRGBColorSpace
+  return flashTexture
+}
+
 // ─── building type glyphs for the labels (procedural, white on transparent) ────────
 
 export type GlyphKind = 'sentry' | 'dispenser' | 'teleEntrance' | 'teleExit'

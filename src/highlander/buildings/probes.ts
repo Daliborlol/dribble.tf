@@ -9,8 +9,8 @@ import { trackIndexAt } from '@highlander/extras/track'
 import { useInstance } from '@zus/store'
 
 import { buildingInstancesAt, buildingsAt, buildingsOf, type BuildingView } from './model'
-import { blueprintsAt, buildingDraw, carriesAt, destructionsAt, drawnInstancesAt, type BuildingDraw } from './render'
-import { basePosition, povRenderedEntityId, readyExtras, renderTickNow } from './scene'
+import { blueprintsAt, buildingDraw, carriesAt, destructionsAt, drawnInstancesAt, sentryMuzzleAt, tracerBarrel, type BuildingDraw } from './render'
+import { basePosition, enemyCentreResolver, povLabelContext, povRenderedEntityId, readyExtras, renderTickNow } from './scene'
 import * as aim from './sentryAim'
 
 const TYPE_NAMES = ['dispenser', 'teleporter', 'sentry', 'sapper']
@@ -22,7 +22,16 @@ function viewJson(v: BuildingView) {
   return { ...v, typeName: TYPE_NAMES[v.type] ?? String(v.type), built: r3(v.built), rechargeLeft: r3(v.rechargeLeft), pos: vec(v.pos), yaw: r1(v.yaw) }
 }
 
-function drawJson(d: BuildingDraw) {
+const _muzzle = new THREE.Vector3()
+
+/** The muzzle flash's barrel tip from sentryMuzzleAt (the scene probe reports where the sprite really is). */
+function muzzleWorld(d: BuildingDraw, tickF: number, enemyCentre: aim.EnemyCentre) {
+  const x = readyExtras()
+  if (!x || d.muzzle < 0 || !sentryMuzzleAt(x, d.instance, tickF, d.muzzle, _muzzle, enemyCentre)) return null
+  return vec(_muzzle)
+}
+
+function drawJson(d: BuildingDraw, tickF: number, enemyCentre: aim.EnemyCentre) {
   return {
     instance: d.instance,
     typeName: TYPE_NAMES[d.type] ?? String(d.type),
@@ -46,6 +55,7 @@ function drawJson(d: BuildingDraw) {
     shield: d.shield,
     wrangled: d.wrangled,
     muzzle: d.muzzle,
+    muzzleWorld: muzzleWorld(d, tickF, enemyCentre),
     rangeRing: d.rangeRing,
     height: d.height,
     metalFrac: r3(d.metalFrac),
@@ -88,6 +98,9 @@ registerHlProbe('buildings.draw', (tickArg?: number) => {
   const tickF = Math.max(0, tickArg ?? renderTickNow())
   const tick = Math.floor(tickF)
   const pov = povRenderedEntityId()
+  // the same inputs as BuildingObject, so the AIM_AT_ENEMY fallback reports what the scene draws at this tick
+  const enemyCentre = enemyCentreResolver()
+  const rangeRing = getHlSetting<boolean>('buildings.sentryRange')
   return {
     tick: tickF,
     layer: {
@@ -95,16 +108,33 @@ registerHlProbe('buildings.draw', (tickArg?: number) => {
       buildings: getHlSetting<boolean>('buildings.enabled') !== false,
       available: !!x.meta.available.buildings,
       labels: getHlSetting<boolean>('buildings.labels'),
-      sentryRange: getHlSetting<boolean>('buildings.sentryRange'),
+      sentryRange: rangeRing,
       blueprints: getHlSetting<boolean>('buildings.blueprints'),
     },
+    // the POV subject whose own building labels hide (null outside POV)
+    pov: povLabelContext(x, tick),
     mounted: drawnInstancesAt(x, tick),
-    buildings: buildingInstancesAt(x, tick).map(j => drawJson(buildingDraw(x, j, tickF, { rangeRing: getHlSetting<boolean>('buildings.sentryRange') }))),
+    buildings: buildingInstancesAt(x, tick).map(j => drawJson(buildingDraw(x, j, tickF, { rangeRing, enemyCentre }), tickF, enemyCentre)),
     carries: carriesAt(x, tick).map(c => ({ ...c, povHidden: c.entityId === pov })),
     blueprints: blueprintsAt(x, tick),
     destructions: destructionsAt(x, tickF, basePosition).map(e => ({ building: e.building, type: e.type, tick: e.tick, age: r1(e.age), carried: e.carried, small: e.small, pos: vec(e.pos) })),
     aimCalibration: { YAW_RANGE: aim.YAW_RANGE, YAW_SIGN: aim.YAW_SIGN, YAW_OFFSET: aim.YAW_OFFSET, PITCH_RANGE: aim.PITCH_RANGE, PITCH_SIGN: aim.PITCH_SIGN, PITCH_OFFSET: aim.PITCH_OFFSET, AIM_AT_ENEMY: aim.AIM_AT_ENEMY },
   }
+})
+
+/**
+ * A sentry tracer row's start as other layers would take it from F2: the barrel the row flashes (tracerBarrel) and
+ * that barrel's tip at the tracer's tick (sentryMuzzleAt).
+ */
+registerHlProbe('buildings.tracerMuzzle', (row: number) => {
+  const x = readyExtras()
+  if (!x) return notReady()
+  const tr = x.tempents.tracers
+  if (!(row >= 0 && row < tr.tick.length)) return { error: 'no such row', rows: tr.tick.length }
+  const j = tr.sentry[row]
+  const barrel = tracerBarrel(x, row)
+  const ok = barrel >= 0 && sentryMuzzleAt(x, j, tr.tick[row], barrel, _muzzle, enemyCentreResolver())
+  return { row, tick: tr.tick[row], sentry: j === 65535 ? -1 : j, barrel, muzzle: ok ? vec(_muzzle) : null }
 })
 
 /**
@@ -176,18 +206,31 @@ registerHlProbe('buildings.scene', () => {
     })
     const label = node.getObjectByName('label')
     const frame = node.getObjectByName('labelFrame')
+    const muzzle = node.getObjectByName('muzzle')
+    const sapper = node.getObjectByName('sapper')
+    const nodeVisible = visibleChain(node)
     const labelVisible = !!label && visibleChain(label)
+    // label -> lift group -> drei Billboard's inner group -> the outer group BuildingObject scales and fades
+    const billboard = label?.parent?.parent?.parent
     buildings.push({
       instance: node.userData.instance,
-      visible: visibleChain(node),
+      visible: nodeVisible,
       pos: world(node),
       visibleMeshes: meshes[0],
       hiddenMeshes: meshes[1],
-      // label -> lift group -> drei Billboard's inner group -> the outer group BuildingObject scales
-      // a hidden label (carried building) keeps whatever scale it last had, so only a drawn one reports it
+      // a hidden label (carried building, POV) keeps whatever scale it last had, so only a drawn one reports it;
+      // `hidden` says why a drawn building shows no label ('povOwn' or 'povNear')
       label: label
-        ? { visible: labelVisible, scale: labelVisible ? r3(label.parent?.parent?.parent?.scale.x ?? 1) : null, frame: frame && visibleChain(frame) ? frame.userData.state ?? null : null }
+        ? {
+            visible: labelVisible,
+            scale: labelVisible ? r3(billboard?.scale.x ?? 1) : null,
+            opacity: labelVisible ? r3(billboard?.userData.opacity ?? 1) : null,
+            hidden: nodeVisible && !labelVisible ? billboard?.userData.hidden ?? null : null,
+            frame: frame && visibleChain(frame) ? frame.userData.state ?? null : null,
+          }
         : null,
+      muzzle: muzzle && visibleChain(muzzle) ? world(muzzle) : null,
+      sapper: sapper && visibleChain(sapper) ? world(sapper) : null,
     })
   })
   const slots = (name: string, key: string) => {

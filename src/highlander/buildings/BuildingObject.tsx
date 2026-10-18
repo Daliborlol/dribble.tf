@@ -12,7 +12,7 @@ import { BUILDING_TYPE } from '@highlander/extras/enums'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useInstance } from '@zus/store'
 
-import { BuildingLabel, glyphOf, LABEL_SIZE, minScreenScale } from './label'
+import { BuildingLabel, glyphOf, LABEL_SIZE, screenScale } from './label'
 import {
   ARC,
   ARC_SEGMENTS,
@@ -46,7 +46,7 @@ import {
 } from './parts'
 import { buildingDraw, DISPENSER, LABEL_GAP, SAPPER, sapperOffset, SENTRY, TELEPORTER, type BuildingDraw } from './render'
 import { MINI_SCALE, SENTRY_PIVOT } from './sentryAim'
-import { enemyCentreResolver } from './scene'
+import { enemyCentreResolver, povLabelContext, type PovLabelContext } from './scene'
 
 const DEG = Math.PI / 180
 /** Sentry range ring opacity (contract 0.12, raised: see the ring mesh). */
@@ -79,14 +79,25 @@ const Part = React.forwardRef<THREE.Mesh, PartProps>(({ mat, ...props }, ref) =>
 
 const LABEL_ORDER = 20
 /**
- * Labels keep at least this many pixels of width: far from the camera (the default RTS view sits 2000 to 3500
- * units away) they grow like the HTML nameplates do, so every building stays findable and its glyph (about 23 px)
- * readable. Up close they keep their world size (scale 1).
+ * Labels stay between these widths on screen. Far from the camera (the default RTS view sits 2000 to 3500 units
+ * away) they grow like the HTML nameplates do, so every building stays findable and its glyph (about 23 px)
+ * readable. Up close they shrink below their world size instead of growing with the building: an engineer's POV 60
+ * to 140 units from his sentry would otherwise get a label 250 to 440 px wide over the middle of the view. The
+ * foreground buildings of the default RTS view measure up to about 127 px, so the cap leaves that view unchanged.
  */
 const LABEL_MIN_PX = 80
+const LABEL_MAX_PX = 130
 const LABEL_MAX_SCALE = 8
+/**
+ * In POV the labels fade as the camera comes close, measured from the camera to the label: drawn fully beyond
+ * `far` units, gone within `near`. The building itself is in plain view there, and a label drawn over everything
+ * would hide the players behind it.
+ */
+const POV_LABEL_FADE = { near: 120, far: 300 }
 /** Width of the state frame around the label, units. */
 const FRAME = 4
+const SAPPED_FRAME_OPACITY = { base: 0.35, flicker: 0.65 }
+const WRANGLED_FRAME_OPACITY = 0.95
 /** The label sits this far above its anchor in billboard space: its frame's bottom edge on the anchor. */
 const LABEL_LIFT = LABEL_SIZE.height / 2 + FRAME
 /** A hollow rectangle around the label (it tucks half a unit under the label's edge). */
@@ -119,24 +130,54 @@ function StatusLabel({ refs, label }: { refs: MutableRefObject<LabelRefs>; label
   )
 }
 
+/**
+ * Why a drawn building shows no label: in POV, the subject's own building while F4's weapon HUD lists it
+ * ('povOwn'), or a camera closer than POV_LABEL_FADE.near ('povNear').
+ */
+export type LabelHidden = 'povOwn' | 'povNear' | null
+
+const _labelWorld = new THREE.Vector3()
+const _cameraWorld = new THREE.Vector3()
+
 function updateLabel(
   refs: LabelRefs,
   label: BuildingLabel,
   d: BuildingDraw,
-  frames: { sapped: THREE.MeshBasicMaterial; wrangled: THREE.Material },
+  builder: number,
+  frames: { sapped: THREE.MeshBasicMaterial; wrangled: THREE.MeshBasicMaterial },
   camera: THREE.Camera,
-  viewportHeight: number
+  viewportHeight: number,
+  pov: PovLabelContext | null
 ) {
-  if (!refs.group) return
-  refs.group.position.set(0, 0, d.labelZ)
-  refs.group.scale.setScalar(minScreenScale(refs.group, camera, viewportHeight, LABEL_SIZE.width, LABEL_MIN_PX, LABEL_MAX_SCALE))
+  const group = refs.group
+  if (!group) return
+  group.position.set(0, 0, d.labelZ)
+  let opacity = 1
+  let hidden: LabelHidden = null
+  if (pov && pov.ownHidden && builder === pov.p) {
+    opacity = 0
+    hidden = 'povOwn'
+  } else if (pov) {
+    const distance = group.getWorldPosition(_labelWorld).distanceTo(_cameraWorld.setFromMatrixPosition(camera.matrixWorld))
+    opacity = THREE.MathUtils.smoothstep(distance, POV_LABEL_FADE.near, POV_LABEL_FADE.far)
+    if (opacity <= 0) hidden = 'povNear'
+  }
+  group.visible = opacity > 0
+  group.userData.hidden = hidden
+  group.userData.opacity = opacity
+  if (!group.visible) return
+  group.scale.setScalar(screenScale(group, camera, viewportHeight, LABEL_SIZE.width, LABEL_MIN_PX, LABEL_MAX_PX, LABEL_MAX_SCALE))
+  label.material.opacity = opacity
   if (refs.frame) {
     refs.frame.visible = !!d.sapper || d.wrangled
     refs.frame.userData.state = d.sapper ? 'sapped' : d.wrangled ? 'wrangled' : null
     if (d.sapper) {
-      frames.sapped.opacity = 0.35 + 0.65 * d.sapper.opacity
+      frames.sapped.opacity = (SAPPED_FRAME_OPACITY.base + SAPPED_FRAME_OPACITY.flicker * d.sapper.opacity) * opacity
       refs.frame.material = frames.sapped
-    } else if (d.wrangled) refs.frame.material = frames.wrangled
+    } else if (d.wrangled) {
+      frames.wrangled.opacity = WRANGLED_FRAME_OPACITY * opacity
+      refs.frame.material = frames.wrangled
+    }
   }
   label.update(d)
 }
@@ -184,7 +225,7 @@ function SentryModel({ team, mini, refs }: { team: TeamKey; mini: boolean; refs:
             <Part geometry={BOX} mat={stripe} position={[0, 0, pod.z / 2 + 0.25]} scale={[pod.x, pod.y * 0.6, 0.5]} />
             <Part geometry={POD_DISCS} mat={solid(DARK_METAL)} position={[pod.x / 2 + 0.05, 0, 0]} />
           </group>
-          <sprite ref={s => (refs.current.muzzle = s)} material={glowSprite(MUZZLE)} scale={[10, 10, 1]} visible={false} />
+          <sprite ref={s => (refs.current.muzzle = s)} name="muzzle" material={glowSprite(MUZZLE)} scale={[10, 10, 1]} visible={false} />
         </group>
       </group>
     </group>
@@ -334,13 +375,17 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
   const mini = !!x && x.buildings.mini[instance] !== 0
   const mode = x ? x.buildings.mode[instance] : 0
 
-  // one flicker material per sapper sprite and per sapped-label frame (their opacity changes per tick)
+  // one flicker material per sapper sprite, and per building the label frames (they flicker, and fade with the label)
   const sparkMaterial = useMemo(() => glowSprite(SAPPER_GLOW).clone(), [])
-  const frames = useMemo(() => ({ sapped: basic(SAPPER_GLOW, 0.9, false, true).clone(), wrangled: basic(TEAM_FX[team], 0.95, false, true) }), [team])
+  const frames = useMemo(
+    () => ({ sapped: basic(SAPPER_GLOW, 0.9, false, true).clone(), wrangled: basic(TEAM_FX[team], WRANGLED_FRAME_OPACITY, false, true).clone() }),
+    [team]
+  )
   React.useEffect(
     () => () => {
       sparkMaterial.dispose()
       frames.sapped.dispose()
+      frames.wrangled.dispose()
     },
     [sparkMaterial, frames]
   )
@@ -374,8 +419,9 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
     if (sapper.current) {
       sapper.current.visible = !!d.sapper
       if (d.sapper) {
+        // half the drawn height: the sapper stays a solid box of its own size while the building rises
         const [ox, oy, oz] = sapperOffset(d.type, d.level, d.mini)
-        sapper.current.position.set(ox, oy, oz)
+        sapper.current.position.set(ox, oy, oz * d.scaleZ)
         sparkMaterial.opacity = d.sapper.opacity
       }
     }
@@ -388,7 +434,9 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
       if (d.upgradeRing >= 0) upgrade.current.position.set(0, 0, (d.labelZ - LABEL_GAP) * d.upgradeRing)
     }
     if (range.current) range.current.visible = d.rangeRing
-    if (labelCanvas) updateLabel(label.current, labelCanvas, d, frames, camera, size.height)
+    if (labelCanvas && label.current.group) {
+      updateLabel(label.current, labelCanvas, d, x.buildings.builder[instance], frames, camera, size.height, povLabelContext(x, tickRef.current))
+    }
   })
 
   if (!x || type < 0) return null
@@ -399,10 +447,11 @@ export const BuildingObject = React.memo(({ instance, tickRef }: BuildingObjectP
         {type === BUILDING_TYPE.SENTRY && <SentryModel team={team} mini={mini} refs={sentryRefs} />}
         {type === BUILDING_TYPE.DISPENSER && <DispenserModel team={team} refs={dispenserRefs} />}
         {type === BUILDING_TYPE.TELEPORTER && <TeleporterModel team={team} mode={mode} refs={teleRefs} />}
-        <group ref={sapper} visible={false}>
-          <Part geometry={BOX} mat={solid(DARK_METAL)} scale={SAPPER.size} />
-          <sprite ref={sapperSprite} material={sparkMaterial} position={[0, SAPPER.size[1] / 2 + 2, 0]} scale={[SAPPER_SPARK, SAPPER_SPARK, 1]} />
-        </group>
+      </group>
+      {/* the spy's sapper, outside the construction-scaled and ghosted body: a solid box at half the drawn height */}
+      <group ref={sapper} name="sapper" visible={false}>
+        <mesh geometry={BOX} material={solid(DARK_METAL)} scale={SAPPER.size} />
+        <sprite ref={sapperSprite} material={sparkMaterial} position={[0, SAPPER.size[1] / 2 + 2, 0]} scale={[SAPPER_SPARK, SAPPER_SPARK, 1]} />
       </group>
       {type === BUILDING_TYPE.SENTRY && (
         <>

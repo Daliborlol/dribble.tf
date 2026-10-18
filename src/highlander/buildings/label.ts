@@ -190,24 +190,30 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-// ─── screen-size floor ────────────────────────────────────────────────────────
+// ─── screen-size bounds ───────────────────────────────────────────────────────
 
 const _objectWorld = new THREE.Vector3()
 const _cameraWorld = new THREE.Vector3()
 
-/**
- * Scale for an object `worldWidth` units wide so it stays at least `minPx` pixels wide on screen under a perspective
- * camera (1 up close, at most `maxScale`). It depends on the camera only, never on time.
- */
-export function minScreenScale(object: THREE.Object3D, camera: THREE.Camera, viewportHeight: number, worldWidth: number, minPx: number, maxScale: number): number {
+/** Screen pixels per world unit at `point` under a perspective camera, 0 for another camera or no viewport. */
+export function pxPerUnitAt(point: THREE.Vector3, camera: THREE.Camera, viewportHeight: number): number {
   const cam = camera as THREE.PerspectiveCamera
-  if (!cam.isPerspectiveCamera || viewportHeight <= 0) return 1
-  object.getWorldPosition(_objectWorld)
+  if (!cam.isPerspectiveCamera || viewportHeight <= 0) return 0
   _cameraWorld.setFromMatrixPosition(camera.matrixWorld)
-  const distance = _objectWorld.distanceTo(_cameraWorld)
-  const pxPerUnit = viewportHeight / (2 * distance * Math.tan((cam.fov * Math.PI) / 360))
-  if (!Number.isFinite(pxPerUnit) || pxPerUnit <= 0) return 1
-  return Math.min(maxScale, Math.max(1, minPx / (worldWidth * pxPerUnit)))
+  const v = viewportHeight / (2 * point.distanceTo(_cameraWorld) * Math.tan((cam.fov * Math.PI) / 360))
+  return Number.isFinite(v) && v > 0 ? v : 0
+}
+
+/**
+ * Scale for an object `worldWidth` units wide so it stays between `minPx` and `maxPx` pixels wide on screen: far
+ * from the camera it grows (at most `maxScale`), up close it shrinks below its world size, and in between it keeps
+ * scale 1. It depends on the camera only, never on time.
+ */
+export function screenScale(object: THREE.Object3D, camera: THREE.Camera, viewportHeight: number, worldWidth: number, minPx: number, maxPx: number, maxScale: number): number {
+  const pxPerUnit = pxPerUnitAt(object.getWorldPosition(_objectWorld), camera, viewportHeight)
+  if (pxPerUnit <= 0) return 1
+  const px = worldWidth * pxPerUnit
+  return Math.min(maxScale, Math.max(minPx, Math.min(maxPx, px)) / px)
 }
 
 // ─── carried-building badge ───────────────────────────────────────────────────

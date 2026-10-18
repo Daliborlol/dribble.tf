@@ -12,8 +12,8 @@ import { useExtras } from '@highlander/extras/hooks'
 import { getActor } from '@highlander/scene/actorRegistry'
 import { useInstance } from '@zus/store'
 
-import { glyphBadgeTexture, glyphOf, minScreenScale } from './label'
-import { basic, BOX, BOX_EDGES, DARK_METAL, FLASH, INVALID, METAL, PLANE, solid, SPHERE, TEAM_DARK, TEAM_FX, type TeamKey } from './parts'
+import { glyphBadgeTexture, glyphOf, pxPerUnitAt, screenScale } from './label'
+import { basic, BOX, BOX_EDGES, DARK_METAL, getFlashTexture, INVALID, METAL, PLANE, solid, TEAM_DARK, TEAM_FX, type TeamKey } from './parts'
 import {
   blueprintsAt,
   buildingDraw,
@@ -34,6 +34,7 @@ type TickRef = MutableRefObject<number>
 
 const _a = new THREE.Vector3()
 const _b = new THREE.Vector3()
+const _mid = new THREE.Vector3()
 const _dir = new THREE.Vector3()
 const _side = new THREE.Vector3()
 const _cam = new THREE.Vector3()
@@ -50,6 +51,13 @@ function liveActor(p: number, entityId: number, tick: number) {
 
 const MAX_BEAMS = 32
 const BEAM_WIDTH = 1.5
+/**
+ * A beam keeps at least this width on screen: 1.5 units is under a pixel from the default RTS camera, where the
+ * contract's beam (healed players stand within about 64 units) read only when zoomed in.
+ */
+const BEAM_MIN_PX = 2
+/** Contract 0.25, raised: at 0.25 the thin quad barely tinted the ground. Still unlike HealBeam (no glow, no motion). */
+const BEAM_OPACITY = 0.4
 
 function useBeamGeometry() {
   const geometry = useMemo(() => {
@@ -64,7 +72,8 @@ function useBeamGeometry() {
 
 /**
  * Not HealBeam, which would make a dispenser with four players around it read like four medics: one camera-facing
- * quad 1.5 units wide per healed player, from the dispenser top to his chest (+41), TEAM_FX at 0.25, no animation.
+ * quad per healed player, from the dispenser top to his chest (+41), 1.5 units wide but at least BEAM_MIN_PX on
+ * screen, TEAM_FX at BEAM_OPACITY, no animation.
  */
 export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => {
   const x = useExtras()
@@ -73,7 +82,7 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
   const redMesh = useRef<THREE.Mesh>(null)
   const blueMesh = useRef<THREE.Mesh>(null)
 
-  useFrame(({ camera }) => {
+  useFrame(({ camera, size }) => {
     if (!x) return
     const tick = tickRef.current
     const tickF = tick + useInstance.getState().frameProgress
@@ -95,9 +104,12 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
         _b.copy(actor.group.position)
         _b.z += HEAL_BEAM_HEIGHT
         _dir.subVectors(_b, _a)
-        _side.addVectors(_a, _b).multiplyScalar(0.5).sub(_cam).cross(_dir)
+        _mid.addVectors(_a, _b).multiplyScalar(0.5)
+        _side.subVectors(_mid, _cam).cross(_dir)
         if (_side.lengthSq() < 1e-6) continue
-        _side.normalize().multiplyScalar(BEAM_WIDTH / 2)
+        const pxPerUnit = pxPerUnitAt(_mid, camera, size.height)
+        const width = pxPerUnit > 0 ? Math.max(BEAM_WIDTH, BEAM_MIN_PX / pxPerUnit) : BEAM_WIDTH
+        _side.normalize().multiplyScalar(width / 2)
         const o = counts[d.team] * 18
         const arr = pos.array as Float32Array
         // two triangles: a-s, a+s, b+s / a-s, b+s, b-s
@@ -122,8 +134,8 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
 
   return (
     <group name="dispenserBeams">
-      <mesh ref={redMesh} geometry={red} material={basic(TEAM_FX.red, 0.25)} frustumCulled={false} visible={false} />
-      <mesh ref={blueMesh} geometry={blue} material={basic(TEAM_FX.blue, 0.25)} frustumCulled={false} visible={false} />
+      <mesh ref={redMesh} geometry={red} material={basic(TEAM_FX.red, BEAM_OPACITY)} frustumCulled={false} visible={false} />
+      <mesh ref={blueMesh} geometry={blue} material={basic(TEAM_FX.blue, BEAM_OPACITY)} frustumCulled={false} visible={false} />
     </group>
   )
 })
@@ -131,8 +143,8 @@ export const DispenserBeams = React.memo(({ tickRef }: { tickRef: TickRef }) => 
 // ─── carry boxes ──────────────────────────────────────────────────────────────
 
 const CARRY_POOL = 6
-/** The carried building's glyph badge beside the box: 14 units up close, at least 24 px wide from afar. */
-const CARRY_BADGE = { size: 14, minPx: 24, maxScale: 10, side: 14, order: 21 }
+/** The carried building's glyph badge beside the box: 14 units, kept between 24 and 40 px wide on screen. */
+const CARRY_BADGE = { size: 14, minPx: 24, maxPx: 40, maxScale: 10, side: 14, order: 21 }
 const _right = new THREE.Vector3()
 const _cameraQuat = new THREE.Quaternion()
 
@@ -186,7 +198,7 @@ export const CarryBoxes = React.memo(({ tickRef }: { tickRef: TickRef }) => {
           material.needsUpdate = true
         }
         badge.position.copy(slot.position)
-        const scale = minScreenScale(badge, camera, size.height, CARRY_BADGE.size, CARRY_BADGE.minPx, CARRY_BADGE.maxScale)
+        const scale = screenScale(badge, camera, size.height, CARRY_BADGE.size, CARRY_BADGE.minPx, CARRY_BADGE.maxPx, CARRY_BADGE.maxScale)
         const half = (CARRY_BADGE.size * scale) / 2
         // beside the engineer from the camera's view, so it covers neither him nor his nameplate
         badge.position.addScaledVector(_right, CARRY_BADGE.side + half)
@@ -296,22 +308,33 @@ const BLAST_POOL = 6
 const DEBRIS = 8
 const GRAVITY = 800
 const FLASH_RADIUS = 40
+/** The fireball texture fades toward its rim, so the sprite spans this many radii for a visible radius of about 40. */
+const FLASH_SPAN = 2.5
+/** Smallest flash on screen (diameter, px), so a destroyed building registers from the default RTS camera. */
+const FLASH_MIN_PX = 48
 const SMALL_SCALE = 0.35
 
 /**
- * `destroyed` and `detonated` events, age < 20 ticks: a fading flash sphere r 40 plus 8 boxes (4 units) flying out
+ * `destroyed` and `detonated` events, age < 20 ticks: a fading flash of radius 40 plus 8 boxes (4 units) flying out
  * under gravity 800 with directions from hash(instance, i). Sappers get a small pop; a building destroyed while
- * carried blows up at its engineer.
+ * carried blows up at its engineer. The flash is an additive fireball sprite (contract 1.5: glows are additive, no
+ * depth write): a hot core in the flash colour with an orange rim, so it reads as a burst rather than as a flat disc.
  */
 export const Destructions = React.memo(({ tickRef }: { tickRef: TickRef }) => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
   // the flash fades per blast, so each slot owns its material
-  // normal blending keeps the warm colour: additive saturates to white over the bright map ground
-  const flashMaterials = useMemo(() => Array.from({ length: BLAST_POOL }, () => basic(FLASH, 0.8).clone()), [])
+  const flashMaterials = useMemo(
+    () =>
+      Array.from(
+        { length: BLAST_POOL },
+        () => new THREE.SpriteMaterial({ map: getFlashTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
+      ),
+    []
+  )
   useEffect(() => () => flashMaterials.forEach(m => m.dispose()), [flashMaterials])
 
-  useFrame(() => {
+  useFrame(({ camera, size }) => {
     if (!x) return
     const tickF = tickRef.current + useInstance.getState().frameProgress
     const dt = x.meta.intervalPerTick
@@ -323,8 +346,12 @@ export const Destructions = React.memo(({ tickRef }: { tickRef: TickRef }) => {
       const scale = e.small ? SMALL_SCALE : 1
       slot.position.copy(e.pos)
       const [flash, ...debris] = slot.children as THREE.Mesh[]
-      flash.scale.setScalar(FLASH_RADIUS * scale * (0.55 + 0.45 * Math.min(1, a * 3)))
-      flashMaterials[used].opacity = 0.85 * (1 - a)
+      // it grows over the first third of the blast and fades over all of it
+      const pxPerUnit = pxPerUnitAt(e.pos, camera, size.height)
+      const minDiameter = pxPerUnit > 0 ? (FLASH_MIN_PX * Math.max(0.5, scale)) / pxPerUnit : 0
+      const diameter = Math.max(minDiameter, FLASH_SPAN * FLASH_RADIUS * scale) * (0.55 + 0.45 * Math.min(1, a * 3))
+      flash.scale.set(diameter, diameter, 1)
+      flashMaterials[used].opacity = 1 - a
       const team: TeamKey = teamName(e.team) ?? 'red'
       const t = e.age * dt
       debris.forEach((box, i) => {
@@ -350,7 +377,7 @@ export const Destructions = React.memo(({ tickRef }: { tickRef: TickRef }) => {
     <group name="destructions">
       {Array.from({ length: BLAST_POOL }, (_, i) => (
         <group key={i} ref={g => (slots.current[i] = g)} visible={false}>
-          <mesh geometry={SPHERE} material={flashMaterials[i]} />
+          <sprite name="flash" material={flashMaterials[i]} />
           {Array.from({ length: DEBRIS }, (_, k) => (
             <mesh key={k} geometry={BOX} material={solid(METAL)} />
           ))}

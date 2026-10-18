@@ -15,9 +15,17 @@
 //
 // Yaw wraps, so the fit is circular: for each sign and range on a grid, the offset is the circular mean of the
 // residuals, and the pair with the least sum of squared wrapped residuals wins (R^2 against the circular variance
-// of the targets). Pitch is an ordinary least-squares line. It then prints how often the barrel direction from the
-// fitted constants lies within 15 degrees of the enemy centre, and the same for the constants in
-// src/highlander/buildings/sentryAim.ts. With --write it rewrites the calibration block of that file.
+// of the targets). Pitch is an ordinary least-squares line. The fit uses the firing samples (see below); pass
+// --fit-on state to fit on every attacking sample instead.
+//
+// It then prints how often the drawn barrel lies within 15 degrees of the enemy centre (contract F2 acceptance). The
+// barrel is scored exactly as the layer draws it: sentryAim.poseAimAt, the pose entry in effect interpolated toward
+// the next one, with the fitted constants (and with the constants in src/highlander/buildings/sentryAim.ts). The
+// figure is printed for the contract's sample set (every state sample with objState 2 and enemy.kind 1), for the
+// set without building, carried, upgrading, redeploying and wrangled entries (a wrangled turret follows the
+// engineer's laser, not its enemy), without the acquisition tick, and for the firing samples. The raw pose entry
+// (no interpolation) is kept as `rawPose` for reference. With --write it rewrites the calibration block of
+// sentryAim.ts.
 //
 // Base positions come from the committed base parser (src/libs/parser2) in a child process (this file with
 // --child), exactly as scripts/hl/base-values.mjs reads them (same boundary override shift), because parser2's wasm
@@ -122,9 +130,10 @@ async function main() {
   const ITEMS = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'src/constants/items.json'), 'utf8'))
   const wearableDefs = Object.keys(ITEMS).filter(k => ITEMS[k].c.startsWith('tf_wearable')).map(Number).sort((a, b) => a - b)
 
-  const samples = [] // state samples: { demo, instance, tick, enemy, firing, poseYaw, posePitch, relYaw, pitch, dir, buildYaw, ... }
-  const tickSamples = [] // every attacking tick (diagnostics)
+  const contractSamples = [] // every attacking state sample: { demo, instance, tick, enemy, firing, skip, poseYaw, posePitch, relYaw, pitch, dir, buildYaw, ... }
+  const tickSamples = [] // every attacking tick outside the skipped states (diagnostics)
   const perDemo = []
+  const extrasOf = new Map() // demo -> hydrated extras, so the drawn aim can be scored after the fit
   const SKIP = BLD.BUILDING | BLD.DORMANT | BLD.UPGRADING | BLD.CARRY_DEPLOY | BLD.WRANGLED
 
   for (const demoPath of positional) {
@@ -162,9 +171,11 @@ async function main() {
       process.exit(1)
     }
     const x = hydrate(raw, base.sceneOrigin)
+    extrasOf.set(demo, x)
     const b = x.buildings
     const st = b.state
     let demoSamples = 0
+    let demoContractSamples = 0
     let sentries = 0
     const kinds = {}
     for (let j = 0; j < b.count; j++) {
@@ -172,9 +183,13 @@ async function main() {
       sentries++
       const end = Math.min(b.deleted[j] === 0xffffffff ? x.meta.ticks : b.deleted[j], x.meta.ticks)
       for (let i = b.enemy.offsets[j]; i < b.enemy.offsets[j + 1]; i++) kinds[b.enemy.kind[i]] = (kinds[b.enemy.kind[i]] ?? 0) + 1
-      /** The sample at `tick` (state entry `si`), or null when the sentry is not attacking a player there. */
+      /**
+       * The sample at `tick` (state entry `si`), or null when the sentry is not attacking a player there. `skip`
+       * marks the building, carried, upgrading, redeploying and wrangled entries.
+       */
       const sampleAt = (tick, si, firing) => {
-        if (si < 0 || st.objState[si] !== SENTRY_STATE.ATTACKING || (st.flags[si] & SKIP) !== 0) return null
+        if (si < 0 || st.objState[si] !== SENTRY_STATE.ATTACKING) return null
+        const skip = (st.flags[si] & SKIP) !== 0
         const ei = lib.trackIndexAt(b.enemy, j, tick)
         if (ei < 0 || b.enemy.kind[ei] !== ENEMY.PLAYER) return null
         const p = b.enemy.index[ei]
@@ -197,6 +212,7 @@ async function main() {
           tick,
           enemy: p,
           firing,
+          skip,
           since: tick - b.enemy.ticks[ei], // ticks since this enemy entry started (turret slew after acquisition)
           poseYaw: b.pose.yaw[pi] / 255,
           posePitch: b.pose.pitch[pi] / 255,
@@ -216,20 +232,23 @@ async function main() {
         const firing = si > st.offsets[j] && (st.shells[si] < st.shells[si - 1] || st.rockets[si] < st.rockets[si - 1])
         const s = sampleAt(st.ticks[si], si, firing)
         if (s) {
-          samples.push(s)
-          demoSamples++
+          contractSamples.push(s)
+          demoContractSamples++
+          if (!s.skip) demoSamples++
         }
       }
       // Every attacking tick, for the diagnostics (includes the slew after each acquisition)
       for (let tick = b.created[j]; tick < end; tick++) {
         const s = sampleAt(tick, lib.trackIndexAt(st, j, tick), false)
-        if (s) tickSamples.push(s)
+        if (s && !s.skip) tickSamples.push(s)
       }
     }
-    perDemo.push({ demo, map: base.map, sentries, samples: demoSamples, enemyKinds: kinds })
-    log(`[calibrate] ${demo}: ${sentries} sentries, ${demoSamples} attacking samples, enemy kinds ${JSON.stringify(kinds)}`)
+    perDemo.push({ demo, map: base.map, sentries, samples: demoSamples, contractSamples: demoContractSamples, enemyKinds: kinds })
+    log(`[calibrate] ${demo}: ${sentries} sentries, ${demoSamples} attacking samples (${demoContractSamples} with wrangled entries), enemy kinds ${JSON.stringify(kinds)}`)
   }
 
+  // the calibration set: attacking samples outside the building, carried, upgrading, redeploying and wrangled states
+  const samples = contractSamples.filter(s => !s.skip)
   if (samples.length === 0) {
     console.error('[calibrate] no attacking samples')
     process.exit(1)
@@ -286,13 +305,23 @@ async function main() {
   const fitted = fit.constants
   const r2Yaw = fit.r2.yaw, r2Pitch = fit.r2.pitch
 
-  // ── accuracy: barrel direction against the enemy centre
-  const within = (constants, set = samples) => {
+  // ── accuracy: barrel direction against the enemy centre. 'drawn' scores the aim the layer draws at the sample's
+  // tick (sentryAim.poseAimAt: the pose entry in effect, interpolated toward the next one); 'raw' the pose entry
+  // in effect alone.
+  const within = (constants, set = samples, mode = 'drawn') => {
     let hit = 0
     const errors = []
     for (const s of set) {
-      const relYaw = constants.YAW_SIGN * (s.poseYaw * constants.YAW_RANGE - constants.YAW_RANGE / 2) + (constants.YAW_OFFSET ?? 0)
-      const pitch = constants.PITCH_SIGN * (s.posePitch * constants.PITCH_RANGE - constants.PITCH_RANGE / 2) + (constants.PITCH_OFFSET ?? 0)
+      let relYaw, pitch
+      if (mode === 'drawn') {
+        const drawn = aim.poseAimAt(extrasOf.get(s.demo), s.instance, s.tick, constants)
+        if (!drawn) continue
+        relYaw = drawn.relYaw
+        pitch = drawn.pitch
+      } else {
+        relYaw = constants.YAW_SIGN * (s.poseYaw * constants.YAW_RANGE - constants.YAW_RANGE / 2) + (constants.YAW_OFFSET ?? 0)
+        pitch = constants.PITCH_SIGN * (s.posePitch * constants.PITCH_RANGE - constants.PITCH_RANGE / 2) + (constants.PITCH_OFFSET ?? 0)
+      }
       const yaw = ((s.buildYaw + relYaw) * Math.PI) / 180
       const pr = (pitch * Math.PI) / 180
       const bx = Math.cos(pr) * Math.cos(yaw), by = Math.cos(pr) * Math.sin(yaw), bz = -Math.sin(pr)
@@ -302,8 +331,8 @@ async function main() {
       if (err <= 15) hit++
     }
     errors.sort((a, b) => a - b)
-    if (set.length === 0) return { samples: 0 }
-    return { samples: set.length, within15: round(hit / set.length, 4), medianDeg: round(errors[errors.length >> 1], 2), p90Deg: round(errors[Math.floor(errors.length * 0.9)], 2) }
+    if (errors.length === 0) return { samples: 0 }
+    return { samples: errors.length, within15: round(hit / errors.length, 4), medianDeg: round(errors[errors.length >> 1], 2), p90Deg: round(errors[Math.floor(errors.length * 0.9)], 2) }
   }
   const current = {
     YAW_RANGE: aim.YAW_RANGE, YAW_SIGN: aim.YAW_SIGN, YAW_OFFSET: aim.YAW_OFFSET,
@@ -315,31 +344,46 @@ async function main() {
   for (const [name, lo, hi] of [['0-9', 0, 10], ['10-32', 10, 33], ['33-65', 33, 66], ['66+', 66, Infinity]]) {
     slew[name] = within(fitted, tickSamples.filter(s => s.since >= lo && s.since < hi))
   }
+  const noAcquisition = samples.filter(s => s.firing || s.since > 0)
   const report = {
     demos: perDemo,
     samples: samples.length,
+    contractSamples: contractSamples.length,
     firingSamples: firing.length,
     fitOn: fitSet === firing ? 'firing' : 'state',
     fitted,
     r2: fit.r2,
     rmsDeg: fit.rmsDeg,
     fitOnEveryStateSample: fitOf(samples),
-    accuracyFitted: within(fitted),
-    accuracyFittedFiring: within(fitted, firing),
-    accuracyContractDefaults: within(contractDefaults),
-    accuracyContractDefaultsFiring: within(contractDefaults, firing),
-    accuracyCurrentFile: within(current),
+    // Contract F2 acceptance (at least 80 %): the drawn barrel within 15 degrees of the enemy centre
+    acceptance: {
+      metric: 'drawn barrel (sentryAim.poseAimAt, the interpolated pose the layer draws) within 15 deg of the enemy base position + 41, at each attacking state sample',
+      contractSamples: within(fitted, contractSamples),
+      withoutSkippedStates: within(fitted, samples),
+      withoutAcquisitionTick: within(fitted, noAcquisition),
+      firingSamples: within(fitted, firing),
+      currentFile: { contractSamples: within(current, contractSamples), withoutSkippedStates: within(current, samples) },
+      contractDefaults: { contractSamples: within(contractDefaults, contractSamples), withoutSkippedStates: within(contractDefaults, samples) },
+    },
+    // the same figures from the raw pose entry in effect (no interpolation), as the earlier runs printed them
+    rawPose: {
+      contractSamples: within(fitted, contractSamples, 'raw'),
+      withoutSkippedStates: within(fitted, samples, 'raw'),
+      withoutAcquisitionTick: within(fitted, noAcquisition, 'raw'),
+      firingSamples: within(fitted, firing, 'raw'),
+    },
     // Why attacking state samples miss: a sentry pushes a state entry when it acquires or switches targets (its
-    // m_iState or m_hEnemy changes) and its turret then needs up to about half a second to turn onto the new
-    // enemy (CObjectSentrygun::MoveTurret). The pose shows that slew truthfully, so those samples are off target
-    // by design; the firing samples (the turret is within 10 degrees of its goal) measure the mapping itself.
+    // m_iState or m_hEnemy changes), CObjectSentrygun::FoundTarget sets the enemy, and the turret starts to turn on
+    // a later think (MoveTurret) and needs up to about half a second to reach the new enemy. The pose shows that
+    // slew truthfully, so those samples are off target by design; the firing samples (the turret is within 10
+    // degrees of its goal, CObjectSentrygun::Attack) measure the mapping itself. Drawn aim.
     accuracyByKind: {
       firing: within(fitted, firing),
       acquisitionTick: within(fitted, samples.filter(s => !s.firing && s.since === 0)),
       slewWindow1to32: within(fitted, samples.filter(s => !s.firing && s.since > 0 && s.since < 33)),
       other: within(fitted, samples.filter(s => !s.firing && s.since >= 33)),
+      wrangled: within(fitted, contractSamples.filter(s => s.skip)),
     },
-    accuracyExcludingAcquisitionTick: within(fitted, samples.filter(s => s.firing || s.since > 0)),
     everyAttackingTick: { all: within(fitted, tickSamples), bySinceAcquired: slew },
     aimAtEnemy: r2Yaw < 0.9 || r2Pitch < 0.9,
   }
@@ -351,12 +395,13 @@ async function main() {
   if (flags.write) {
     const file = path.join(REPO_ROOT, 'src/highlander/buildings/sentryAim.ts')
     const src = fs.readFileSync(file, 'utf8')
+    const acc = report.acceptance
     const block = [
       '// <calibration> (written by scripts/hl/calibrate-sentry.mjs --write)',
       `// demos: ${perDemo.map(d => `${d.demo} (${d.map}, ${d.sentries} sentries, ${d.samples} samples)`).join(', ')}`,
       `// fit on ${report.fitOn} samples: ${fitSet.length} of ${samples.length} attacking state samples; R^2 yaw ${report.r2.yaw}, pitch ${report.r2.pitch}; rms yaw ${report.rmsDeg.yaw} deg, pitch ${report.rmsDeg.pitch} deg`,
-      `// barrel within 15 deg of the enemy centre: ${(report.accuracyFitted.within15 * 100).toFixed(1)} % of state samples (median ${report.accuracyFitted.medianDeg} deg, p90 ${report.accuracyFitted.p90Deg} deg), ${(report.accuracyFittedFiring.within15 * 100).toFixed(1)} % of the ${firing.length} firing samples`,
-      `// misses are turret slew: ${report.accuracyByKind.acquisitionTick.samples} samples sit on the tick a target is acquired (${pct(report.accuracyByKind.acquisitionTick.within15)} within), ${report.accuracyByKind.slewWindow1to32.samples} in the 32 ticks after it (${pct(report.accuracyByKind.slewWindow1to32.within15)}); without the acquisition tick ${pct(report.accuracyExcludingAcquisitionTick.within15)} of ${report.accuracyExcludingAcquisitionTick.samples}`,
+      `// drawn barrel within 15 deg of the enemy centre: ${pct(acc.withoutSkippedStates.within15)} of the ${acc.withoutSkippedStates.samples} attacking samples (median ${acc.withoutSkippedStates.medianDeg} deg, p90 ${acc.withoutSkippedStates.p90Deg} deg), ${pct(acc.contractSamples.within15)} of all ${acc.contractSamples.samples} with the wrangled ones, ${pct(acc.firingSamples.within15)} of the ${acc.firingSamples.samples} firing samples`,
+      `// misses are turret slew: ${report.accuracyByKind.acquisitionTick.samples} samples sit on the tick a target is acquired (${pct(report.accuracyByKind.acquisitionTick.within15)} within), ${report.accuracyByKind.slewWindow1to32.samples} in the 32 ticks after it (${pct(report.accuracyByKind.slewWindow1to32.within15)}); without the acquisition tick ${pct(acc.withoutAcquisitionTick.within15)} of ${acc.withoutAcquisitionTick.samples}`,
       `export const YAW_RANGE = ${fitted.YAW_RANGE}`,
       `export const YAW_SIGN = ${fitted.YAW_SIGN}`,
       `export const YAW_OFFSET = ${fitted.YAW_OFFSET}`,

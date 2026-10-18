@@ -8,7 +8,7 @@ import type { HighlanderExtras } from '@highlander/extras/types'
 import * as THREE from 'three'
 
 import { buildingAliveAt, buildingInstancesAt, rechargeLeftAt } from './model'
-import { MINI_SCALE, sentryAimAt, sentryPivotHeight, yawOfQuat, type SentryAim } from './sentryAim'
+import { MINI_SCALE, sentryAimAt, sentryPivotHeight, yawOfQuat, type EnemyCentre, type SentryAim } from './sentryAim'
 
 // ─── placeholder dimensions (contract section 5 F2 table, Hammer units) ────────
 
@@ -264,6 +264,71 @@ export function muzzleRow(x: HighlanderExtras, j: number, tickF: number): number
   return age >= 0 && age < MUZZLE_TICKS ? k : -1
 }
 
+/** The barrel (0 or 1) the k-th tracer row of a sentry flashes: L2 and L3 alternate their twin barrels by row parity; L1 and mini sentries have one. */
+export function barrelOfRow(level: number, mini: boolean, k: number): number {
+  return level >= 2 && !mini ? k % 2 : 0
+}
+
+/**
+ * The barrel a `tempents.tracers` row flashes (its parity among its sentry's rows at L2 and L3, as the muzzle flash
+ * alternates), or -1 when the row has no sentry. With sentryMuzzleAt it gives a sentry tracer's start point.
+ */
+export function tracerBarrel(x: HighlanderExtras, row: number): number {
+  const tr = x.tempents.tracers
+  const j = tr.sentry[row]
+  if (j === undefined || j === 65535) return -1
+  const rows = buildingIndex(x).tracers.get(j)
+  if (!rows) return -1
+  // the rows are in tick order: find the first one at the tracer's tick, then scan to the row itself
+  const tick = tr.tick[row]
+  let lo = 0, hi = rows.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (tr.tick[rows[mid]] < tick) lo = mid + 1
+    else hi = mid
+  }
+  let k = lo
+  while (k < rows.length && rows[k] !== row) k++
+  if (k >= rows.length) return -1
+  const si = trackIndexAt(x.buildings.state, j, tick)
+  const level = si < 0 ? 1 : Math.max(1, Math.min(3, x.buildings.state.level[si]))
+  return barrelOfRow(level, x.buildings.mini[j] !== 0, k)
+}
+
+const _mq = new THREE.Quaternion()
+
+/**
+ * The barrel tip of sentry j at tickF in scene space, where BuildingObject draws the muzzle flash: the turret pivot
+ * above the building's origin, turned by the build yaw plus the drawn aim (sentryAimAt), then the barrel's reach and
+ * side offset. `barrel` 0 or 1 picks an L2/L3 twin barrel (tracerBarrel gives a tracer row's); L1 and mini sentries
+ * have one. Writes `out` and returns true; returns false while the sentry is not drawn (carried, under construction,
+ * not alive, map-placed or without a position). Pass the layer's `enemyCentre` only in AIM_AT_ENEMY mode.
+ */
+export function sentryMuzzleAt(x: HighlanderExtras, j: number, tickF: number, barrel: number, out: THREE.Vector3, enemyCentre?: EnemyCentre): boolean {
+  const b = x.buildings
+  if (j < 0 || j >= b.count || b.type[j] !== BUILDING_TYPE.SENTRY || b.mapPlaced[j]) return false
+  const tick = Math.floor(tickF)
+  if (!buildingAliveAt(x, j, tick)) return false
+  const si = trackIndexAt(b.state, j, tick)
+  if (si >= 0 && (b.state.flags[si] & (BLD.DORMANT | BLD.BUILDING)) !== 0) return false
+  if (!xformAt(b.xform, j, tickF, out, _mq, x.meta.snapshotInterval || 1)) return false
+  const mini = b.mini[j] !== 0
+  const level = mini ? 1 : si < 0 ? 1 : Math.max(1, Math.min(3, b.state.level[si]))
+  const buildYaw = yawOfQuat(_mq.x, _mq.y, _mq.z, _mq.w)
+  const pivot = sentryPivotHeight(level, mini)
+  const aim = sentryAimAt(x, j, tickF, buildYaw, { x: out.x, y: out.y, z: out.z + pivot }, enemyCentre)
+  const s = mini ? MINI_SCALE : 1
+  const reach = (SENTRY.turret[level][0] / 2 + SENTRY.barrel[level].length) * s
+  const side = (SENTRY.barrel[level].offsets[barrel] ?? 0) * s
+  const yaw = ((buildYaw + aim.relYaw) * Math.PI) / 180
+  const pitch = (aim.pitch * Math.PI) / 180 // Source pitch, positive down
+  const along = reach * Math.cos(pitch)
+  out.x += along * Math.cos(yaw) - side * Math.sin(yaw)
+  out.y += along * Math.sin(yaw) + side * Math.cos(yaw)
+  out.z += pivot - reach * Math.sin(pitch)
+  return true
+}
+
 /** Teleporter blade angle in degrees: the integral of the blade speed over the state entries up to tickF. */
 export function teleporterSpin(x: HighlanderExtras, j: number, tickF: number): number {
   const s = x.buildings.state
@@ -287,7 +352,7 @@ export function buildingDraw(
   x: HighlanderExtras,
   j: number,
   tickF: number,
-  opts: { rangeRing?: boolean; enemyCentre?: (kind: number, index: number) => { x: number; y: number; z: number } | null } = {}
+  opts: { rangeRing?: boolean; enemyCentre?: EnemyCentre } = {}
 ): BuildingDraw {
   const b = x.buildings
   const s = b.state
@@ -333,7 +398,7 @@ export function buildingDraw(
     shellsFrac = si < 0 ? 0 : Math.min(1, s.shells[si] / (level === 1 ? 150 : 200))
     rocketsFrac = si < 0 || level < 3 ? 0 : Math.min(1, s.rockets[si] / 20)
     const row = building ? -1 : muzzleRow(x, j, tickF)
-    muzzle = row < 0 ? -1 : level >= 2 && !mini ? row % 2 : 0
+    muzzle = row < 0 ? -1 : barrelOfRow(level, mini, row)
   }
 
   let height = 0, metalFrac = 0, screenOn = false

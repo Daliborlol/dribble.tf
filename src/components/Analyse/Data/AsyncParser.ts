@@ -408,8 +408,22 @@ export class AsyncParser {
     if (this.projectileCacheReleased) return 0
     const pc = this.projectileCache
     let bytes = 0
+    const freed = new Set<ArrayBufferLike>()
     for (const cache of [pc.positionCache, pc.rotationCache, pc.teamNumberCache, pc.typeCache]) {
-      for (const array of cache.data) bytes += array?.byteLength ?? 0
+      for (const array of cache.data) {
+        if (!array) continue
+        bytes += array.byteLength
+        // Free the backing store now instead of at a later garbage collection (during playback): ArrayBuffer
+        // transfer(0) detaches it. Every slot array is a whole buffer of its own (the worker transferred them).
+        const buffer = array.buffer as ArrayBufferLike & { transfer?: (length?: number) => ArrayBuffer }
+        if (freed.has(buffer) || array.byteOffset !== 0 || array.byteLength !== buffer.byteLength) continue
+        freed.add(buffer)
+        try {
+          buffer.transfer?.(0)
+        } catch {
+          // not transferable (an older browser or a shared buffer): dropping the reference below is enough
+        }
+      }
       cache.data = []
     }
     this.projectileReplacement = replacement

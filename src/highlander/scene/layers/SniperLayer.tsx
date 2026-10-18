@@ -6,7 +6,7 @@
 // through walls. A thin beam joins the owner's eye to the dot (opacity 0.3, 0.5 for the wrangler). The beam is a
 // fixed-pixel-width line, so it stays readable from an RTS camera far away without getting fat up close.
 
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
@@ -15,6 +15,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 
 import { useInstance, useStore } from '@zus/store'
 import { TEAM_FX, teamKey } from '@highlander/constants'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { hasLocalTables, sniperChargeAt } from '@highlander/extras/getters'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
@@ -102,8 +103,11 @@ function spriteMaterial(color: string, opacity: number, additive: boolean): THRE
 
 const _eye = new THREE.Vector3()
 const _cam = new THREE.Vector3()
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
-export const SniperLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+// The dots and tickF come from the store in useFrame (frameTime), not from the renderTick prop: the prop reaches
+// React a frame after DemoViewer advances playback.tick, so prop + frameProgress stepped back at tick boundaries.
+export const SniperLayer = React.memo((_props: { renderTick: number }) => {
   const extras = useExtras()
   const dotsOn = useHlSetting<boolean>('sniper.dots')
   const beamsOn = useHlSetting<boolean>('sniper.beams')
@@ -141,11 +145,21 @@ export const SniperLayer = React.memo(({ renderTick }: { renderTick: number }) =
     [slots]
   )
 
-  const dots = useMemo(() => (extras && dotsOn && extras.meta.available.dots ? dotsAt(extras, renderTick) : []), [extras, dotsOn, renderTick])
+  // Dots alive at the drawn tick, recomputed only when the tick (or the extras, or the setting) changes
+  const dotsCache = useRef<{ x: HighlanderExtras | undefined; on: boolean; tick: number; dots: DotView[] }>({ x: undefined, on: false, tick: -1, dots: [] })
 
   useFrame(state => {
     const x = extras
-    const tickF = renderTick + useInstance.getState().frameProgress
+    const { tick, tickF } = frameTime(_time)
+    const on = !!(x && dotsOn && x.meta.available.dots)
+    const cache = dotsCache.current
+    if (cache.x !== x || cache.on !== on || cache.tick !== tick) {
+      cache.x = x
+      cache.on = on
+      cache.tick = tick
+      cache.dots = on && x ? dotsAt(x, tick) : []
+    }
+    const dots = cache.dots
     const demo = useInstance.getState().parsedDemo
     // Whose eyes the scene renders from: his own beam would be a line along the view, so it is skipped
     const camera = state.camera
@@ -182,9 +196,9 @@ export const SniperLayer = React.memo(({ renderTick }: { renderTick: number }) =
         slot.beam.visible = false
         continue
       }
-      const classId = demo.playerCache.metaCache.getMeta(dot.owner, renderTick).classId
+      const classId = demo.playerCache.metaCache.getMeta(dot.owner, tick).classId
       _eye.copy(actor.group.position)
-      _eye.z += getEyeHeight(ownerEntity, classId, renderTick)
+      _eye.z += getEyeHeight(ownerEntity, classId, tick)
       const p = slot.beamPositions
       p[0] = _eye.x; p[1] = _eye.y; p[2] = _eye.z
       p[3] = dot.x; p[4] = dot.y; p[5] = dot.z

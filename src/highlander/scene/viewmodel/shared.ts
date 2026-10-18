@@ -13,7 +13,9 @@ export interface VmLive {
   /** Viewmodel FOV scale k of the last frame. */
   scale: number
   flip: boolean
+  /** Render tick and tick + frameProgress the viewmodel was posed at in the last frame. */
   tick: number
+  tickF: number
 }
 
 export const vmShared: { live: VmLive | null; debug: { flip: boolean | null; def: number | null; noDepthClear: boolean; push: number }; beamOrigin: THREE.Vector3 } = {

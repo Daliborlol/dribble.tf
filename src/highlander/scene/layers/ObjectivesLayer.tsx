@@ -14,7 +14,10 @@
 //               TEAM_FX, angle = progress x 2 pi; locked (m_bCPLocked): a #3a3a3a disc; a dashed ring whenever
 //               the HUD icon shows a padlock (pointLockedAt: also a captured attack/defend point nobody can retake)
 //
-// Everything is placed in useFrame from (extras, renderTick + frameProgress); nothing accumulates across frames.
+// Everything is placed in useFrame from (extras, renderTick + frameProgress); nothing accumulates across frames. The
+// parts read the tick and frameProgress together from the store (frameTime in combat/time.ts), not from the renderTick
+// prop: the prop reaches React a frame after DemoViewer advances playback.tick, so prop + frameProgress stepped back
+// at every tick boundary.
 
 import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -22,6 +25,7 @@ import { useFrame } from '@react-three/fiber'
 
 import { getState, useInstance } from '@zus/store'
 import { DARK_METAL, METAL, NEUTRAL, TEAM_DARK, TEAM_FX, TEAM_TRAIL } from '@highlander/constants'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { CPF } from '@highlander/extras/enums'
 import { capProgressAt } from '@highlander/extras/getters'
@@ -94,7 +98,7 @@ const glowMaterial = (color: string, opacity = 1) =>
 
 // ─── layer ─────────────────────────────────────────────────────────────────────
 
-export const ObjectivesLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+export const ObjectivesLayer = React.memo((_props: { renderTick: number }) => {
   const x = useExtras()
   const on = useHlSetting<boolean>('hud.objective')
   const meta = useDemoMapMeta()
@@ -104,12 +108,12 @@ export const ObjectivesLayer = React.memo(({ renderTick }: { renderTick: number 
   const origin = demo.world.boundaryMin
   return (
     <group name="hl-objectives">
-      {x.meta.available.carts && (mode === 'payload' || mode === 'tow') && <CartObject renderTick={renderTick} mode={mode} meta={meta} />}
+      {x.meta.available.carts && (mode === 'payload' || mode === 'tow') && <CartObject mode={mode} meta={meta} />}
       {meta && (mode === 'payload' || mode === 'tow') && meta.payload.length > 0 && (
-        <PayloadTrack renderTick={renderTick} meta={meta} mode={mode} origin={origin} />
+        <PayloadTrack meta={meta} mode={mode} origin={origin} />
       )}
       {(mode === 'koth' || mode === 'cp') && x.meta.available.objectiveResource && (
-        <ControlPoints x={x} meta={meta} origin={origin} renderTick={renderTick} />
+        <ControlPoints x={x} meta={meta} origin={origin} />
       )}
     </group>
   )
@@ -119,6 +123,7 @@ export const ObjectivesLayer = React.memo(({ renderTick }: { renderTick: number 
 
 const _pos = new THREE.Vector3()
 const _quat = new THREE.Quaternion()
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
 interface CartPose { found: boolean; pos: THREE.Vector3; quat: THREE.Quaternion; speed: number; cappers: number; source: 'prop' | 'train' | 'none'; mover: number }
 
@@ -159,7 +164,7 @@ function pushZoneRadius(meta: MapMeta | null): number {
   return r > 8 ? r : 100
 }
 
-const CartObject = ({ renderTick, mode, meta }: { renderTick: number; mode: ObjectiveMode; meta: MapMeta | null }) => {
+const CartObject = ({ mode, meta }: { mode: ObjectiveMode; meta: MapMeta | null }) => {
   const group = useRef<THREE.Group>(null)
   const ring = useRef<THREE.Mesh>(null)
   const lightA = useRef<THREE.Group>(null)
@@ -185,7 +190,7 @@ const CartObject = ({ renderTick, mode, meta }: { renderTick: number; mode: Obje
     const g = group.current
     const x = getReadyExtras()
     if (!g || !x) return
-    const tickF = renderTick + useInstance.getState().frameProgress
+    const { tickF } = frameTime(_time)
     const pose = cartPoseAt(x, tickF, _pos, _quat)
     g.visible = pose.found
     if (ring.current) ring.current.visible = pose.found
@@ -333,7 +338,7 @@ function pointAtDistance(pts: THREE.Vector3[], cum: Float32Array, d: number): TH
   return pts[lo - 1].clone().lerp(pts[lo], b > a ? (d - a) / (b - a) : 0)
 }
 
-const PayloadTrack = ({ renderTick, meta, mode, origin }: { renderTick: number; meta: MapMeta; mode: ObjectiveMode; origin: { x: number; y: number; z: number } }) => {
+const PayloadTrack = ({ meta, mode, origin }: { meta: MapMeta; mode: ObjectiveMode; origin: { x: number; y: number; z: number } }) => {
   const x = useExtras()
   const track = useMemo(() => (x ? buildTrack(x, meta, origin) : null), [x, meta, origin])
   const materials = useMemo(
@@ -358,7 +363,7 @@ const PayloadTrack = ({ renderTick, meta, mode, origin }: { renderTick: number; 
   useFrame(() => {
     const x = getReadyExtras()
     if (!track || !x) return
-    const tick = renderTick
+    const { tick } = frameTime(_time)
     const quads = track.samples - 1
     let k = 0
     if (mode === 'payload') {
@@ -436,7 +441,7 @@ function pointSurfaceZ(pos: THREE.Vector3): number {
   return best
 }
 
-const ControlPoints = ({ x, meta, origin, renderTick }: { x: HighlanderExtras; meta: MapMeta | null; origin: { x: number; y: number; z: number }; renderTick: number }) => {
+const ControlPoints = ({ x, meta, origin }: { x: HighlanderExtras; meta: MapMeta | null; origin: { x: number; y: number; z: number } }) => {
   // re-measure the surface when the map (re)loads
   const mapState = useInstance(s => s.mapStatus.state)
   const points = useMemo(() => {
@@ -453,13 +458,13 @@ const ControlPoints = ({ x, meta, origin, renderTick }: { x: HighlanderExtras; m
   return (
     <group name="hl-control-points">
       {points.map(p => (
-        <ControlPointDisc key={p.index} index={p.index} pos={p.pos} renderTick={renderTick} />
+        <ControlPointDisc key={p.index} index={p.index} pos={p.pos} />
       ))}
     </group>
   )
 }
 
-const ControlPointDisc = ({ index, pos, renderTick }: { index: number; pos: THREE.Vector3; renderTick: number }) => {
+const ControlPointDisc = ({ index, pos }: { index: number; pos: THREE.Vector3 }) => {
   const arc = useRef<THREE.Mesh>(null)
   const dashed = useRef<THREE.Mesh>(null)
   const materials = useMemo(
@@ -482,8 +487,7 @@ const ControlPointDisc = ({ index, pos, renderTick }: { index: number; pos: THRE
   useFrame(() => {
     const x = getReadyExtras()
     if (!x) return
-    const tickF = renderTick + useInstance.getState().frameProgress
-    const tick = Math.floor(tickF)
+    const { tick, tickF } = frameTime(_time)
     const st = x.objectives.cp.state
     const e = trackIndexAt(st, index, tick)
     const owner = e >= 0 ? st.owner[e] : 0

@@ -11,6 +11,7 @@ import type * as THREE from 'three'
 
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { getState, useInstance } from '@zus/store'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import type { HighlanderExtras } from '@highlander/extras/types'
 
 import { readFxSettings, type FxSettings } from './fxSettings'
@@ -19,7 +20,11 @@ import { currentPovSubject, povCameraOwnerEntityId, povInfoOf, type PovInfo } fr
 export interface FxFrameContext {
   x: HighlanderExtras
   demo: AsyncParser
-  /** renderTick and renderTick + frameProgress (frameProgress is 0 while paused) */
+  /**
+   * Render tick and tick + frameProgress of the frame, both read from the store (frameTime in combat/time.ts):
+   * frameProgress counts only while playing with scene.interpolateFrames on. The renderTick prop would lag
+   * playback.tick by a frame and step back at every tick boundary.
+   */
   tick: number
   tickF: number
   settings: FxSettings
@@ -38,18 +43,20 @@ export const heldFxFrameContexts = () => heldContexts
 
 type Settings = ReturnType<typeof getState>['settings']
 
+const _time: FrameTime = { tick: 0, tickF: 0 }
+
 export class FxFrameCache {
   private ctx: FxFrameContext | null = null
   // What `ctx` was built from. povSubjectAt is a pure function of (extras, demo, focused entity, tick, pov
   // settings), and povCameraOwnerEntityId reads the controls mode, the focused object and the camera override.
-  private progress = 0
+  private tickF = 0
   private settingsRef: Settings | null = null
   private mode: string | null = null
   private focused: THREE.Object3D | undefined = undefined
   private override: THREE.Object3D | undefined = undefined
 
-  /** The frame context at `renderTick`, or null while the extras or the demo are missing. */
-  get(renderTick: number): FxFrameContext | null {
+  /** The frame context of the current frame, or null while the extras or the demo are missing. */
+  get(): FxFrameContext | null {
     const inst = useInstance.getState()
     const x = inst.extrasStatus === 'ready' ? inst.extras : undefined
     const demo = inst.parsedDemo
@@ -61,14 +68,15 @@ export class FxFrameCache {
     const store = getState()
     const settingsRef = store.settings
     const mode = store.scene.controls.mode
-    const { frameProgress: progress, focusedObject: focused, povCameraOverride: override } = inst
+    const { focusedObject: focused, povCameraOverride: override } = inst
+    const { tick: renderTick, tickF } = frameTime(_time)
     const prev = this.ctx
     if (
       prev &&
       prev.tick === renderTick &&
       prev.x === x &&
       prev.demo === demo &&
-      this.progress === progress &&
+      this.tickF === tickF &&
       this.settingsRef === settingsRef &&
       this.mode === mode &&
       this.focused === focused &&
@@ -93,10 +101,9 @@ export class FxFrameCache {
       (prev.pov?.team ?? -2) === (pov?.team ?? -2) &&
       prev.povOwner === povOwner
     const version = sameState && prev ? prev.version : ++lastVersion
-    const tickF = renderTick + (progress > 0 && progress < 1 ? progress : 0)
 
     if (!prev) heldContexts++
-    this.progress = progress
+    this.tickF = tickF
     this.settingsRef = settingsRef
     this.mode = mode
     this.focused = focused
@@ -109,7 +116,7 @@ export class FxFrameCache {
   clear(): void {
     if (this.ctx) heldContexts--
     this.ctx = null
-    this.progress = 0
+    this.tickF = 0
     this.settingsRef = null
     this.mode = null
     this.focused = undefined

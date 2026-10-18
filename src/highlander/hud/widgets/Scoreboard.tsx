@@ -54,6 +54,15 @@ const cellClass = (row: ScoreRow, key: ColumnKey): string => {
   return key === 'kills' || key === 'assists' || key === 'deaths' ? 'font-bold text-white' : 'text-white/85'
 }
 
+/** Where the numbers come from: K and D leave feigns out only when extras kill events mark them. */
+function footerText(board: ScoreboardView): string {
+  const parts = [board.sources.kd === 'events' ? 'K and D without Dead Ringer feigns' : 'K and D from base deaths, Dead Ringer feigns included']
+  if (board.sources.damage === 'scoring') parts.push("damage and heals from the game's scoreboard")
+  else if (board.sources.damage === 'resource') parts.push('damage and heals from the player resource')
+  if (board.rosterTick !== board.tick) parts.push('players who finished the match')
+  return parts.join(' · ')
+}
+
 const ScoreboardBox = React.memo(({ board, header }: { board: ScoreboardView; header: HeaderView | null }) => {
   const columns = COLUMNS.filter(c => c.key === 'kills' || c.key === 'assists' || c.key === 'deaths' || board.columns[c.key as keyof ScoreColumns])
   return (
@@ -68,8 +77,7 @@ const ScoreboardBox = React.memo(({ board, header }: { board: ScoreboardView; he
         ))}
       </div>
       <div className="text-center text-[10px] text-white/50">
-        K and D without Dead Ringer feigns · damage and heals from the {board.sources.damage === 'scoring' ? "game's scoreboard" : 'player resource'}
-        {board.rosterTick !== board.tick && ' · players who finished the match'}
+        {footerText(board)}
       </div>
     </div>
   )

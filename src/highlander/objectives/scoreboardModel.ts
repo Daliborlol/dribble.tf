@@ -1,9 +1,9 @@
 // Tab scoreboard values at a tick (contract section 5 F5). Per-player tick lists are built once per
 // (demo, extras); every count is a binary search, so the board is a value-at-tick lookup that seeks cleanly.
 //
-//   K   base deaths with that killer, minus feigns and suicides
+//   K   base deaths with that killer, minus suicides and (with extras kill events) feigns
 //   A   kill events with that assister, not feign (base death assisters without extras)
-//   D   base deaths of that victim, minus feigns
+//   D   base deaths of that victim, minus feigns when extras kill events mark them
 //   DMG scoring.damage when the player's local tables reached the demo, else resource.damage
 //   HEAL scoring.heals, else resource.healing
 //   UB  uberDeployed events of that medic (HL.UBER rising edges on medics when the demo has no such events)
@@ -37,8 +37,6 @@ export interface ScoreIndex {
   caps: number[][]
   destroyed: number[][]
   classes: { tick: number; cls: number }[][]
-  /** per-team uber ticks (by the medic's team at the event), for the medic panel */
-  teamUbers: Record<number, number[]>
   sources: {
     assists: 'events' | 'base'
     ubers: 'events' | 'cond' | 'none'
@@ -74,7 +72,6 @@ export function scoreIndex(demo: AsyncParser, x?: HighlanderExtras): ScoreIndex 
     caps: lists(),
     destroyed: lists(),
     classes: Array.from({ length: n }, () => [] as { tick: number; cls: number }[]),
-    teamUbers: { 2: [], 3: [] },
     sources: { assists: 'base', ubers: 'none', killDetails: false, caps: 'none', destroyed: false },
   }
 
@@ -110,8 +107,6 @@ export function scoreIndex(demo: AsyncParser, x?: HighlanderExtras): ScoreIndex 
       for (const e of ubers) {
         if (!valid(e.medic, n)) continue
         index.ubers[e.medic].push(e.tick)
-        const team = teamOfAt(demo, e.medic, e.tick)
-        if (team === 2 || team === 3) index.teamUbers[team].push(e.tick)
       }
     } else if (x.meta.available.cond) {
       // old demos have no player_chargedeployed: rising edges of HL.UBER on a medic
@@ -125,10 +120,7 @@ export function scoreIndex(demo: AsyncParser, x?: HighlanderExtras): ScoreIndex 
           if (now && !prev) {
             const tick = c.ticks[i]
             const meta = demo.playerCache.metaCache.getMeta(p, Math.min(tick, demo.ticks - 1))
-            if (meta.classId === 5) {
-              index.ubers[p].push(tick)
-              if (meta.teamId === 2 || meta.teamId === 3) index.teamUbers[meta.teamId].push(tick)
-            }
+            if (meta.classId === 5) index.ubers[p].push(tick)
           }
           prev = now
         }
@@ -161,7 +153,8 @@ export function scoreIndex(demo: AsyncParser, x?: HighlanderExtras): ScoreIndex 
     }
   }
 
-  for (const team of [2, 3]) index.teamUbers[team].sort((a, b) => a - b)
+  // per-medic lists feed the medic panel's binary search
+  for (const list of index.ubers) list.sort((a, b) => a - b)
   cache.set(demo, { x, index })
   return index
 }
@@ -304,6 +297,8 @@ export function scoreboardAt(demo: AsyncParser, x: HighlanderExtras | undefined,
     teams,
     sources: {
       damage: scoringOk ? 'scoring' : resourceOk ? 'resource' : 'none',
+      // K and D leave Dead Ringer feigns out only when extras kill events mark them (deathIndex)
+      kd: index.sources.killDetails ? 'events' : 'base',
       assists: index.sources.assists,
       ubers: index.sources.ubers,
       caps: scoringOk ? 'scoring' : index.sources.caps,

@@ -2320,19 +2320,9 @@
      ],
      "distance": 13415.9,
      "next": "sspl_path_dummyend"
-    },
-    {
-     "name": "sspl_path_dummyend",
-     "origin": [
-      3260.7,
-      974.8,
-      -413
-     ],
-     "distance": 13448.2,
-     "next": null
     }
    ],
-   "length": 13448.2,
+   "length": 13415.9,
    "linked": [
     {
      "pathTrack": "sspl_path_cp_one3",

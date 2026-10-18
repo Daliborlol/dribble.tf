@@ -113,7 +113,12 @@ export function buildMapMeta({ mapName, entities, modelBounds, worldMins, worldM
 
   // ── payload / tug of war ──
   const pathTracks = new Map(ofClass('path_track').map(entity => [String(entity.kv.targetname).toLowerCase(), entity]))
-  const walkPath = start => {
+  // The walk stops at the watcher's goal_node: the game measures the cart's progress (m_flTotalProgress)
+  // and the checkpoint fractions against the distance to the goal, and path_tracks after it (the drop
+  // into the pit on pl_upward_f12, sspl_path_dummyend on pl_downfall_b13) are never pushed. Without a
+  // goal node, or when the chain never reaches it, the walk follows `target` to the end of the chain.
+  const walkPath = (start, goal) => {
+    const goalName = goal ? String(goal).toLowerCase() : null
     const nodes = []
     const seen = new Set()
     let current = start ? pathTracks.get(String(start).toLowerCase()) : null
@@ -133,12 +138,13 @@ export function buildMapMeta({ mapName, entities, modelBounds, worldMins, worldM
         flags: num(current.kv.spawnflags, 0) || undefined,
       })
       previous = p
+      if (goalName && String(current.kv.targetname).toLowerCase() === goalName) break
       current = current.kv.target ? pathTracks.get(current.kv.target.toLowerCase()) : null
     }
     return { nodes, length: round(distance, 1) }
   }
   const payload = ofClass('team_train_watcher').map(watcher => {
-    const path = walkPath(watcher.kv.start_node)
+    const path = walkPath(watcher.kv.start_node, watcher.kv.goal_node)
     const linked = []
     for (let i = 1; i <= 8; i++) {
       const track = watcher.kv[`linked_pathtrack_${i}`]

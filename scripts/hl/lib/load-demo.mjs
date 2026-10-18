@@ -8,7 +8,8 @@
 // in the browser. `route` lists what each worker was asked ('parser2', 'parser2-late', 'fallback:<trigger>').
 // Then the Highlander extras: the real hlextras wasm with loadExtras.ts's options (every group, the items table's
 // wearable defs) and hydrate.ts with the base scene origin. `entries` maps names to further TS/JS entries of the
-// checkout (paths relative to `root`), bundled with esbuild and returned in `modules`.
+// checkout (paths relative to `root`), bundled with esbuild and returned in `modules`. Only the three shim comes from
+// this script's directory when `root` lacks one, so `root` may be an older checkout (comparing builds).
 //
 // All workers share this process, so a wasm heap is not freed when AsyncParser ends its worker: the process peaks
 // higher than the browser. Bundled modules are separate instances from the ones inside the AsyncParser bundle.
@@ -44,9 +45,14 @@ export async function makeBundler(root) {
       }))
     },
   }
+  // The shim of the checkout under test, else this script's own, so --root also works on checkouts without one
+  const rootShim = path.join(root, 'scripts/hl/lib/three-shim.mjs')
+  const threeShim = fs.existsSync(rootShim) ? rootShim : fileURLToPath(new URL('./three-shim.mjs', import.meta.url))
   const bundle = async (entry, extra = {}) => {
     const out = await esbuild.build({
-      entryPoints: [path.isAbsolute(entry) ? entry : path.join(root, entry)],
+      ...(typeof entry === 'string'
+        ? { entryPoints: [path.isAbsolute(entry) ? entry : path.join(root, entry)] }
+        : { stdin: { contents: entry.contents, resolveDir: root, loader: 'ts', sourcefile: entry.name } }),
       absWorkingDir: root,
       bundle: true,
       platform: 'node',
@@ -55,7 +61,7 @@ export async function makeBundler(root) {
       write: false,
       logLevel: 'silent',
       plugins: [libs],
-      alias: { three: path.join(root, 'scripts/hl/lib/three-shim.mjs') },
+      alias: { three: threeShim },
       define: {
         'import.meta.env.DEV': 'false',
         'import.meta.env.PROD': 'false',
@@ -79,11 +85,18 @@ export async function importCode(code, tmp, name) {
   }
 }
 
+// What loadExtras.ts and ExtrasWorker.ts use around the extras parse, resolved inside `root` (stdin entry, so an
+// older checkout under test needs no file of this script's)
+const EXTRAS_ENTRY = {
+  name: 'load-demo-extras-entry.ts',
+  contents: "export { hydrate } from './src/highlander/extras/hydrate.ts'\nexport { wearableDefs } from './src/highlander/items.ts'\n",
+}
+
 export async function loadDemo(root, demoPath, { tmp = os.tmpdir(), extras = true, entries = {} } = {}) {
   const { bundle, stop } = await makeBundler(root)
   const workerCode = await bundle('src/components/Analyse/Data/ParseWorker.ts')
   const parserCode = await bundle('src/components/Analyse/Data/AsyncParser.ts')
-  const extrasCode = extras ? await bundle('scripts/hl/lib/load-demo-entry.mjs') : null
+  const extrasCode = extras ? await bundle(EXTRAS_ENTRY) : null
   const extraCode = {}
   for (const [name, entry] of Object.entries(entries)) extraCode[name] = await bundle(entry)
   await stop()

@@ -28,6 +28,18 @@ if (!demoPath) {
   console.error('usage: node scripts/hl/check-fallback.mjs <demo.dem> [--force-fallback] [--out summary.json] [--expect-route parser2|no-timeline|delayed-start|late-start|forced] [--tmp dir]')
   process.exit(2)
 }
+const ROUTES = {
+  parser2: 'parser2',
+  'no-timeline': 'fallback: no-timeline',
+  'delayed-start': 'fallback: delayed-start',
+  'late-start': 'parser2 (late start)',
+  forced: 'fallback: forced',
+}
+// Checked before the child runs: a typo should not cost a whole parse
+if (flags['expect-route'] !== undefined && !ROUTES[flags['expect-route']]) {
+  console.error(`[check-fallback] unknown --expect-route ${flags['expect-route']} (one of ${Object.keys(ROUTES).join(', ')})`)
+  process.exit(2)
+}
 const failures = []
 
 // ─── 1. base values (child) ───────────────────────────────────────────────────
@@ -44,19 +56,8 @@ if (child.status !== 0) {
   process.exit(1)
 }
 const base = JSON.parse(child.stdout)
-const ROUTES = {
-  parser2: 'parser2',
-  'no-timeline': 'fallback: no-timeline',
-  'delayed-start': 'fallback: delayed-start',
-  'late-start': 'parser2 (late start)',
-  forced: 'fallback: forced',
-}
 if (flags['expect-route'] !== undefined) {
   const want = ROUTES[flags['expect-route']]
-  if (!want) {
-    console.error(`[check-fallback] unknown --expect-route ${flags['expect-route']} (one of ${Object.keys(ROUTES).join(', ')})`)
-    process.exit(2)
-  }
   if (base.route !== want) failures.push(`route: ${base.route}, expected ${want}`)
 }
 if (!(base.ticks > 1 && base.nextMappedPlayer > 0)) failures.push(`base has no timeline (ticks ${base.ticks}, players ${base.nextMappedPlayer})`)

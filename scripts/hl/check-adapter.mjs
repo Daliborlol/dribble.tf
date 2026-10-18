@@ -19,13 +19,14 @@
 //      AsyncParser.releaseProjectileCache, the bytes it released, and that a second release returns 0;
 //   7. the split computed again after the release (as after an extras restart) equals the first one.
 // --root defaults to this checkout and may be any Highlander checkout with the projectile adapter: it needs none of
-// scripts/hl, and the script names what is missing. --tmp (bundled modules while they are imported) defaults to the
+// scripts/hl but needs node_modules (esbuild), and the script names what is missing. --tmp (bundled modules while they are imported) defaults to the
 // OS temp dir. Every worker shares this process, so it peaks above the browser: VmHWM 0.5 GB on 1434434, 1.0 GB on
 // 1438891 and 2.1 to 2.3 GB on the tetsudo fallback demos 1428628 and 1429417 (run those only when `free -m` shows
 // 3000 MB available). Prints a JSON summary (also to --out); exit code 1 when a check fails, 2 on a usage error.
 
 import fs from 'node:fs'
 import os from 'node:os'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import { parseArgs, REPO_ROOT } from './lib/bundle.mjs'
@@ -63,6 +64,15 @@ const missing = NEEDED.filter(file => !fs.existsSync(path.join(root, file)))
 if (missing.length) {
   console.error(`[check-adapter] --root ${root} lacks ${missing.join(', ')}`)
   console.error('[check-adapter] it needs a Highlander checkout with the projectile adapter (task X2 or later); scripts/hl is not needed there')
+  process.exit(2)
+}
+// lib/load-demo.mjs bundles with the esbuild of --root (its package.json pins the version), so a bare checkout or a
+// git archive without node_modules would otherwise crash in makeBundler with a MODULE_NOT_FOUND stack trace
+try {
+  createRequire(path.join(root, 'package.json')).resolve('esbuild')
+} catch {
+  console.error(`[check-adapter] --root ${root} lacks node_modules (esbuild cannot be resolved from it)`)
+  console.error(`[check-adapter] run npm install there, or symlink a checkout's node_modules: ln -s ${path.join(REPO_ROOT, 'node_modules')} ${path.join(root, 'node_modules')}`)
   process.exit(2)
 }
 if (!fs.existsSync(demoPath)) {

@@ -21,6 +21,10 @@
  *                    albedo x the PAK's per-vertex prop lighting. Stock props are game assets: not drawn.
  *   ../../skybox/<skyname>/<skyname>_<side>.png when the BSP PAK embeds the sky faces.
  *
+ * All of it is staged in the temp dir and moved into place only after every step succeeded, each file
+ * by rename and conversion.json last, so a failed run leaves the previous package as it was. The temp
+ * dir is removed on success and on failure unless --keep-temp true.
+ *
  * Usage:
  *   node scripts/convert-bsp.mjs --bsp <map.bsp> [--map <name>] [--out-dir <dir>]
  *        [--bsp-to-glb <binary>] [--chunk-grid 4] [--lightmap-format webp|png]
@@ -84,6 +88,56 @@ const onlyMeta = bool('only-meta', 'false')
 const overwriteSky = bool('overwrite-sky', 'false')
 const withProps = bool('props', 'true')
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
+// Every output is written into stageDir first and moved into outDir (and the skybox folder) only after
+// the last step that can fail, conversion.json last (see commitOutputs). A failure therefore leaves the
+// previous package untouched. The temp dir is removed on every exit, failures included, unless
+// --keep-temp true.
+const stageDir = path.join(tempDir, 'out')
+fs.mkdirSync(stageDir, { recursive: true })
+let commitState = 'staging' // 'staging' | 'moving' | 'done'
+process.on('exit', code => {
+  if (commitState === 'staging') console.error(`Conversion failed (exit ${code}); nothing in ${outDir} was changed`)
+  else if (commitState === 'moving') {
+    const sky = skyCopies.length ? ` and the skybox folder(s) ${[...new Set(skyCopies.map(([, to]) => path.dirname(to)))].join(', ')} may already be replaced` : ''
+    console.error(`Conversion failed (exit ${code}) while moving the outputs; ${outDir} is partly updated${sky}, rerun the conversion`)
+  }
+  if (keepTemp) console.log(`Temp kept: ${tempDir}`)
+  else fs.rmSync(tempDir, { recursive: true, force: true })
+})
+// 'exit' handlers do not run on signals: exit through them so Ctrl-C and SIGTERM also clean the temp dir.
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(signal === 'SIGINT' ? 130 : 143))
+/** Pending skybox face copies: [staged png, destination], applied by commitOutputs. */
+const skyCopies = []
+/**
+ * Moves the staged outputs into place. Each file is copied next to its destination under a temporary
+ * name and renamed over it, so every file is replaced atomically even when the temp dir sits on another
+ * filesystem. `files` is applied in order; callers put conversion.json last. `remove` lists outDir
+ * files the new package no longer has (props.glb after a failed or empty props pass).
+ */
+const commitOutputs = (files, remove = []) => {
+  const place = (from, to) => {
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    const partial = path.join(path.dirname(to), `.${path.basename(to)}.${process.pid}.partial`)
+    try {
+      fs.copyFileSync(from, partial)
+      fs.renameSync(partial, to)
+    } catch (error) {
+      fs.rmSync(partial, { force: true })
+      throw error
+    }
+  }
+  commitState = 'moving'
+  for (const [from, to] of skyCopies) place(from, to)
+  for (const file of files) place(path.join(stageDir, file), path.join(outDir, file))
+  for (const file of remove) {
+    const stale = path.join(outDir, file)
+    if (fs.existsSync(stale)) {
+      fs.rmSync(stale)
+      console.warn(`  removed ${stale}; conversion.json does not list it`)
+    }
+  }
+  commitState = 'done'
+}
 
 // Lightmap encoding: stored = sRGB(clamp(linear * exposure / LIGHTMAP_RANGE)). At runtime
 // MeshBasicMaterial.lightMapIntensity = LIGHTMAP_RANGE * PI (three divides lightmaps by PI).
@@ -531,8 +585,7 @@ for (const { node, extras: e, startsHidden } of brushNodes) {
   entityNodes.push({ name, classname: e.classname, targetname: e.targetname ?? null, hasGeometry: Boolean(mesh), initiallyVisible: !startsHidden })
 }
 
-const glbOutPath = path.join(outDir, 'world.glb')
-fs.mkdirSync(outDir, { recursive: true })
+const glbOutPath = path.join(stageDir, 'world.glb')
 if (!onlyMeta) {
   // keepAttributes: lightmap UVs have no texture reference; keepLeaves: mesh-less entity anchors.
   await doc.transform(prune({ keepAttributes: true, keepLeaves: true }))
@@ -592,8 +645,8 @@ if (!onlyMeta && fs.existsSync(rawAtlasPath)) {
   }
   const image = sharp(rgb, { raw: { width: info.width, height: info.height, channels: 3 } })
   const file = `lightmap.${lightmapFormat}`
-  if (lightmapFormat === 'webp') await image.webp({ lossless: true, effort: 6 }).toFile(path.join(outDir, file))
-  else await image.png({ compressionLevel: 9 }).toFile(path.join(outDir, file))
+  if (lightmapFormat === 'webp') await image.webp({ lossless: true, effort: 6 }).toFile(path.join(stageDir, file))
+  else await image.png({ compressionLevel: 9 }).toFile(path.join(stageDir, file))
   lightmapInfo = {
     file,
     width: info.width,
@@ -652,7 +705,7 @@ if (!onlyMeta) {
     leafClusters: visibility.leaves.map(l => l.cluster),
     visibleChunksByCluster,
   }
-  fs.writeFileSync(path.join(outDir, 'visibility.json'), JSON.stringify(metadata))
+  fs.writeFileSync(path.join(stageDir, 'visibility.json'), JSON.stringify(metadata))
   visibilityInfo = { clusters: visibility.clusterCount, chunks: chunkNames.length, leaves: visibility.leaves.length }
 }
 
@@ -715,10 +768,7 @@ if (skyname && !onlyMeta) {
     const unchanged = existing && (await sameFaces(skyname))
     const folder = existing && !unchanged && !overwriteSky ? `${skyname}_${mapName}` : skyname
     if (!unchanged) {
-      fs.mkdirSync(path.join(skyboxRoot, folder), { recursive: true })
-      for (const side of sides) {
-        fs.copyFileSync(path.join(staged, `${side}.png`), path.join(skyboxRoot, folder, `${folder}_${side}.png`))
-      }
+      for (const side of sides) skyCopies.push([path.join(staged, `${side}.png`), path.join(skyboxRoot, folder, `${folder}_${side}.png`)])
     }
     skyboxInfo = { name: skyname, source: 'bsp-pak', ...(folder !== skyname ? { folder } : {}) }
     if (folder !== skyname) {
@@ -726,7 +776,7 @@ if (skyname && !onlyMeta) {
         `so this map's PAK faces went to ${folder}. Point MAP_SKYBOX_MAP (src/constants/mappings.ts) at '${folder}', ` +
         'or rerun with --overwrite-sky true to replace the shared folder.')
     } else {
-      console.log(`  sky ${skyname}: PAK faces ${unchanged ? 'match the existing folder (unchanged)' : existing ? 'replaced the existing folder (--overwrite-sky)' : 'written'}`)
+      console.log(`  sky ${skyname}: PAK faces ${unchanged ? 'match the existing folder (unchanged)' : existing ? 'replace the existing folder (--overwrite-sky)' : 'staged'}`)
     }
   } else if (existing) {
     skyboxInfo = { name: skyname, source: 'existing' }
@@ -882,13 +932,12 @@ const meta = buildMapMeta({ mapName, entities, modelBounds, worldMins, worldMaxs
     c.occlusion = { clear: false, elevationDeg: 82 }
   }
 }
-fs.writeFileSync(path.join(outDir, 'map-meta.json'), JSON.stringify(meta, null, 1))
+fs.writeFileSync(path.join(stageDir, 'map-meta.json'), JSON.stringify(meta, null, 1))
 
 if (onlyMeta) {
+  commitOutputs(['map-meta.json'])
   console.log(`  map-meta.json only (${meta.gameMode}, camera ${meta.camera.method}); world.glb, lightmap, visibility and conversion.json untouched`)
   console.log(`Done → ${outDir}`)
-  if (!keepTemp) fs.rmSync(tempDir, { recursive: true, force: true })
-  else console.log(`Temp kept: ${tempDir}`)
   process.exit(0)
 }
 
@@ -899,8 +948,8 @@ if (onlyMeta) {
 let propsResult = null
 let propsError = null
 if (withProps) {
-  // A failing props pass must not leave world.glb next to a stale conversion.json: it is reported,
-  // props.glb is removed (conversion.json would no longer list it) and the conversion goes on.
+  // A failing props pass is reported and the conversion goes on without props: commitOutputs then
+  // removes the old props.glb, because conversion.json no longer lists it.
   try {
     const { convertStaticProps } = await import('./lib/static-props.mjs')
     propsResult = await convertStaticProps({
@@ -909,7 +958,7 @@ if (withProps) {
       pakDir,
       props: JSON.parse(fs.readFileSync(path.join(tempDir, 'props.json'), 'utf8')),
       workDir: path.join(tempDir, 'props'),
-      outPath: path.join(outDir, 'props.glb'),
+      outPath: path.join(stageDir, 'props.glb'),
       worldMins,
       worldMaxs,
       lighting: { set: lightmapInfo?.set ?? 'hdr', exposure: lightmapInfo?.exposure ?? 1, floor: lightmapInfo?.floor ?? 0 },
@@ -928,11 +977,7 @@ if (withProps) {
     propsResult = null
     propsError = error instanceof Error ? error.message : String(error)
     console.warn(`  WARNING: static props skipped: ${propsError}`)
-    const stale = path.join(outDir, 'props.glb')
-    if (fs.existsSync(stale)) {
-      fs.rmSync(stale)
-      console.warn(`  removed ${stale}; conversion.json lists no props`)
-    }
+    fs.rmSync(path.join(stageDir, 'props.glb'), { force: true })
   }
 }
 
@@ -994,19 +1039,23 @@ const conversion = {
     sanitizedDisplacementAlphas: exportStats.sanitizedDisplacementAlphas,
     unresolvedMaterialAssets: exportStats.unresolvedMaterialAssets,
     glbBytes: fs.statSync(glbOutPath).size,
-    lightmapBytes: lightmapInfo ? fs.statSync(path.join(outDir, lightmapInfo.file)).size : 0,
-    metaBytes: fs.statSync(path.join(outDir, 'map-meta.json')).size,
-    visibilityBytes: fs.statSync(path.join(outDir, 'visibility.json')).size,
+    lightmapBytes: lightmapInfo ? fs.statSync(path.join(stageDir, lightmapInfo.file)).size : 0,
+    metaBytes: fs.statSync(path.join(stageDir, 'map-meta.json')).size,
+    visibilityBytes: fs.statSync(path.join(stageDir, 'visibility.json')).size,
     ...(propsResult ? { props: propsResult.stats } : propsError ? { props: { error: propsError } } : {}),
   },
   materials: Object.fromEntries([...materialStats].sort((a, b) => b[1].triangles - a[1].triangles).map(([name, s]) => [name, { kind: s.kind, triangles: s.triangles, albedo: s.albedo.map(v => +v.toFixed(4)) }])),
   success: true,
 }
-fs.writeFileSync(path.join(outDir, 'conversion.json'), JSON.stringify(conversion, null, 1))
+fs.writeFileSync(path.join(stageDir, 'conversion.json'), JSON.stringify(conversion, null, 1))
+
+// Every step succeeded: move the package into place, conversion.json last.
+commitOutputs(
+  ['world.glb', ...(lightmapInfo ? [lightmapInfo.file] : []), 'visibility.json', ...(propsResult?.file ? [propsResult.file] : []), 'map-meta.json', 'conversion.json'],
+  withProps && !propsResult?.file ? ['props.glb'] : []
+)
 
 console.log(`  world.glb ${(conversion.stats.glbBytes / 1048576).toFixed(2)} MB, lightmap ${(conversion.stats.lightmapBytes / 1048576).toFixed(2)} MB, ` +
   `${counters.keptTriangles} tris kept / ${counters.droppedTriangles} dropped, ${chunkNames.length} chunks, ${entityNodes.length} brush entities, ` +
   `${counters.skyboxFaces} skybox faces, sky=${skyboxInfo.name} (${skyboxInfo.source})`)
 console.log(`Done → ${outDir}`)
-if (!keepTemp) fs.rmSync(tempDir, { recursive: true, force: true })
-else console.log(`Temp kept: ${tempDir}`)

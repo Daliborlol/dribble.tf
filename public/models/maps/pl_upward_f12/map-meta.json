@@ -2908,19 +2908,9 @@
      "distance": 14447.1,
      "next": "minecart_path_175",
      "flags": 32
-    },
-    {
-     "name": "minecart_path_175",
-     "origin": [
-      512,
-      -384,
-      568
-     ],
-     "distance": 14543.1,
-     "next": null
     }
    ],
-   "length": 14543.1,
+   "length": 14447.1,
    "linked": [
     {
      "pathTrack": "minecart_path_44",

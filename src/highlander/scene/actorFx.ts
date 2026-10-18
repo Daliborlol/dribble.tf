@@ -1,5 +1,16 @@
 // Per-actor visual state that Actors.tsx applies to each player (contract sections 6.4 and 5 F1).
-// S0 ships the types and a stub hook that returns the defaults; F1 writes the body of useActorFx.
+// S0 shipped the types and DEFAULT_ACTOR_FX; F1 writes the body of useActorFx. The rules live in
+// src/highlander/players/fxState.ts, shared with the PlayerFxLayer overlays and the fx.* probes.
+
+import { useMemo } from 'react'
+
+import { useInstance } from '@zus/store'
+import { playerIndexOf } from '@highlander/extras/getters'
+import { useExtras } from '@highlander/extras/hooks'
+import { computeFxState } from '@highlander/players/fxState'
+import { useFxSettings } from '@highlander/players/fxSettings'
+import { povInfoOf } from '@highlander/players/pov'
+import { usePovSubject } from '@highlander/pov/subject'
 
 export interface NameplateExtra {
   disguise?: { cls: number; team: number; disguising: boolean; targetName?: string; health?: number }
@@ -12,6 +23,7 @@ export interface NameplateExtra {
   nameOverride?: string        // spy drawn as his disguise: the disguise target's name
   healthOverride?: number      // spy drawn as his disguise: disguise health
   classOverride?: number       // spy drawn as his disguise: disguise class
+  teamOverride?: string        // spy drawn as his disguise: disguise team, 'red' | 'blue' (F1 addition)
 }
 export interface ActorFx { modelClassId: number; modelTeam: string; opacity: number; tint: string | null; emissive: number; hidden: boolean; scaleZ: number; nameplate: NameplateExtra | null }
 
@@ -37,9 +49,21 @@ export function defaultActorFx(classId: number, team: string): ActorFx {
 }
 
 /**
- * S0 stub: always DEFAULT_ACTOR_FX, which is what F1 returns while extras are not ready or `enabled` is off
- * (contract 5 F1), so S0 already runs that path. F1 replaces the body; the signature is fixed.
+ * The actor's model class and team, cloak opacity and tint, condition tint, crouch scale and nameplate items at
+ * `renderTick` (section 5 F1). Returns the frozen DEFAULT_ACTOR_FX while the extras are not ready, while
+ * Highlander is off and for players the extras do not know; the result is a new object otherwise (never mutated).
  */
-export function useActorFx(_entityId: number, _renderTick: number, _classId: number, _team: string): ActorFx {
-  return DEFAULT_ACTOR_FX
+export function useActorFx(entityId: number, renderTick: number, classId: number, team: string): ActorFx {
+  const x = useExtras()
+  const demo = useInstance(s => s.parsedDemo)
+  const settings = useFxSettings()
+  const subject = usePovSubject(renderTick)
+
+  return useMemo(() => {
+    if (!settings.enabled || !x || !demo) return DEFAULT_ACTOR_FX
+    const p = playerIndexOf(x, entityId)
+    if (p < 0) return DEFAULT_ACTOR_FX
+    const pov = povInfoOf(demo, subject, renderTick)
+    return computeFxState({ x, demo, p, classId, team, tick: renderTick, settings, pov, nameplate: true }).fx
+  }, [x, demo, settings, subject, entityId, renderTick, classId, team])
 }

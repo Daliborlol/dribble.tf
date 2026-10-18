@@ -16,11 +16,10 @@ import { allActors, useActorRegistryVersion, type ActorHandles } from '@highland
 
 interface ActorOverlayProps {
   handles: ActorHandles
-  tickRef: React.MutableRefObject<number>
   frameCache: FxFrameCache
 }
 
-const ActorOverlay = React.memo(({ handles, tickRef, frameCache }: ActorOverlayProps) => {
+const ActorOverlay = React.memo(({ handles, frameCache }: ActorOverlayProps) => {
   const { entityId } = handles
   const rig = useMemo(() => new OverlayRig(entityId), [entityId])
   // The per-tick state only changes with the frame context version (tick, settings, POV); frames in between
@@ -36,7 +35,7 @@ const ActorOverlay = React.memo(({ handles, tickRef, frameCache }: ActorOverlayP
   }, [entityId, rig])
 
   useFrame(() => {
-    const ctx = frameCache.get(tickRef.current)
+    const ctx = frameCache.get()
     if (!ctx) {
       rig.update(null, 0)
       return
@@ -51,15 +50,13 @@ const ActorOverlay = React.memo(({ handles, tickRef, frameCache }: ActorOverlayP
   return createPortal(<primitive object={rig.group} dispose={null} />, handles.group)
 })
 
-export const PlayerFxLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+// The overlays read the tick and frameProgress of the frame from the store (FxFrameCache, frameTime), not from the
+// renderTick prop, which reaches React a frame after DemoViewer advances playback.tick.
+export const PlayerFxLayer = React.memo((_props: { renderTick: number }) => {
   const x = useExtras()
   const conditions = useHlSetting<boolean>('players.conditions')
   const cloak = useHlSetting<boolean>('players.cloak')
   const registryVersion = useActorRegistryVersion()
-
-  // Children read the tick in useFrame, so a new tick re-renders only this list, not the overlays
-  const tickRef = useRef(renderTick)
-  tickRef.current = renderTick
 
   // One frame context per frame for all overlays. It references the extras and the demo, so it is cleared as
   // soon as the extras change (a new demo sets them to undefined before its extras parse), while the overlays
@@ -79,7 +76,6 @@ export const PlayerFxLayer = React.memo(({ renderTick }: { renderTick: number })
         <ActorOverlay
           key={`${handles.entityId}:${handles.group.uuid}`}
           handles={handles}
-          tickRef={tickRef}
           frameCache={frameCache}
         />
       ))}

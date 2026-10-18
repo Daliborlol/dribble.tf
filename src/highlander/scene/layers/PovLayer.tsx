@@ -20,6 +20,7 @@ import { cameraQuaternionFromSourceAnglesDeg } from '@utils/geometry'
 import { isDrawnUnder } from '@utils/raycast'
 import { useInstance, useStore } from '@zus/store'
 import { HEAL_BEAM_OFFSET } from '@highlander/constants'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { HL } from '@highlander/extras/enums'
 import { flagsAt, fovAt, medigunAt, verticalFov } from '@highlander/extras/getters'
@@ -46,6 +47,7 @@ const _eye = new THREE.Vector3()
 const _forward = new THREE.Vector3()
 const _quat = new THREE.Quaternion()
 const _target = new THREE.Vector3()
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
 /**
  * Source horizontal FOV (4:3) the subject's camera shows at tickF: the networked zoom for his own and spectated
@@ -228,10 +230,11 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
       }
       return
     }
-    const tickF = renderTick + useInstance.getState().frameProgress
+    // tick and frameProgress of this frame, both from the store: the renderTick prop lags playback.tick by a frame
+    const { tick, tickF } = frameTime(_time)
 
     if (subject.camera === 'chase') placeChase(chaseCamera, subject)
-    else if (subject.camera === 'deathcam') placeDeathcam(deathCamera, subject, renderTick)
+    else if (subject.camera === 'deathcam') placeDeathcam(deathCamera, subject, tick)
 
     // Our own cameras follow the canvas size; actor povCameras handle resize themselves
     for (const own of [chaseCamera, deathCamera]) {

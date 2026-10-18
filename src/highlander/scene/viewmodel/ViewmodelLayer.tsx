@@ -16,6 +16,7 @@ import { createPortal, useFrame } from '@react-three/fiber'
 
 import { useInstance, useStore } from '@zus/store'
 import { HEAL_BEAM_OFFSET } from '@highlander/constants'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { verticalFov } from '@highlander/extras/getters'
@@ -41,6 +42,7 @@ const depthClearMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, dept
 interface CachedInstance { provider: ViewmodelProvider; instance: ViewmodelInstance }
 
 const _muzzleWorld = new THREE.Vector3()
+const _time: FrameTime = { tick: 0, tickF: 0 }
 
 export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }) => {
   const extras = useExtras()
@@ -122,7 +124,9 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
   useFrame(() => {
     const root = rootRef.current
     if (!mounted || !entry || !root || !camera || !extras || !demo || !subject || !weapon || !state?.team) return
-    const tickF = renderTick + useInstance.getState().frameProgress
+    // tick and frameProgress of this frame, both from the store: the renderTick prop lags playback.tick by a frame,
+    // so prop + frameProgress stepped back at every tick boundary
+    const { tick, tickF } = frameTime(_time)
     const input = buildViewmodelInput(extras, demo, subject.p, state.classId, state.team, weapon, tickF)
     if (vmShared.debug.flip !== null) input.flip = vmShared.debug.flip
     entry.instance.update(input)
@@ -151,7 +155,8 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
       muzzleWorld: _muzzleWorld,
       scale: k,
       flip: input.flip,
-      tick: renderTick,
+      tick,
+      tickF,
     }
     vmShared.live = live
   })
@@ -193,6 +198,7 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
     block: s.block,
     mounted: !!live,
     liveSubject: live?.subjectEntityId ?? null,
+    liveTickF: live?.tickF ?? null, // the tickF the layer posed the viewmodel at in the last frame
   }
   if (s.block !== 'ok' || !x || !subject || !s.weapon || !s.team) return { ...base, provider: null, kind: null, weaponDef: null, draw: null, kick: null, reload: null, swing: null }
   const input = buildViewmodelInput(x, demo, subject.p, s.classId, s.team, s.weapon, at)

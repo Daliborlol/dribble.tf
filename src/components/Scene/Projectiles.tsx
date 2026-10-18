@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } fr
 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Sphere, Trail, useGLTF } from '@react-three/drei'
+import { Trail, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
 import { CachedProjectile } from '@components/Analyse/Data/ProjectileCache'
@@ -167,10 +167,21 @@ export const ProjectileModel = (props: ProjectileModelProps) => {
   )
 }
 
+// The legacy path's meshes share module-level geometries and materials, or dispose their own on unmount:
+// r3f frees JSX-created objects only from an idle-priority task that never runs here, so each demo load (the
+// legacy path mounts while the extras load) and each projectile left them allocated.
+const fallbackGeometry = new THREE.SphereGeometry(4)
+const fallbackMaterials = new Map<string, THREE.MeshBasicMaterial>()
+const explosionGeometry = new THREE.SphereGeometry(1, 12, 8)
+
+function fallbackMaterial(color: string): THREE.MeshBasicMaterial {
+  let material = fallbackMaterials.get(color)
+  if (!material) fallbackMaterials.set(color, (material = new THREE.MeshBasicMaterial({ color })))
+  return material
+}
+
 const ProjectileFallback = ({ color = TRAIL_FALLBACK_COLOR }: { color?: string }) => (
-  <Sphere args={[4]}>
-    <meshBasicMaterial color={color} />
-  </Sphere>
+  <mesh geometry={fallbackGeometry} material={fallbackMaterial(color)} />
 )
 
 //
@@ -204,14 +215,23 @@ const ExplosionEffect = ({
   onComplete: (id: number) => void
 }) => {
   const meshRef = useRef<THREE.Mesh>(null)
-  const materialRef = useRef<THREE.MeshBasicMaterial>(null)
 
-  const color = useMemo(() => {
-    return DEFAULT_EXPLOSION_COLOR
-  }, [explosion.type, explosion.teamNumber])
+  // Each explosion fades its own material (the geometry is shared); freed when the explosion ends or is cleared
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: DEFAULT_EXPLOSION_COLOR,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: EXPLOSION_MAX_OPACITY,
+      }),
+    []
+  )
+  useEffect(() => () => material.dispose(), [material])
 
   useFrame(() => {
-    if (!meshRef.current || !materialRef.current) return
+    if (!meshRef.current) return
 
     const elapsed = performance.now() - explosion.startTime
     const progress = Math.min(elapsed / EXPLOSION_DURATION_MS, 1)
@@ -219,7 +239,7 @@ const ExplosionEffect = ({
     const scale = EXPLOSION_MAX_RADIUS * (1 - Math.pow(1 - progress, 3))
     meshRef.current.scale.setScalar(scale)
 
-    materialRef.current.opacity = EXPLOSION_MAX_OPACITY * (1 - progress)
+    material.opacity = EXPLOSION_MAX_OPACITY * (1 - progress)
 
     if (progress >= 1) {
       onComplete(explosion.id)
@@ -227,17 +247,7 @@ const ExplosionEffect = ({
   })
 
   return (
-    <mesh ref={meshRef} position={explosion.position}>
-      <sphereGeometry args={[1, 12, 8]} />
-      <meshBasicMaterial
-        ref={materialRef}
-        color={color}
-        transparent
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        opacity={EXPLOSION_MAX_OPACITY}
-      />
-    </mesh>
+    <mesh ref={meshRef} position={explosion.position} geometry={explosionGeometry} material={material} />
   )
 }
 
@@ -321,15 +331,28 @@ const RocketSmokeTrail = ({ data }: { data: TrailTargetData }) => {
   posNextRef.current = data.positionNext
   frozenRef.current = data.frozen
 
-  const geometry = useMemo(() => new THREE.SphereGeometry(1, 6, 4), [])
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
+  // The mesh, its geometry (which carries this trail's opacity attribute) and its material are this trail's own,
+  // created here and disposed on unmount; r3f never disposes a <primitive>
+  const mesh = useMemo(() => {
+    const geometry = new THREE.SphereGeometry(1, 6, 4)
+    const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
       vertexShader: smokeVertexShader,
       fragmentShader: smokeFragmentShader,
     })
+    const instanced = new THREE.InstancedMesh(geometry, material, SMOKE_MAX_PUFFS)
+    instanced.frustumCulled = false
+    return instanced
   }, [])
+  useEffect(
+    () => () => {
+      mesh.geometry.dispose()
+      ;(mesh.material as THREE.Material).dispose()
+      mesh.dispose()
+    },
+    [mesh]
+  )
 
   // Attach per-instance opacity attribute and initialize mesh
   useEffect(() => {
@@ -445,11 +468,7 @@ const RocketSmokeTrail = ({ data }: { data: TrailTargetData }) => {
   })
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geometry, material, SMOKE_MAX_PUFFS]}
-      frustumCulled={false}
-    />
+    <primitive ref={meshRef} object={mesh} />
   )
 }
 
@@ -500,16 +519,43 @@ const TrailTarget = ({ data }: { data: TrailTargetData }) => {
   const trailConfig = useTrailConfig(config.baseWidth)
   const color = resolveTrailColor(data.type, data.teamNumber)
 
+  // drei's <Trail> creates its MeshLine geometry and material and never disposes them; it also replaces the
+  // material when width, colour or canvas size change. Free the replaced ones and, on unmount, the last ones.
+  const trailOwned = useRef<{ geometry: THREE.BufferGeometry | null; material: THREE.Material | null }>({
+    geometry: null,
+    material: null,
+  })
+  const trackTrailObjects = () => {
+    const mesh = trailRef.current as THREE.Mesh | null
+    if (!mesh) return
+    const owned = trailOwned.current
+    owned.geometry = mesh.geometry
+    const material = mesh.material as THREE.Material
+    if (material !== owned.material) {
+      owned.material?.dispose()
+      owned.material = material
+    }
+  }
+
   // Make trail semi-transparent
   useEffect(() => {
+    trackTrailObjects()
     if (!trailRef.current?.material) return
     const mat = trailRef.current.material
     mat.transparent = true
     mat.opacity = config.opacity
     mat.depthWrite = false
   }, [])
+  useEffect(
+    () => () => {
+      trailOwned.current.geometry?.dispose()
+      trailOwned.current.material?.dispose()
+    },
+    []
+  )
 
   useFrame((_, delta) => {
+    trackTrailObjects()
     if (!targetRef.current) return
 
     const frameProgress = useInstance.getState().frameProgress
@@ -981,9 +1027,7 @@ export const HealingBoltProjectile = (props: BaseProjectileProps) => {
 
   return (
     <group name="healingBolt" ref={ref} position={position} userData={{ hlProjectile: 'legacy', entityId: props.entityId }}>
-      <Sphere args={[5]}>
-        <meshLambertMaterial attach="material" color="yellow" />
-      </Sphere>
+      <mesh geometry={healingBoltGeometry} material={healingBoltMaterial} />
     </group>
   )
 }
@@ -1010,8 +1054,8 @@ const critGlowMaterials = new Map<string, THREE.ShaderMaterial>()
 const deflectRingMaterials = new Map<string, THREE.MeshBasicMaterial>()
 const critGlowGeometry = new THREE.SphereGeometry(CRIT_GLOW_RADIUS, 16, 12)
 const deflectRingGeometry = new THREE.TorusGeometry(DEFLECT_RING_RADIUS, 1, 8, 28)
-// The extras-drawn healing bolt, shared by every bolt: drei's <Sphere> with a JSX material would leave both
-// allocated after each unmount (r3f's idle-priority dispose never runs here).
+// The healing bolt (extras-drawn and legacy), shared by every bolt: drei's <Sphere> with a JSX material would leave
+// both allocated after each unmount (r3f's idle-priority dispose never runs here).
 const healingBoltGeometry = new THREE.SphereGeometry(5)
 const healingBoltMaterial = new THREE.MeshLambertMaterial({ color: 'yellow' })
 

@@ -66,7 +66,10 @@ export async function fetchJsonFile(url: string): Promise<unknown> {
 
 const conversions = new Map<string, Promise<MapConversion | null>>()
 
-/** conversion.json of the map's folder; null when the map has no folder or the file is absent. */
+/**
+ * conversion.json of the map's folder; null when the map has no folder, the file is absent or the request failed
+ * (isCachedMapConversion tells the last two apart).
+ */
 export function fetchMapConversion(map: string): Promise<MapConversion | null> {
   const folder = getMapFolder(map)
   if (!folder) return Promise.resolve(null)
@@ -87,6 +90,16 @@ export function fetchMapConversion(map: string): Promise<MapConversion | null> {
     pending = request
   }
   return pending
+}
+
+/**
+ * True while `request`, a promise fetchMapConversion(map) returned, is still the folder's cached answer: a null it
+ * resolved to then means conversion.json is definitely absent. False after a failed request, which
+ * fetchMapConversion drops from the cache so that the next call retries.
+ */
+export function isCachedMapConversion(map: string, request: Promise<MapConversion | null>): boolean {
+  const folder = getMapFolder(map)
+  return !!folder && conversions.get(folder) === request
 }
 
 /** The bsp-to-glb pipeline loads files.model (world.glb); older maps load textured_compressed.glb. */

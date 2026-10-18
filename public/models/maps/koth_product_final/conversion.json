@@ -179,5 +179,8 @@
       "y": 4704,
       "z": 1402
     }
+  },
+  "files": {
+    "meta": "map-meta.json"
   }
 }

@@ -103,7 +103,12 @@ function buildingRow(b: BuildingView): BuildingRow {
 export function weaponHudAt(x: HighlanderExtras, demo: AsyncParser, subject: PovSubject, tick: number): WeaponHudModel | null {
   const focusedTeam = subject.focusedP >= 0 ? teamOf(demo, subject.focusedP, tick) : null
   let header: WeaponHudModel['header'] = null
-  if (subject.camera === 'spectated' || (subject.camera === 'chase' && subject.entityId !== subject.focusedEntityId)) {
+  if (
+    subject.camera === 'spectated' ||
+    (subject.camera === 'chase' && subject.entityId !== subject.focusedEntityId) ||
+    // teammate-death camera (contract 12.2 item 1): the death of the teammate he spectated
+    (subject.camera === 'deathcam' && subject.deathOfEntityId !== undefined)
+  ) {
     header = { text: `Spectating ${playerName(demo, subject.p)}`, team: teamOf(demo, subject.p, tick) }
   } else if (subject.camera === 'deathcam' && subject.killerEntityId !== undefined) {
     const killerP = demo.playerIndexOfEntity(subject.killerEntityId)

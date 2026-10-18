@@ -29,6 +29,7 @@ import { entityIdOfPlayer, getPovSubject, usePovSubject, type PovSubject } from 
 import { allActors, getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { vmShared } from '@highlander/scene/viewmodel/shared'
+import { installOwnMuzzleSource } from '@highlander/integration/ownMuzzle'
 
 const CHASE_BACK = 150
 const CHASE_UP = 20
@@ -59,13 +60,14 @@ export function povSourceFov(x: HighlanderExtras | undefined, subject: PovSubjec
 // ─── map raycasts (wall probes only: one ray costs 3.6 to 10.6 ms on the HL maps) ──
 
 const _ray = new THREE.Raycaster()
-let worldRef: THREE.Object3D | null = null
 
-/** The map's `world` group, cached while it stays in the scene (World replaces it on map and mode changes). */
+/**
+ * The map's `world` group, looked up per call (only the slow wall probes use it). Not cached in a module variable:
+ * World replaces the group on map and mode changes, and a cached group would keep the previous map's GLB alive
+ * (X1 memory audit, contract 12.3).
+ */
 function mapWorld(): THREE.Object3D | null {
-  if (worldRef && worldRef.parent) return worldRef
-  worldRef = useInstance.getState().threeScene?.getObjectByName('world') ?? null
-  return worldRef
+  return useInstance.getState().threeScene?.getObjectByName('world') ?? null
 }
 
 /** Raycaster ignores `visible`; hidden map nodes (render-mode-10 brushes, the 3D skybox) must not block. */
@@ -108,21 +110,25 @@ function placeChase(camera: THREE.PerspectiveCamera, subject: PovSubject): boole
   return true
 }
 
-/** Holds the death camera at the focused player's eye one tick before his death, looking at the killer. */
+/**
+ * Holds the death camera at the dead player's eye one tick before his death, looking at the killer: the focused
+ * player for his own death camera, the spectated teammate for the teammate-death camera (contract 12.2 item 1,
+ * `deathOfEntityId`; the subject's entityId and p are that teammate then).
+ */
 function placeDeathcam(camera: THREE.PerspectiveCamera, subject: PovSubject, tick: number): boolean {
   const demo = useInstance.getState().parsedDemo
-  if (!demo || subject.focusedP < 0) return false
+  if (!demo || subject.p < 0) return false
   const at = Math.max(0, Math.min(demo.ticks - 1, (subject.deathTick ?? tick + 1) - 1))
-  const pos = demo.playerCache.positionCache.getPosition(subject.focusedP, at)
-  const classId = demo.playerCache.metaCache.getMeta(subject.focusedP, at).classId
-  camera.position.set(pos.x, pos.y, pos.z + getEyeHeight(subject.focusedEntityId, classId, at))
+  const pos = demo.playerCache.positionCache.getPosition(subject.p, at)
+  const classId = demo.playerCache.metaCache.getMeta(subject.p, at).classId
+  camera.position.set(pos.x, pos.y, pos.z + getEyeHeight(subject.entityId, classId, at))
   const killer = subject.killerEntityId !== undefined ? getActor(subject.killerEntityId) : undefined
   if (killer) {
     _target.copy(killer.group.position)
     _target.z += DEATHCAM_LOOK_UP
     camera.lookAt(_target)
   } else {
-    const angles = demo.playerCache.viewAnglesCache.getAngles(subject.focusedP, at)
+    const angles = demo.playerCache.viewAnglesCache.getAngles(subject.p, at)
     camera.quaternion.copy(cameraQuaternionFromSourceAnglesDeg({ pitch: angles.x, yaw: angles.y, roll: angles.z }))
   }
   camera.updateMatrixWorld()
@@ -173,7 +179,16 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [povActive, kind, subject?.entityId, registryVersion])
 
-  useEffect(() => () => useInstance.getState().setPovCameraOverride(undefined), [])
+  useEffect(
+    () => () => {
+      useInstance.getState().setPovCameraOverride(undefined)
+      lastActiveCamera = null // X1 memory audit: do not hold the last camera (and its actor subtree) after unmount
+    },
+    []
+  )
+
+  // X1: the POV subject's own hitscan tracers (F3) start at his drawn viewmodel muzzle (F4) while this layer lives
+  useEffect(() => installOwnMuzzleSource(), [])
 
   // The camera whose fov and near this layer changed. Restoring reads the settings at that moment, so the unmount
   // cleanup (created on mount) does not bring back the values of the first render.
@@ -295,6 +310,7 @@ registerHlProbe('pov.state', (tick?: number) => {
     camera: subject.camera,
     killerEntityId: subject.killerEntityId ?? null,
     deathTick: subject.deathTick ?? null,
+    deathOfEntityId: subject.deathOfEntityId ?? null,
     fovH: r(fovH),
     fovV: r(tf2 ? verticalFov(fovH) : useStore.getState().settings.camera.fov),
     // the contract getter (zoom spline from m_flFOVTime, in the player's tickbase time), for comparison

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, Suspense, useState } from 'react'
 
 import * as THREE from 'three'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Select } from '@react-three/postprocessing'
 import { Html, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
@@ -25,9 +25,17 @@ import { getAsset } from '@utils/misc'
 import { useEventListener } from '@utils/hooks'
 
 import { registerActor, unregisterActor, getActor } from '@highlander/scene/actorRegistry'
-import { useActorFx } from '@highlander/scene/actorFx'
+import { useActorFx, type NameplateExtra } from '@highlander/scene/actorFx'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
-import { useExtras, useHlSetting } from '@highlander/extras/hooks'
+import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
+import { getPovSubject } from '@highlander/pov/subject'
+import {
+  declutterPlates,
+  nameplateExtraEqual,
+  registerPlate,
+  trackPointer,
+  type PlateState,
+} from '@highlander/perf/nameplates'
 
 // Every useGLTF(..., true) call shares drei's one DRACOLoader, which initialises from whichever path
 // decodes first. Point it at the local copy in public/draco/ so player and projectile models load offline.
@@ -155,6 +163,17 @@ export interface ActorsProps {
 
 export const Actors = (props: ActorsProps) => {
   const { actors = [], renderTick } = props
+  const gl = useThree(state => state.gl)
+
+  // Nameplate declutter (contract 5 X1): once per frame, before the actors' own callbacks (negative priority),
+  // show the 12 plates nearest the camera plus the focused, followed, hovered and pinned ones.
+  useEffect(() => trackPointer(gl.domElement), [gl])
+  useFrame(state => {
+    const enabled = getHlSetting<boolean>('enabled') !== false
+    const focusedEntityId = (useInstance.getState().focusedObject?.userData?.entityId as number | undefined) ?? -1
+    const subjectEntityId = enabled && focusedEntityId >= 0 ? getPovSubject(renderTick)?.entityId ?? -1 : -1
+    declutterPlates(state.camera, state.size.width, state.size.height, { enabled, focusedEntityId, subjectEntityId })
+  }, -1)
 
   // Keyed by entity id: when a player disconnects or changes team, the other actors keep their
   // component instance (and the focused POV stays on the same player).
@@ -260,9 +279,20 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     return () => unregisterActor(handles)
   }, [user.entityId])
 
+  // Nameplate declutter (X1): the Actors pass reads this every frame; it is the state of the latest render. A plate
+  // at opacity 0 shows nothing (F1: an enemy spy cloaked in the POV player's view, pinned because he is cloaked), so
+  // it counts as not drawn: it takes none of the cap's slots and cannot be hovered.
+  const showPlate = settings.ui.nameplate.enabled && !isFocusedPOV
+  const plateOpacity = fx.nameplate?.opacity ?? 1
+  const plateState = useRef<PlateState>({ drawn: false, pinned: false })
+  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: !!fx.nameplate?.pinned }
+  useEffect(() => {
+    if (!actorRef.current) return
+    return registerPlate(user.entityId, actorRef.current, nameplateRef, plateState)
+  }, [user.entityId])
+
   // Nameplate distance fade: 1 up to the fade distance, linear to 0 at twice that (0 disables it)
   const fadeDistance = hlEnabled && !fx.nameplate?.pinned ? nameplateFadeDistance || 0 : 0
-  const plateOpacity = fx.nameplate?.opacity ?? 1
   useFrame(({ camera }) => {
     const element = nameplateRef.current
     if (!element || !actorRef.current) return
@@ -413,29 +443,79 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
 
       {/* Nameplate */}
 
-      {settings.ui.nameplate.enabled && !isFocusedPOV && (
-        <Html
-          ref={nameplateRef}
-          name="html"
-          className="pointer-events-none select-none"
-          style={{ bottom: 0, transform: 'translateX(-50%)', textAlign: 'center' }}
-          position={[0, 0, ActorDimensions.z * 0.85 * fx.scaleZ]}
-        >
-          {alive && (
-            <Nameplate
-              name={user.name}
-              team={team}
-              health={health}
-              classId={classId}
-              settings={settings.ui.nameplate}
-              extra={fx.nameplate ?? undefined}
-            />
-          )}
-        </Html>
+      {showPlate && (
+        <ActorNameplate
+          plateRef={nameplateRef}
+          z={ActorDimensions.z * 0.85 * fx.scaleZ}
+          alive={alive}
+          name={user.name}
+          team={team}
+          health={health}
+          classId={classId}
+          plateEnabled={settings.ui.nameplate.enabled}
+          showName={settings.ui.nameplate.showName}
+          showHealth={settings.ui.nameplate.showHealth}
+          showClass={settings.ui.nameplate.showClass}
+          extra={fx.nameplate ?? undefined}
+        />
       )}
     </group>
   )
 }
+
+// ─── NAMEPLATE ──────────────────────────────────────────────────────────────────
+
+const PLATE_STYLE: React.CSSProperties = { bottom: 0, transform: 'translateX(-50%)', textAlign: 'center' }
+
+interface ActorNameplateProps {
+  plateRef: React.RefObject<HTMLDivElement>
+  z: number
+  alive: boolean
+  name: string
+  team: string
+  health: number
+  classId: number
+  // settings.ui.nameplate as primitives: the settings reducer mutates that object in place
+  plateEnabled: boolean
+  showName: boolean
+  showHealth: boolean
+  showClass: boolean
+  extra?: NameplateExtra
+}
+
+const actorNameplateEqual = (a: ActorNameplateProps, b: ActorNameplateProps) =>
+  a.plateRef === b.plateRef &&
+  a.z === b.z &&
+  a.alive === b.alive &&
+  a.name === b.name &&
+  a.team === b.team &&
+  a.health === b.health &&
+  a.classId === b.classId &&
+  a.plateEnabled === b.plateEnabled &&
+  a.showName === b.showName &&
+  a.showHealth === b.showHealth &&
+  a.showClass === b.showClass &&
+  nameplateExtraEqual(a.extra, b.extra)
+
+/**
+ * The actor's drei Html nameplate (X1). drei's Html re-renders its own React root on every render, and the actor
+ * renders on every tick; memoized by value (the nameplate extra included), the plate re-renders only when what it
+ * shows changes. Opacity (distance fade, cloak) and the declutter's display toggle are written to its DOM node by
+ * the frame callbacks, outside React.
+ */
+const ActorNameplate = React.memo((props: ActorNameplateProps) => {
+  const { plateRef, z, alive, name, team, health, classId, plateEnabled, showName, showHealth, showClass, extra } = props
+  const settings = useMemo(
+    () => ({ enabled: plateEnabled, showName, showHealth, showClass }),
+    [plateEnabled, showName, showHealth, showClass]
+  )
+  const position = useMemo(() => [0, 0, z] as [number, number, number], [z])
+  return (
+    <Html ref={plateRef} name="html" className="pointer-events-none select-none" style={PLATE_STYLE} position={position}>
+      {alive && <Nameplate name={name} team={team} health={health} classId={classId} settings={settings} extra={extra} />}
+    </Html>
+  )
+}, actorNameplateEqual)
 
 export interface POVCameraProps {}
 

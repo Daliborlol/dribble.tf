@@ -8,6 +8,13 @@
 // player spectates dies (tf_player.cpp:13777-13786), and in the health-bucket ticks before a death the target still
 // holds the previous life's value. Only the DEATHCAM and FREEZECAM run of his own death names a killer.
 //
+// Teammate-death camera (contract 12.2 item 1, X1): when the teammate a dead player spectates dies (IN_EYE or CHASE
+// with a dead target, and the tournament DEATHCAM fallback that keeps the dead teammate as the target), the subject
+// becomes that teammate with camera 'deathcam' and `deathOfEntityId` set: the death camera holds his death spot
+// (base position at his death tick - 1 plus his eye height) and looks at his base killer (latestDeath), and the
+// weapon HUD heads it "Spectating <teammate>". It ends at the next misc entry whose target is alive (IN_EYE or
+// CHASE: the 'spectated' row) or when the focused player respawns.
+//
 // povSubjectAt is a pure function of the demo data and the tick (D12): it reads the base caches (health, team,
 // connection, deaths) and the extras `misc` track, never the scene.
 
@@ -27,7 +34,13 @@ export interface PovSubject {
   entityId: number; p: number                    // the player whose view, FOV, viewmodel and HUD are shown
   camera: PovCameraKind
   killerEntityId?: number                        // deathcam: the actor the camera looks at
-  deathTick?: number                             // deathcam: the focused player's latest death at or before the tick
+  deathTick?: number                             // deathcam: the latest death at or before the tick of the player `entityId`
+  /**
+   * Teammate-death camera (contract 12.2 item 1): the spectated teammate whose death the death camera shows. Then
+   * `entityId`/`p` are that teammate, `deathTick` his death and `killerEntityId` his base killer. Unset for the
+   * focused player's own death camera (`entityId` is the focused player there).
+   */
+  deathOfEntityId?: number
 }
 
 /** Base death events can trail the health drop by up to one 4-tick health bucket; look this far ahead for them. */
@@ -142,28 +155,71 @@ export function povSubjectAt(x: HighlanderExtras | undefined, demo: AsyncParser,
   if (!x || !misc) return deathcam
   const { obsMode, obsTarget } = misc
   const targetEntityId = obsTarget === NONE_U8 ? -1 : entityIdOfPlayer(demo, obsTarget)
+  const spectating = obsMode === OBS_MODE.IN_EYE || obsMode === OBS_MODE.CHASE
 
-  if ((obsMode === OBS_MODE.IN_EYE || obsMode === OBS_MODE.CHASE) && targetEntityId > 0 && obsTarget !== focusedP && aliveWithActorAt(demo, obsTarget, tick)) {
+  if (spectating && targetEntityId > 0 && obsTarget !== focusedP && aliveWithActorAt(demo, obsTarget, tick)) {
     const camera: PovCameraKind = obsMode === OBS_MODE.CHASE || opts.chase ? 'chase' : 'spectated'
     return { focusedEntityId, focusedP, entityId: targetEntityId, p: obsTarget, camera }
   }
 
   // His own death camera names the killer: from the base death on (the health buckets read dead up to three ticks
   // early), during DEATHCAM or FREEZECAM (or NONE in the few ticks before the server switches the mode), and only
-  // until he first spectates someone. Everything else is the death camera without a killer.
-  if (!death || tick < death.tick) return deathcam
-  const deathMode = obsMode === OBS_MODE.DEATHCAM || obsMode === OBS_MODE.FREEZECAM || (obsMode === OBS_MODE.NONE && tick - death.tick <= DEATHCAM_GRACE_TICKS)
-  if (!deathMode || !inOwnDeathRun(x, focusedP, death.tick, tick)) return deathcam
-
-  // The killfeed's killer. Without one (a suicide, the world, an unknown player), the networked target counts only
-  // when it is an enemy player, never himself or a teammate.
-  let killer = death.killer
-  if (killer <= 0 && targetEntityId > 0 && obsTarget !== focusedP) {
-    const team = demo.playerCache.metaCache.getMeta(focusedP, tick).teamId
-    const targetTeam = demo.playerCache.metaCache.getMeta(obsTarget, tick).teamId
-    if ((targetTeam === 2 || targetTeam === 3) && targetTeam !== team) killer = targetEntityId
+  // until he first spectates someone.
+  if (death && tick >= death.tick) {
+    const deathMode = obsMode === OBS_MODE.DEATHCAM || obsMode === OBS_MODE.FREEZECAM || (obsMode === OBS_MODE.NONE && tick - death.tick <= DEATHCAM_GRACE_TICKS)
+    if (deathMode && inOwnDeathRun(x, focusedP, death.tick, tick)) {
+      // The killfeed's killer. Without one (a suicide, the world, an unknown player), the networked target counts
+      // only when it is an enemy player, never himself or a teammate.
+      let killer = death.killer
+      if (killer <= 0 && targetEntityId > 0 && obsTarget !== focusedP) {
+        const team = demo.playerCache.metaCache.getMeta(focusedP, tick).teamId
+        const targetTeam = demo.playerCache.metaCache.getMeta(obsTarget, tick).teamId
+        if ((targetTeam === 2 || targetTeam === 3) && targetTeam !== team) killer = targetEntityId
+      }
+      return killer > 0 ? { ...deathcam, killerEntityId: killer } : deathcam
+    }
   }
-  return killer > 0 ? { ...deathcam, killerEntityId: killer } : deathcam
+
+  // The teammate he spectated died: IN_EYE or CHASE with a dead target, or the DEATHCAM fallback of tournament mode
+  // that keeps the dead teammate as the target (FREEZECAM included: both hold a target). The pre-death health-bucket
+  // ticks never get here, because the observer mode still reads NONE while he lives.
+  const fallback = obsMode === OBS_MODE.DEATHCAM || obsMode === OBS_MODE.FREEZECAM
+  if ((spectating || fallback) && targetEntityId > 0 && obsTarget !== focusedP) {
+    const mate = teammateDeathAt(demo, focusedP, obsTarget, targetEntityId, tick)
+    if (mate) return { focusedEntityId, focusedP, ...mate }
+  }
+
+  // Everything else: the death camera at his own death spot without a killer
+  return deathcam
+}
+
+/**
+ * The teammate-death camera on player `p` (entity `entityId`), the target of the dead focused player `focusedP` at
+ * `tick`: only while `p` is on the focused player's team, connected and dead, and has a base death at or before the
+ * tick. Returns the subject fields, or null.
+ */
+function teammateDeathAt(
+  demo: AsyncParser,
+  focusedP: number,
+  p: number,
+  entityId: number,
+  tick: number
+): Pick<PovSubject, 'entityId' | 'p' | 'camera' | 'deathTick' | 'killerEntityId' | 'deathOfEntityId'> | null {
+  if (p < 0 || p >= demo.nextMappedPlayer || tick < 0 || tick >= demo.ticks) return null
+  const team = demo.playerCache.metaCache.getMeta(focusedP, tick).teamId
+  if (team !== 2 && team !== 3) return null
+  if (demo.playerCache.metaCache.getMeta(p, tick).teamId !== team) return null
+  if (!demo.playerCache.connectedCache.get(p, tick) || baseHealthAt(demo, p, tick) > 0) return null
+  const death = latestDeath(demo, entityId, tick)
+  if (!death) return null
+  return {
+    entityId,
+    p,
+    camera: 'deathcam',
+    deathTick: death.tick,
+    killerEntityId: death.killer > 0 ? death.killer : undefined,
+    deathOfEntityId: entityId,
+  }
 }
 
 /** Null unless the controls mode is 'pov' and focusedObject is set. */

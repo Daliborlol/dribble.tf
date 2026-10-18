@@ -14,7 +14,9 @@
 // MOVETYPE_FLYGRAVITY; a lunchbox throw leaves EyePosition() - 8 at 500 u/s, tf_weapon_lunchbox.cpp:215-285),
 // and the extras give every pickup whose transform changes after creation an xform track. Those draw along
 // the track, then at rest where it ends, with the kit placeholder of their size, until they are picked up
-// (they leave the snapshot) or deleted (pickup, or the 30 s lifetime).
+// (they leave the snapshot) or deleted (pickup, or the 30 s lifetime). A plate thrown before the recording
+// started and already at rest has no track: it exists at tick 0 and lives at most a thrown item's lifetime
+// (8 of the 133 local demos, each deleted by the round restart within 4 s), so it draws at its origin too.
 //
 // Spots. Instances at one origin are one kit spot. At tick T a spot shows only its newest instance created at
 // or before T: an entity that leaves the snapshot at a round restart without a delete stays a dormant
@@ -70,7 +72,11 @@ export interface SkippedPickup {
   model: string
 }
 
-/** A pickup that moves after creation (thrown lunchbox item, dropped kit), drawn along its xform track. */
+/**
+ * A thrown or dropped item, drawn along its xform track: a pickup that moves after creation (thrown lunchbox item,
+ * dropped kit), or a plate thrown before the recording that is already at rest at tick 0 (no track; it draws at
+ * its origin).
+ */
 export interface MovingPickup {
   instance: number
   kind: number // 0 health, 1 ammo
@@ -131,12 +137,15 @@ export function buildKitEntries(x: HighlanderExtras, meta: MapMeta | null, allow
   if (x.meta.available.pickups && p.count > 0) {
     const skipped: SkippedPickup[] = []
     const moving: MovingPickup[] = []
+    const lifetimeLimit = Math.round(DROPPED_KIT_MAX_SECONDS / intervalOf(x))
     const spots: { x: number; y: number; z: number; members: number[] }[] = []
     const r2 = KIT_SPOT_RADIUS * KIT_SPOT_RADIUS
     for (let j = 0; j < p.count; j++) {
       const model = pickupModel(x, j)
-      if (pickupMoves(x, j)) {
-        // a map kit never moves: this one was thrown or dropped
+      const end = p.deleted[j] === NONE_U32 ? x.meta.ticks : p.deleted[j]
+      const restingPlate = p.created[j] === 0 && PLATE_MODEL.test(model) && end <= lifetimeLimit
+      if (pickupMoves(x, j) || restingPlate) {
+        // a map kit never moves: this one was thrown or dropped (or thrown before the recording, at rest)
         skipped.push({ instance: j, reason: 'moving', model })
         moving.push({ instance: j, kind: p.kind[j] === 1 ? 1 : 0, size: Math.min(2, p.size[j]), bottom: movingPickupBottom(model) })
         continue
@@ -157,7 +166,6 @@ export function buildKitEntries(x: HighlanderExtras, meta: MapMeta | null, allow
       .filter(item => Array.isArray(item.origin))
       .map(item => [item.origin[0] - o.x, item.origin[1] - o.y, item.origin[2] - o.z])
     const m2 = META_ITEM_RADIUS * META_ITEM_RADIUS
-    const lifetimeLimit = Math.round(DROPPED_KIT_MAX_SECONDS / intervalOf(x))
     const entries: KitEntry[] = []
     for (const spot of spots) {
       const shared = spot.members.length > 1

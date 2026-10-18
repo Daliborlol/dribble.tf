@@ -185,6 +185,9 @@ registerHlProbe('mapdyn.moving', (tick?: number, floors?: boolean) => {
     const j = m.instance
     const a = xf.offsets[j], b = xf.offsets[j + 1]
     const s = sampleMovingPickup(x, m, t, _moving)
+    // a plate already at rest when the recording starts has no track: it stays at its creation origin
+    const origin = [r2(p.x[j]), r2(p.y[j]), r2(p.z[j])]
+    const tracked = b > a
     return {
       instance: j,
       model: pickupModel(x, j),
@@ -194,10 +197,10 @@ registerHlProbe('mapdyn.moving', (tick?: number, floors?: boolean) => {
       created: p.created[j],
       deleted: p.deleted[j] === 0xffffffff ? null : p.deleted[j],
       entries: b - a,
-      firstTick: xf.ticks[a],
-      restTick: xf.ticks[b - 1],
-      start: [r2(xf.x[a]), r2(xf.y[a]), r2(xf.z[a])],
-      rest: [r2(xf.x[b - 1]), r2(xf.y[b - 1]), r2(xf.z[b - 1])],
+      firstTick: tracked ? xf.ticks[a] : null,
+      restTick: tracked ? xf.ticks[b - 1] : null,
+      start: tracked ? [r2(xf.x[a]), r2(xf.y[a]), r2(xf.z[a])] : origin,
+      rest: tracked ? [r2(xf.x[b - 1]), r2(xf.y[b - 1]), r2(xf.z[b - 1])] : origin,
       drawn: s.drawn,
       inFlight: s.drawn ? s.inFlight : null,
       pos: s.drawn ? [r2(s.x), r2(s.y), r2(s.z)] : null,

@@ -9,7 +9,7 @@ import { DROP } from '@highlander/extras/enums'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 
 import { DROP_AMMO_SIZE, DROP_GIB_SIZE, DROP_WEAPON_SIZE } from './constants'
-import { drawn, tickFOf, useRenderTickRef } from './frame'
+import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { forEachDropAt } from './markers'
 
@@ -26,9 +26,6 @@ export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.drops') !== false
   const tickRef = useRenderTickRef(renderTick)
-  const ammo = useRef<THREE.InstancedMesh>(null)
-  const gib = useRef<THREE.InstancedMesh>(null)
-  const weapon = useRef<THREE.InstancedMesh>(null)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.drops
@@ -37,6 +34,9 @@ export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
     if (active && x) for (let j = 0; j < x.drops.count; j++) counts[Math.min(2, x.drops.kind[j])]++
     return counts
   }, [active, x])
+  const ammo = useInstancedMesh(UNIT_BOX, MATERIALS.dropAmmo, capacity[0], { count: 0 })
+  const gib = useInstancedMesh(UNIT_BOX, MATERIALS.dropGib, capacity[1], { count: 0 })
+  const weapon = useInstancedMesh(UNIT_BOX, MATERIALS.dropWeapon, capacity[2], { count: 0 })
 
   useEffect(() => {
     lastTickF.current = NaN
@@ -50,7 +50,7 @@ export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
     const tickF = tickFOf(tickRef.current)
     if (tickF === lastTickF.current) return
     lastTickF.current = tickF
-    const meshes = [ammo.current, gib.current, weapon.current]
+    const meshes = [ammo, gib, weapon]
     const counts = [0, 0, 0]
     forEachDropAt(x, tickF, (_j, kind, pos, quat) => {
       const k = Math.min(2, kind)
@@ -76,15 +76,9 @@ export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
   if (!active) return null
   return (
     <group name="mapdyn-drops">
-      {capacity[0] > 0 && (
-        <instancedMesh ref={ammo} args={[UNIT_BOX, MATERIALS.dropAmmo, capacity[0]]} count={0} frustumCulled={false} />
-      )}
-      {capacity[1] > 0 && (
-        <instancedMesh ref={gib} args={[UNIT_BOX, MATERIALS.dropGib, capacity[1]]} count={0} frustumCulled={false} />
-      )}
-      {capacity[2] > 0 && (
-        <instancedMesh ref={weapon} args={[UNIT_BOX, MATERIALS.dropWeapon, capacity[2]]} count={0} frustumCulled={false} />
-      )}
+      {ammo && <primitive object={ammo} />}
+      {gib && <primitive object={gib} />}
+      {weapon && <primitive object={weapon} />}
     </group>
   )
 })

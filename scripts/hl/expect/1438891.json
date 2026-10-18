@@ -109,6 +109,97 @@
       "stat": "available.carts",
       "eq": false,
       "name": "no cart on KOTH: three static func_tracktrain brushes and no train watcher"
+    },
+    {
+      "stat": "pickups.badTracks",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.getterMismatch",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.wrongPlateSize",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.notPickupModel",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.kitModelsMoving",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.moving",
+      "eq": 1,
+      "name": "pickups with an xform track (thrown plates)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.staticPlates",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.prevRed",
+      "eq": "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.prevBlu",
+      "eq": "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.baseRed",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.baseBlu",
+      "eq": -1,
+      "p2": true
+    },
+    {
+      "stat": "cp.miniRounds",
+      "eq": false,
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.atDelete",
+      "eq": 7,
+      "name": "vis 0 entries at a deletion tick (round restarts), not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.leftForGood",
+      "eq": 2,
+      "name": "leaves without a return while the instance lives on, not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.rows",
+      "eq": 254,
+      "name": "findTicks('pickupTaken') rows",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.thrown",
+      "eq": 1,
+      "name": "thrown items deleted at an item_pickup event of their kind",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.withPlayer",
+      "eq": 246,
+      "name": "takes with the taker from a unique item_pickup event",
+      "p2": true
     }
   ]
 }

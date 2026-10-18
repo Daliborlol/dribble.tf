@@ -15,6 +15,97 @@
       "stat": "available.carts",
       "eq": true,
       "name": "tug-of-war carts (train watchers)"
+    },
+    {
+      "stat": "pickups.badTracks",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.getterMismatch",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.wrongPlateSize",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.notPickupModel",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.kitModelsMoving",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "pickups.moving",
+      "eq": 15,
+      "name": "pickups with an xform track (thrown plates)",
+      "p2": true
+    },
+    {
+      "stat": "pickups.staticPlates",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.prevRed",
+      "eq": "0,-1,-1,0,-1,-1,1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.prevBlu",
+      "eq": "1,-1,-1,2,-1,-1,2,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1",
+      "p2": true
+    },
+    {
+      "stat": "cp.baseRed",
+      "eq": 0,
+      "p2": true
+    },
+    {
+      "stat": "cp.baseBlu",
+      "eq": 2,
+      "p2": true
+    },
+    {
+      "stat": "cp.miniRounds",
+      "eq": false,
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.atDelete",
+      "eq": 0,
+      "name": "vis 0 entries at a deletion tick (round restarts), not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.leftForGood",
+      "eq": 0,
+      "name": "leaves without a return while the instance lives on, not takes",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.rows",
+      "eq": 873,
+      "name": "findTicks('pickupTaken') rows",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.thrown",
+      "eq": 15,
+      "name": "thrown items deleted at an item_pickup event of their kind",
+      "p2": true
+    },
+    {
+      "stat": "pickupTaken.withPlayer",
+      "eq": 844,
+      "name": "takes with the taker from a unique item_pickup event",
+      "p2": true
     }
   ]
 }

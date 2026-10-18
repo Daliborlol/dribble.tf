@@ -7,6 +7,7 @@
 // (2 RED, 3 BLU): the instance team where the group has one, else the player's team from spawn and team events.
 
 import { itemKind } from '../items'
+import { ITEM_RESPAWN_SECONDS, ITEM_RESPAWN_SLACK_SECONDS } from '../mapdyn/constants'
 
 import { BLD, condSet, COND, HL } from './enums'
 import { medicCallTicks, medigunAt, type MedigunType } from './getters'
@@ -90,6 +91,7 @@ export const FIND_KINDS: readonly FindKind[] = [
 
 const NONE_U8 = 255
 const NONE_U16 = 65535
+const NONE_U32 = 0xffffffff
 /** One second of 66-tick demo time: the `busiest` window and the `doorMove` rest period. */
 const BUSIEST_WINDOW = 132
 const DOOR_REST_TICKS = 66
@@ -197,6 +199,62 @@ function cloakRows(x: HighlanderExtras, falling: boolean): Row[] {
         rows.push({ tick: cond.ticks[i], player: p, ...(feignOnset ? { note: 'feign' } : {}) })
       }
       cloaked = now
+    }
+  }
+  return rows
+}
+
+/** Pickup kind (0 health, 1 ammo) of an item_pickup item name (entity_healthkit.h, entity_ammopack.h), -1 other. */
+const pickupEventKind = (item: string | undefined) =>
+  !item ? -1 : item.startsWith('medkit_') || item === 'healthammokit' ? 0 : item.startsWith('ammopack_') ? 1 : -1
+
+/**
+ * `pickupTaken` rows (section 3.8, refined by P2).
+ * - A map kit is taken when it leaves the snapshot: a `pickups.vis` falling edge. Two falling edges are not takes:
+ *   the vis 0 entry a kit gets at its deletion tick when a round restart deletes it (10 rows at 240 on 1434434), and
+ *   a leave without a return while the instance lives on past the respawn estimate (ITEM_RESPAWN_SECONDS plus the
+ *   slack): that kit left for good (two koth_product kits at the restart of 1438891), and F6 draws it as stale.
+ * - A thrown or dropped item never leaves the snapshot, because TF2 removes it on pickup (it has SF_NORESPAWN). It
+ *   is taken at its deletion when an item_pickup event of its kind falls on that tick (`note: 'thrown'`); its other
+ *   deletions are the 30 s lifetime, a new throw of the same lunchbox and the round restart.
+ * - `player` is the taker: the player of the one item_pickup event of the take's tick and kind. Rows without exactly
+ *   one such event have none (a disguised spy at full health takes a medkit without an event, entity_healthkit.cpp).
+ */
+function pickupTakes(x: HighlanderExtras): Row[] {
+  const p = x.pickups
+  const v = p.vis
+  const ipt = x.meta.intervalPerTick || 0.015
+  const staleAfter = Math.round(ITEM_RESPAWN_SECONDS / ipt) + Math.round(ITEM_RESPAWN_SLACK_SECONDS / ipt)
+  const events = new Map<number, { kind: number; player: number }[]>()
+  for (const e of eventsOf(x, 'pickup')) {
+    const kind = pickupEventKind(e.item)
+    if (kind < 0) continue
+    let list = events.get(e.tick)
+    if (!list) events.set(e.tick, (list = []))
+    list.push({ kind, player: e.player })
+  }
+  const taker = (tick: number, kind: number): { found: boolean; player?: number } => {
+    const list = events.get(tick)?.filter(e => e.kind === kind)
+    if (!list || list.length === 0) return { found: false }
+    return { found: true, player: list.length === 1 ? player(list[0].player) : undefined }
+  }
+  const rows: Row[] = []
+  for (let j = 0; j < p.count; j++) {
+    const kind = p.kind[j] === 1 ? 1 : 0
+    const deleted = p.deleted[j]
+    const end = deleted === NONE_U32 ? x.meta.ticks : deleted
+    let left = false
+    for (let i = v.offsets[j] + 1; i < v.offsets[j + 1]; i++) {
+      if (v.v[i] !== 0 || v.v[i - 1] === 0) continue
+      left = true
+      const tick = v.ticks[i]
+      if (tick === deleted) continue // deleted (round restart), not taken
+      if (i + 1 === v.offsets[j + 1] && end > tick + staleAfter) continue // left for good
+      rows.push({ tick, instance: j, player: taker(tick, kind).player })
+    }
+    if (!left && deleted !== NONE_U32) {
+      const t = taker(deleted, kind)
+      if (t.found) rows.push({ tick: deleted, instance: j, player: t.player, note: 'thrown' })
     }
   }
   return rows
@@ -431,13 +489,13 @@ function rowsFor(x: HighlanderExtras, kind: FindKind, opts: FindOptions, limit: 
       return rows
     }
     case 'pickupTaken':
+      return pickupTakes(x)
     case 'pickupBack': {
       const rows: Row[] = []
       const v = x.pickups.vis
-      const want = kind === 'pickupBack' ? 1 : 0
       for (let j = 0; j < keyCountOf(v); j++) {
         for (let i = v.offsets[j] + 1; i < v.offsets[j + 1]; i++) {
-          if (v.v[i] === want && v.v[i - 1] !== want) rows.push({ tick: v.ticks[i], instance: j })
+          if (v.v[i] === 1 && v.v[i - 1] !== 1) rows.push({ tick: v.ticks[i], instance: j })
         }
       }
       return rows

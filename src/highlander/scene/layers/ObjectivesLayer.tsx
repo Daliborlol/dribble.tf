@@ -490,7 +490,7 @@ const ControlPointDisc = ({ index, pos, renderTick }: { index: number; pos: THRE
     const capping = e >= 0 ? st.capping[e] : 0
     const flags = e >= 0 ? st.flags[e] : 0
     materials.disc.color.set((flags & CPF.LOCKED) !== 0 ? '#3a3a3a' : owner > 1 ? darkColor(owner) : NEUTRAL)
-    if (dashed.current) dashed.current.visible = e >= 0 && pointLockedAt(x, flags, owner)
+    if (dashed.current) dashed.current.visible = e >= 0 && pointLockedAt(x, flags, owner, index, tick)
     const progress = capping > 1 ? capProgressAt(x, index, tickF) : 0
     const segments = Math.round(progress * ARC_SEGMENTS)
     arcGeometry.setDrawRange(0, segments * 6)
@@ -562,7 +562,7 @@ registerHlProbe('objectives.scene', (tickArg?: number) => {
         owner: e >= 0 ? st.owner[e] : null,
         capping: e >= 0 ? st.capping[e] : null,
         locked: e >= 0 ? (st.flags[e] & CPF.LOCKED) !== 0 : null,
-        padlock: e >= 0 ? pointLockedAt(x, st.flags[e], st.owner[e]) : null,
+        padlock: e >= 0 ? pointLockedAt(x, st.flags[e], st.owner[e], i, tick) : null,
         progress: Math.round(capProgressAt(x, i, tick) * 1000) / 1000,
       }
     }),

@@ -79,6 +79,7 @@ export function hydrate(raw: ExtrasRaw, sceneOrigin: SceneOrigin): HighlanderExt
   shiftStride3(raw.objectives.cp.pos, origin)
   shiftXyz(raw.movers.xform.x, raw.movers.xform.y, raw.movers.xform.z, origin)
   shiftXyz(raw.pickups.x, raw.pickups.y, raw.pickups.z, origin)
+  shiftXyz(raw.pickups.xform.x, raw.pickups.xform.y, raw.pickups.xform.z, origin)
   shiftXyz(raw.ragdolls.x, raw.ragdolls.y, raw.ragdolls.z, origin)
   shiftXyz(raw.drops.xform.x, raw.drops.xform.y, raw.drops.xform.z, origin)
   const te = raw.tempents

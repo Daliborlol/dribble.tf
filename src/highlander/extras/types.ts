@@ -143,6 +143,14 @@ export interface XControlPoints {
   scales: U8          // 8, m_bCPCapRateScalesWithPlayers
   state: Track & { owner: U8; capping: U8; inZone: U8; numRed: U8; numBlu: U8; lazy: F32; flags: U8; unlockTick: F32 }
   progress: Track & { p: U16 }   // simulated capture fraction toward state.capping, 0..65535
+  // P2 (contract 12.4 item 3): the linear-capture data of CTFGameRules::TeamMayCapturePoint. Static per demo: no
+  // local demo changes them within the demo (133-demo survey); the last value of the parse, -1 / false without an
+  // objective resource.
+  prevRed: I8         // 8 * 3, m_iPreviousPoints of RED: index point * 3 + slot, -1 none
+  prevBlu: I8         // 8 * 3, m_iPreviousPoints of BLU
+  baseRed: number     // m_iBaseControlPoints[2], -1 none
+  baseBlu: number     // m_iBaseControlPoints[3], -1 none
+  miniRounds: boolean // m_bPlayingMiniRounds
 }
 
 export interface XObjectives {
@@ -170,6 +178,12 @@ export interface XMovers extends Instances {
 export interface XPickups extends Instances {
   kind: U8; size: U8; model: U16; x: F32; y: F32; z: F32
   vis: Track & { v: U8 }
+  /**
+   * P2 (contract 12.4 item 1): the absolute transform of a pickup whose transform changes after creation (thrown
+   * lunchbox items and dropped kits, CTFPowerup::DropSingleInstance), one entry per change from `created` on.
+   * Static pickups (map kits) have no entries; their position is x, y, z.
+   */
+  xform: XformTrack
 }
 
 export interface XRagdolls extends Instances {

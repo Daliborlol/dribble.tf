@@ -3,7 +3,7 @@
 // map-meta and the tick; the HUD snapshot calls it once per hudTick and the `objective.hud` probe calls it
 // directly.
 
-import { capProgressAt, rulesAt, teamAt, timerSecondsAt } from '@highlander/extras/getters'
+import { capProgressAt, rulesAt, teamAt, teamMayCapturePointAt, timerSecondsAt } from '@highlander/extras/getters'
 import { CPF, ROUND_STATE, RULES, STOPWATCH_STATE, TEAM_ROLE, TIMER } from '@highlander/extras/enums'
 import { trackIndexAt } from '@highlander/extras/track'
 import type { HighlanderExtras, Instances } from '@highlander/extras/types'
@@ -233,18 +233,29 @@ function canCapKnown(x: HighlanderExtras): boolean {
 }
 
 /**
- * The lock of TF2's control point icon (CControlPointIcon::IsPointLocked, hud_controlpointicons.cpp:414-433): the
- * point is locked (m_bCPLocked, as on KOTH before it unlocks), or no team other than its owner may capture it
- * (m_bTeamCanCap), so on attack/defend maps a captured point keeps its owner's colour under a padlock. The points a
- * team must own first (m_iPreviousPoints) are not in the extras, so a point that waits for an earlier capture is
- * not marked.
+ * The lock of TF2's control point icon (CControlPointIcon::IsPointLocked, hud_controlpointicons.cpp:414-433): no
+ * team other than the point's owner both may capture it by the map (m_bTeamCanCap) and by the capture order
+ * (CTFGameRules::TeamMayCapturePoint, extras getter teamMayCapturePointAt: m_bCPLocked, the previous points a team
+ * must own first, the linear rule from its base point). So a point that waits on an earlier capture shows its
+ * padlock until that capture (steel's B, C and D for BLU), and on attack/defend maps a captured point keeps its
+ * owner's colour under a padlock. `flags` and `owner` are the point's cp.state values at `tick`; without `point`
+ * and `tick` (or when m_bTeamCanCap never reached the demo) only m_bCPLocked and the can-cap bits count.
  */
-export function pointLockedAt(x: HighlanderExtras, flags: number, owner: number): boolean {
-  if ((flags & CPF.LOCKED) !== 0) return true
-  if (!canCapKnown(x)) return false
-  const redCan = owner !== RED && (flags & CPF.RED_CAN_CAP) !== 0
-  const bluCan = owner !== BLU && (flags & CPF.BLU_CAN_CAP) !== 0
-  return !redCan && !bluCan
+export function pointLockedAt(x: HighlanderExtras, flags: number, owner: number, point = -1, tick = -1): boolean {
+  const known = canCapKnown(x)
+  if (point < 0 || tick < 0 || !known) {
+    if ((flags & CPF.LOCKED) !== 0) return true
+    if (!known) return false
+    const redCan = owner !== RED && (flags & CPF.RED_CAN_CAP) !== 0
+    const bluCan = owner !== BLU && (flags & CPF.BLU_CAN_CAP) !== 0
+    return !redCan && !bluCan
+  }
+  for (const team of [RED, BLU]) {
+    if (team === owner) continue
+    if ((flags & (team === RED ? CPF.RED_CAN_CAP : CPF.BLU_CAN_CAP)) === 0) continue
+    if (teamMayCapturePointAt(x, team, point, tick)) return false
+  }
+  return true
 }
 
 export function pointViewAt(x: HighlanderExtras, meta: MapMeta | null | undefined, i: number, tick: number): PointView {
@@ -268,7 +279,7 @@ export function pointViewAt(x: HighlanderExtras, meta: MapMeta | null | undefine
     capping,
     progress: capping > 1 ? capProgressAt(x, i, tick) : 0,
     cappers: capping === RED ? s.numRed[k] : capping === BLU ? s.numBlu[k] : 0,
-    locked: pointLockedAt(x, flags, owner),
+    locked: pointLockedAt(x, flags, owner, i, tick),
     unlockIn,
     blocked: (flags & CPF.BLOCKED) !== 0,
     name,

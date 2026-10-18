@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 // Probe which headless Chromium flag sets give a hardware WebGL context on this machine:
 //   node scripts/hl/harness/tools/gpu-probe.mjs [--browser shell|chrome|<path>]   (launches Chromium: run it under the lock)
-// For each browser (default: the newest installed headless shell and chromium) and flag set it prints the
-// frame rate of 60 rAF frames and the WebGL renderer string. 'swiftshader' in the renderer means CPU rendering.
-import { SetupError, findInstalledBrowser, loadPlaywright, resolveBrowser } from '../lib/setup.mjs'
+// For each browser (default: the installed headless shell and chromium of the revision the harness's
+// playwright-core expects, else the newest of each) and flag set it prints the frame rate of 60 rAF frames
+// and the WebGL renderer string. 'swiftshader' in the renderer means CPU rendering.
+import {
+  SetupError,
+  expectedBrowserRevisions,
+  findInstalledBrowser,
+  loadPlaywright,
+  resolveBrowser,
+  resolvePlaywright,
+} from '../lib/setup.mjs'
 
 const argv = process.argv.slice(2)
 const requested = argv[0] === '--browser' ? argv[1] : undefined
 let chromium
 const BIN = {}
 try {
-  chromium = await loadPlaywright()
-  if (requested) BIN[requested] = resolveBrowser(requested).executablePath
+  const playwright = resolvePlaywright()
+  chromium = await loadPlaywright(playwright)
+  const expected = expectedBrowserRevisions(playwright)
+  if (requested) BIN[requested] = resolveBrowser(requested, playwright).executablePath
   else for (const kind of ['shell', 'chrome']) {
-    const hit = findInstalledBrowser(kind)
+    const hit = findInstalledBrowser(kind, expected[kind])
     if (hit) BIN[kind] = hit.executablePath
   }
-  if (!Object.keys(BIN).length) BIN.path = resolveBrowser(undefined).executablePath // CHROME_PATH, or the install hint
+  if (!Object.keys(BIN).length) BIN.path = resolveBrowser(undefined, playwright).executablePath // CHROME_PATH, or the install hint
 } catch (error) {
   console.error(error instanceof SetupError ? error.message : error)
   process.exit(1)
@@ -33,6 +43,7 @@ const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
 window.info = gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : 'no webgl2';
 </script>`
 for (const [binName, bin] of Object.entries(BIN)) {
+  console.log(binName.padEnd(7), bin)
   for (const [setName, args] of Object.entries(SETS)) {
     let browser
     try {

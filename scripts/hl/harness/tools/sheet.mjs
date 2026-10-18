@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { SetupError, rerunWithoutFontconfigWarnings } from '../lib/setup.mjs'
-import { loadSharp } from './imgdiff.mjs'
+import { loadSharp } from '../lib/images.mjs'
 
 if (await rerunWithoutFontconfigWarnings()) await new Promise(() => {}) // the child does the work
 

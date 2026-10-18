@@ -181,7 +181,8 @@ export async function loadPlaywright(resolved = resolvePlaywright()) {
 
 // ─── BROWSER ──────────────────────────────────────────────────────────────────────
 
-// Folder layouts of `playwright install` on Linux (newest first).
+// Folder layouts of `playwright install` on Linux (newest first). `install` is also the browser's name in
+// playwright-core's browsers.json.
 export const BROWSER_KINDS = {
   shell: {
     folder: 'chromium_headless_shell-',
@@ -204,8 +205,8 @@ export function browserCacheDirs() {
   return [...new Set(dirs)]
 }
 
-/** The newest installed browser of a kind ('shell' or 'chrome'), or null. */
-export function findInstalledBrowser(kind) {
+/** Every installed browser of a kind ('shell' or 'chrome') as { kind, revision, executablePath }, newest first. */
+export function installedBrowsers(kind) {
   const spec = BROWSER_KINDS[kind]
   const found = []
   for (const base of browserCacheDirs()) {
@@ -223,15 +224,45 @@ export function findInstalledBrowser(kind) {
       if (executablePath) found.push({ kind, revision, executablePath })
     }
   }
-  return found.sort((a, b) => b.revision - a.revision)[0] ?? null
+  return found.sort((a, b) => b.revision - a.revision)
 }
 
-const installBrowserHint = kinds => {
-  let dir = path.join(HARNESS_DIR, 'node_modules', 'playwright-core')
-  let version = PINNED_PLAYWRIGHT
+/** The installed browser of a kind at `revision` when that one is installed, else the newest, else null. */
+export function findInstalledBrowser(kind, revision) {
+  const all = installedBrowsers(kind)
+  return all.find(hit => hit.revision === revision) ?? all[0] ?? null
+}
+
+/** resolvePlaywright(), or null when playwright-core is not installed. */
+export function playwrightIfInstalled() {
   try {
-    ;({ dir, version } = resolvePlaywright())
+    return resolvePlaywright()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The browser revisions a playwright-core install was released with, from its browsers.json:
+ * { shell, chrome } (either may be missing; {} when the file cannot be read). Its revisionOverrides only
+ * name older macOS builds, and the harness runs on Linux, so they are ignored.
+ */
+export function expectedBrowserRevisions(playwright) {
+  const expected = {}
+  if (!playwright?.dir) return expected
+  try {
+    const { browsers } = JSON.parse(fs.readFileSync(path.join(playwright.dir, 'browsers.json'), 'utf8'))
+    for (const [kind, spec] of Object.entries(BROWSER_KINDS)) {
+      const revision = Number(browsers.find(browser => browser.name === spec.install)?.revision)
+      if (Number.isInteger(revision)) expected[kind] = revision
+    }
   } catch {}
+  return expected
+}
+
+const installBrowserHint = (kinds, playwright = playwrightIfInstalled()) => {
+  const dir = playwright?.dir ?? path.join(HARNESS_DIR, 'node_modules', 'playwright-core')
+  const version = playwright?.version ?? PINNED_PLAYWRIGHT
   return (
     `Install the browser that matches the harness's playwright-core${version ? ` ${version}` : ''} with:\n` +
     `  node ${shown(path.join(dir, 'cli.js'))} install ${BROWSER_KINDS[kinds[0]].install}\n` +
@@ -240,44 +271,83 @@ const installBrowserHint = kinds => {
 }
 
 /**
- * The browser to launch: --browser shell|chrome|<path>, else $CHROME_PATH, else the newest
- * chrome-headless-shell, then the newest chromium, under the Playwright browser cache.
+ * The browser to launch: --browser shell|chrome|<path>, else $CHROME_PATH, else, under the Playwright
+ * browser cache, the chrome-headless-shell of the revision that playwright-core expects, then the chromium
+ * of that revision, then the newest chrome-headless-shell, then the newest chromium. `shell` and `chrome`
+ * take the expected revision of their kind when it is installed, else the newest.
+ *
+ * Returns { kind, revision, executablePath, source, expectedRevision }, plus `mismatch` (a warning to print)
+ * when the chosen revision is not the expected one: a Playwright installed later for another project must
+ * not silently change the browser behind two runs that get compared.
  */
-export function resolveBrowser(requested) {
+export function resolveBrowser(requested, playwright = playwrightIfInstalled()) {
+  const expected = expectedBrowserRevisions(playwright)
+  const annotate = (hit, source) => {
+    const want = expected[hit.kind]
+    const result = { ...hit, source, expectedRevision: want ?? null }
+    if (want !== undefined && hit.revision !== want) {
+      result.mismatch =
+        `playwright-core ${playwright.version} expects ${BROWSER_KINDS[hit.kind].install} revision ${want}, which is not ` +
+        `installed; using revision ${hit.revision} (${hit.executablePath}). Runs with different browser revisions can ` +
+        `differ in pixels and frame rate. Install the expected one with: node ${shown(path.join(playwright.dir, 'cli.js'))} ` +
+        `install ${BROWSER_KINDS[hit.kind].install}`
+    }
+    return result
+  }
   if (requested === 'shell' || requested === 'chrome') {
-    const hit = findInstalledBrowser(requested)
+    const hit = findInstalledBrowser(requested, expected[requested])
     if (!hit) {
       throw new SetupError(
         `--browser ${requested}: no ${BROWSER_KINDS[requested].folder}*/ folder with an executable in ${browserCacheDirs().join(' or ')}.\n` +
-          installBrowserHint([requested])
+          installBrowserHint([requested], playwright)
       )
     }
-    return { ...hit, source: `--browser ${requested}` }
+    return annotate(hit, `--browser ${requested}`)
   }
   if (requested !== undefined) {
     const file = path.resolve(String(requested))
     if (!isExecutable(file)) {
-      throw new SetupError(`--browser ${requested}: no executable file at ${file}.\n${installBrowserHint(['shell'])}`)
+      throw new SetupError(`--browser ${requested}: no executable file at ${file}.\n${installBrowserHint(['shell'], playwright)}`)
     }
-    return { kind: 'path', revision: null, executablePath: file, source: '--browser' }
+    return { kind: 'path', revision: null, executablePath: file, source: '--browser', expectedRevision: null }
   }
   if (process.env.CHROME_PATH) {
     const file = path.resolve(process.env.CHROME_PATH)
     if (!isExecutable(file)) {
       throw new SetupError(
-        `CHROME_PATH=${process.env.CHROME_PATH}: no executable file there (unset it to auto-detect a browser).\n${installBrowserHint(['shell'])}`
+        `CHROME_PATH=${process.env.CHROME_PATH}: no executable file there (unset it to auto-detect a browser).\n${installBrowserHint(['shell'], playwright)}`
       )
     }
-    return { kind: 'path', revision: null, executablePath: file, source: 'CHROME_PATH' }
+    return { kind: 'path', revision: null, executablePath: file, source: 'CHROME_PATH', expectedRevision: null }
   }
-  const hit = findInstalledBrowser('shell') ?? findInstalledBrowser('chrome')
+  const kinds = ['shell', 'chrome']
+  const exact = kinds
+    .filter(kind => expected[kind] !== undefined)
+    .map(kind => installedBrowsers(kind).find(hit => hit.revision === expected[kind]))
+    .find(Boolean)
+  const hit = exact ?? kinds.map(kind => installedBrowsers(kind)[0]).find(Boolean)
   if (!hit) {
     throw new SetupError(
       `no headless Chromium found (looked for chromium_headless_shell-*/ and chromium-*/ in ${browserCacheDirs().join(' and ')}).\n` +
-        installBrowserHint(['shell', 'chrome'])
+        installBrowserHint(kinds, playwright)
     )
   }
-  return { ...hit, source: 'auto-detected' }
+  return annotate(hit, 'auto-detected')
+}
+
+/** One line for logs: `<path> (<source>, revision N, as playwright-core V expects)`, or names the mismatch. */
+export function describeBrowser(browser, playwright) {
+  let revision = ''
+  if (browser.revision != null) {
+    revision = `, revision ${browser.revision}`
+    if (browser.expectedRevision != null && playwright?.version) {
+      revision +=
+        browser.revision === browser.expectedRevision
+          ? `, as playwright-core ${playwright.version} expects`
+          : `, NOT the ${browser.expectedRevision} that playwright-core ${playwright.version} expects`
+    }
+  }
+  return `${browser.executablePath} (${browser.source}${revision})`
 }
 
 // ─── CHECKOUT MODULES ─────────────────────────────────────────────────────────────

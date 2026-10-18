@@ -23,12 +23,14 @@ import {
   HARNESS_DIR,
   SetupError,
   ancestorHoldsLock,
+  describeBrowser,
   findOnPath,
   isCheckout,
   loadPlaywright,
   lockFileFrom,
   mainCheckoutOf,
   parentOf,
+  playwrightIfInstalled,
   resolveBrowser,
   resolvePlaywright,
   shown,
@@ -109,8 +111,10 @@ Build
   --build-cache <dir>     build cache (env DRIBBLE_HARNESS_BUILDS; default <root>/node_modules/.cache/dribble-harness)
 Browser and page
   --browser <shell|chrome|path>
-                          shell = newest Playwright chrome-headless-shell (lighter), chrome = newest Playwright
-                          chromium, or a browser executable. Default: env CHROME_PATH, else shell, else chrome
+                          shell = Playwright chrome-headless-shell (lighter), chrome = Playwright chromium, each
+                          of the revision the harness's playwright-core expects, else the newest with a warning;
+                          or a browser executable. Default: env CHROME_PATH, else the expected shell, then the
+                          expected chromium, then the newest shell, then the newest chromium
                           (searched in $PLAYWRIGHT_BROWSERS_PATH and ~/.cache/ms-playwright)
   --gpu <egl|vulkan|swiftshader>  WebGL backend (default egl = AMD iGPU; falls back to swiftshader)
   --keep-default-map      do not stub the boot map GLB (by default only the demo's map GLB loads)
@@ -288,7 +292,7 @@ function resolveSetup() {
   const initScripts = list(args['init-script']).map(file => path.resolve(file))
   for (const file of initScripts) if (!fs.existsSync(file)) throw new SetupError(`--init-script ${file} not found`)
   const playwright = resolvePlaywright()
-  const browser = resolveBrowser(args.browser)
+  const browser = resolveBrowser(args.browser, playwright)
   return { root, demoPath, plan, initScripts, playwright, browser }
 }
 
@@ -343,6 +347,7 @@ if (args.check) {
 async function runCheck() {
   const rows = []
   const problems = []
+  const notes = []
   const row = (label, value) => rows.push(`  ${label.padEnd(16)} ${value}`)
   const attempt = (label, fn) => {
     try {
@@ -390,8 +395,10 @@ async function runCheck() {
     return `${version} ${dir}`
   })
   attempt('browser', () => {
-    const browser = resolveBrowser(args.browser)
-    return `${browser.executablePath} (${browser.source}${browser.revision ? `, revision ${browser.revision}` : ''})`
+    const playwright = playwrightIfInstalled()
+    const browser = resolveBrowser(args.browser, playwright)
+    if (browser.mismatch) notes.push(browser.mismatch)
+    return describeBrowser(browser, playwright)
   })
   if (args.demo) {
     attempt('demo', () => {
@@ -405,6 +412,7 @@ async function runCheck() {
   row('out', args.out ? path.resolve(String(args.out)) : defaultOutDir(root, demoName, '<timestamp>'))
   row('memory', `${availableMB() ?? '?'} MB available`)
   console.log(`[harness] setup\n${rows.join('\n')}`)
+  if (notes.length) console.warn(`\n[harness] WARNING:\n- ${notes.map(n => n.split('\n').join('\n  ')).join('\n- ')}`)
   if (problems.length) {
     console.error(`\n[harness] ${problems.length} problem(s):\n- ${problems.map(p => p.split('\n').join('\n  ')).join('\n- ')}`)
     process.exit(1)
@@ -527,7 +535,11 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
     // 3. browser
     const chromium = await loadPlaywright(playwright)
     const executablePath = browserChoice.executablePath
-    log(`browser: ${executablePath} (${browserChoice.source}), playwright-core ${playwright.version}`)
+    log(`browser: ${describeBrowser(browserChoice, playwright)}, playwright-core ${playwright.version}`)
+    if (browserChoice.mismatch) {
+      warnings.push(`browser: ${browserChoice.mismatch}`)
+      log(`WARNING: ${browserChoice.mismatch}`)
+    }
     const { browser, gpu, renderer } = await launchBrowser(chromium, executablePath, String(args.gpu ?? 'egl'), log)
     manifest.browser = { executablePath, gpu, renderer }
     const browserPid = findChildPid(executablePath)

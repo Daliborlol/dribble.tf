@@ -16,6 +16,7 @@ scripts/hl/harness/
   build-child.mjs       vite build of a checkout, run by shot.mjs in a child process
   summarize.mjs         one-screen summary of a run (port of the merge runs' summ.py)
   lib/setup.mjs         checkout paths, lock, playwright-core and browser lookup
+  lib/images.mjs        the app's sharp and the pixel diff, for scripts that import them
   plans/1438891-baseline.json   the baseline plan (koth_product, 15 shots)
   plans/smoke-gen.mjs   writes the smoke plans
   tools/                run comparison, pixel diff, contact sheets, GPU probe, base-parser stats
@@ -37,9 +38,13 @@ Linux only. The memory sampler reads `/proc` and the lock uses `flock` from util
    ```
 
    A worktree without its own copy uses the main checkout's `scripts/hl/harness/node_modules`.
-3. A browser. The harness looks in `$PLAYWRIGHT_BROWSERS_PATH` and `~/.cache/ms-playwright` and takes the
-   newest `chromium_headless_shell-*`, then the newest `chromium-*`. To install the one that matches the pinned
-   playwright-core:
+3. A browser. The harness looks in `$PLAYWRIGHT_BROWSERS_PATH` and `~/.cache/ms-playwright` for the
+   revision that the installed playwright-core lists in its `browsers.json` (1248 for 1.64.0): first
+   `chromium_headless_shell-<revision>`, then `chromium-<revision>`. Only when neither is there does it take
+   the newest `chromium_headless_shell-*`, then the newest `chromium-*`, and it says so: the run logs a
+   warning naming both revisions and adds it to the manifest's `warnings`, and `--check` prints it. So a
+   newer Playwright installed later for another project does not change the browser behind two runs that
+   get compared. To install the expected one:
 
    ```sh
    node scripts/hl/harness/node_modules/playwright-core/cli.js install chromium-headless-shell
@@ -104,7 +109,7 @@ argument stops the run with a usage error before anything is built.
 | `--no-build` | off | reuse the cached build even when it is stale |
 | `--no-minify` | off | unminified build in its own cache entry, for readable profiles |
 | `--build-cache <dir>` | `$DRIBBLE_HARNESS_BUILDS`, else `<root>/node_modules/.cache/dribble-harness` | build cache |
-| `--browser <shell\|chrome\|path>` | `$CHROME_PATH`, else shell, else chrome | `shell` and `chrome` pick the newest Playwright headless shell or chromium |
+| `--browser <shell\|chrome\|path>` | `$CHROME_PATH`, else the expected shell, then chromium, then the newest of each | `shell` and `chrome` pick the Playwright headless shell or chromium of the revision playwright-core expects, else the newest one (with a warning) |
 | `--gpu <egl\|vulkan\|swiftshader>` | `egl` | WebGL backend, see GPU backends |
 | `--keep-default-map` | off | load the boot map GLB too (normally stubbed with an empty GLB) |
 | `--allow-network` | off | let the page reach hosts other than 127.0.0.1 |
@@ -273,7 +278,8 @@ shots[]                        one entry per step:
   error                        why the step failed
 perf                           with --perf-play: { spec, summary, frames } (same as perf.json)
 memoryMB                       { peak, final } PSS of the browser process tree in MB, sampled every second
-warnings[]                     failed steps, unresolved players, network never idle, dialogs, a map that did not load
+warnings[]                     failed steps, unresolved players, network never idle, dialogs, a map that did not load,
+                               a browser revision other than the one playwright-core expects
 perfLines[]                    console lines containing [Perf] or parser2:
 ```
 
@@ -409,22 +415,43 @@ node scripts/hl/harness/tools/compare-runs.mjs ../runs/baseline-before ../runs/b
 It compares the two manifests path by path (every key and value type, array indices included), lists per step
 the tick, render tick, camera mode, focused player and whether the eval result and player list are identical,
 and pixel-diffs every screenshot pair. It writes `<name>-diff.png` per changed shot (B dimmed, changed
-pixels magenta), `compare.json`, and `sheet.png` with A, B and the diff side by side for each step. outDir
-defaults to `<runB>-vs-<runA name>`. Exit code 1 means the structure differs, or with `--max-pct` that a shot
-changed more than p percent.
+pixels magenta), `compare.json`, and `sheet.png` with A, B and the diff side by side for each step (a step
+that differs gets a red label). outDir defaults to `<runB>-vs-<runA name>`. The last lines of the output are
+the warnings and the result, and `compare.json` holds them under `result`.
+
+The exit code answers "did the two runs do the same thing?", like `diff`:
+
+| exit | meaning |
+|---|---|
+| 0 | same demo header, viewport and manifest structure, and every step the same (below); with `--max-pct`, no shot changed more than p percent |
+| 1 | something differs; each reason is listed under `result: DIFFERENT` |
+| 2 | the runs could not be compared: a `manifest.json` is missing or unreadable, or `sharp` cannot be loaded |
+| 64 | usage error |
+
+A step is the same when both runs have the same step definition (the plan entry as written), tick, camera
+mode, focused player and step error, and both or neither saved a screenshot that can be diffed. A step
+without `play` must also have the same render tick and player list, which are pure functions of the demo
+at that tick. A step with `play` runs on wall time, so its render tick and player list are printed but do
+not count; such a step is marked `timed`. Differences in eval results, the browser, the WebGL renderer
+and the console's app-error count are printed as warnings and leave the exit code alone. Eval results can
+carry frame counts that change from run to run (`hud.snapshotStats` does), and the other three describe
+the setup and the console rather than what the runs did. Read every warning anyway.
 
 A pixel counts as changed when one of its channels moves by more than the threshold (24 of 255). Read a result
 like this:
 
-- the structure must be identical and every step's tick, mode and focus equal, or the runs did not do the same
-  thing;
+- exit 1 means the runs did not do the same thing (or a shot passed `--max-pct`): find out why before
+  reading pixels;
+- a warning about a different browser or WebGL backend means pixel and frame-rate differences can come from
+  the browser, not the app;
 - changed pixels that lie only on heal beams or the corner FPS counter are noise, whatever the percentage;
 - anything else is a real change. Open the `-diff.png` (or `sheet.png`) for every shot above about 0.01 %
   before calling it noise.
 
 `tools/imgdiff.mjs <dirA> <dirB> <outDir> [threshold]` is the pixel diff alone (same diff images and
 `diff.json`). `tools/sheet.mjs <out.png> <cols> <image | folder>... [--tile 640x360]` tiles one run's shots
-into a contact sheet. The image tools use the app's `sharp`. The two that draw text labels (`compare-runs.mjs`
+into a contact sheet. The image tools use the app's `sharp`. The files in `tools/` are command lines only;
+a script that needs the pixel diff imports `diffPng` and `diffDirs` from `lib/images.mjs`. The two that draw text labels (`compare-runs.mjs`
 and `sheet.mjs`) run themselves again as a child with sharp's fontconfig warnings filtered out of stderr.
 
 ## Tools
@@ -432,7 +459,7 @@ and `sheet.mjs`) run themselves again as a child with sharp's fontconfig warning
 | tool | use |
 |---|---|
 | `summarize.mjs <run>...` | summary of one or more runs |
-| `tools/compare-runs.mjs` | two runs: structure, steps, pixels, side-by-side sheet |
+| `tools/compare-runs.mjs` | two runs: structure, steps, pixels, side-by-side sheet; exit 0 when they did the same thing |
 | `tools/imgdiff.mjs` | pixel diff of two folders |
 | `tools/sheet.mjs` | contact sheet |
 | `tools/gpu-probe.mjs [--browser ...]` | which WebGL flag sets give hardware rendering (launches Chromium 8 times) |
@@ -453,8 +480,8 @@ For anyone moving from `$S/harness/shot.mjs`:
 
 - `--root` defaults to this checkout, the lock to `<os.tmpdir()>/dribble-heavy.lock` (`--lock`,
   `DRIBBLE_HARNESS_LOCK`), the build cache to `<root>/node_modules/.cache/dribble-harness` (`--build-cache`,
-  `DRIBBLE_HARNESS_BUILDS`), and `--out` to a folder next to the checkout. The browser is auto-detected
-  (`--browser` also takes a path; `CHROME_PATH`).
+  `DRIBBLE_HARNESS_BUILDS`), and `--out` to a folder next to the checkout. The browser is auto-detected,
+  preferring the revision playwright-core expects (`--browser` also takes a path; `CHROME_PATH`).
 - New: `--check`, `--init-script` (what B2's private copy did with `B2_INIT_SCRIPT`), `--min-available`,
   `--wait-available`; `--load-timeout` is now listed in the help; `-h` works.
 - Unknown options, missing values, bad ticks, modes, sizes or `--perf-play` specs, and malformed plans fail
@@ -463,4 +490,5 @@ For anyone moving from `$S/harness/shot.mjs`:
   `heavy.lock`.
 - Smoke plans are named `smoke-<demo>.json` (were `m3-`), and the probe sweep no longer reports `map.props`
   as `ERROR: null`.
-- The manifest format is unchanged.
+- The manifest format is unchanged. A browser revision other than the expected one adds an entry to
+  `warnings`.

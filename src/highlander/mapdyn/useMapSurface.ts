@@ -27,6 +27,7 @@ export const movingMapNodes = (): ReadonlySet<THREE.Object3D> =>
   new Set(useInstance.getState().mapNodes?.values() ?? [])
 
 interface Done {
+  job: SurfaceJob
   spots: readonly Spot[]
   options: SurfaceOptions
   surface: SpotSurface
@@ -77,10 +78,15 @@ export function useMapSurface(spots: readonly Spot[] | null, options: SurfaceOpt
     const run = pending.current
     if (!run || !run.job.step(SURFACE_TRIANGLES_PER_FRAME)) return
     pending.current = null
-    jobStats.finished++
-    jobStats.pending.delete(run.job)
-    setDone({ spots: run.spots, options: run.options, surface: run.job.result() })
+    setDone({ job: run.job, spots: run.spots, options: run.options, surface: run.job.result() })
   })
+
+  // A job stops counting as pending once its result is committed (the caller's effects see it).
+  useEffect(() => {
+    if (!done || !jobStats.pending.has(done.job)) return
+    jobStats.pending.delete(done.job)
+    jobStats.finished++
+  }, [done])
 
   return done && done.spots === spots && done.options === options ? done.surface : null
 }

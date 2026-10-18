@@ -15,6 +15,7 @@ import { useInstance, useStore } from '@zus/store'
 import { cn } from '@utils/styling'
 import { HUD_TICK_STEP, TEAM_FX, TEAM_HUD } from '@highlander/constants'
 import { buildingsOf, type BuildingView } from '@highlander/buildings/model'
+import { TELE_STATE } from '@highlander/extras/enums'
 import { registerHlProbe } from '@highlander/debug'
 import {
   activeWeaponAt,
@@ -85,14 +86,35 @@ function teamOf(demo: AsyncParser, p: number, tick: number): Team | null {
   return id === 2 ? 'red' : id === 3 ? 'blue' : null
 }
 
-function buildingRow(b: BuildingView): BuildingRow {
+/**
+ * A built teleporter's state, as the model's ready glow shows it (buildings/render.ts): 'ready' only while it can
+ * send or receive (READY..RECEIVING_RELEASE), the seconds while recharging, and for IDLE what the other end is
+ * doing: missing ('no exit', 'no entrance'), still building, carried, or not linked yet ('waiting').
+ */
+function teleporterDetail(b: BuildingView, own: BuildingView[]): string {
+  if (b.objState === TELE_STATE.RECHARGING) return b.rechargeLeft > 0.05 ? `${b.rechargeLeft.toFixed(1)}s` : 'ready'
+  if (b.objState >= TELE_STATE.READY && b.objState <= TELE_STATE.RECEIVING_RELEASE) return 'ready'
+  if (b.objState === TELE_STATE.IDLE) {
+    const partner = own.find(o => o.type === 1 && o.mode !== b.mode)
+    const end = b.mode === 1 ? 'entry' : 'exit'
+    if (!partner) return b.mode === 1 ? 'no entrance' : 'no exit'
+    if (partner.carried) return `${end} carried`
+    if (partner.building) return `${end} building`
+    return 'waiting'
+  }
+  if (b.objState === TELE_STATE.UPGRADING) return 'upgrading'
+  return ''
+}
+
+/** One building row; own is every building of the same builder at the tick (the teleporter's partner). */
+function buildingRow(b: BuildingView, own: BuildingView[]): BuildingRow {
   const builtPct = b.built > 1 ? b.built / 255 : b.built
   let detail = ''
   if (b.carried) detail = 'carried'
   else if (b.building) detail = `building ${Math.round(builtPct * 100)}%`
   else if (b.type === 2) detail = `${b.shells}${b.level >= 3 ? ` · ${b.rockets}` : ''}`
   else if (b.type === 0) detail = `${b.metal} metal`
-  else if (b.type === 1) detail = b.rechargeLeft > 0.05 ? `${b.rechargeLeft.toFixed(1)}s` : 'ready'
+  else if (b.type === 1) detail = teleporterDetail(b, own)
   return {
     type: b.type, mode: b.mode, level: b.level, health: b.health, maxHealth: b.maxHealth, mini: b.mini,
     sapped: b.sapped, carried: b.carried, building: b.building, builtPct, detail,
@@ -143,10 +165,12 @@ export function weaponHudAt(x: HighlanderExtras, demo: AsyncParser, subject: Pov
   }
 
   switch (classId) {
-    case 9: // engineer
+    case 9: { // engineer
       if (ammo) model.metal = ammo.metal
-      model.buildings = buildingsOf(x, p, tick).filter(b => b.type !== 3).map(buildingRow)
+      const own = buildingsOf(x, p, tick)
+      model.buildings = own.filter(b => b.type !== 3).map(b => buildingRow(b, own))
       break
+    }
     case 5: { // medic
       const m = x.meta.available.medigun ? medigunAt(x, p, tick) : null
       if (m) model.uber = { pct: m.charge, ready: m.charge >= 0.995, type: itemName(m.def), resist: m.type === 'vaccinator' ? RESIST[m.resist] ?? null : null }
@@ -208,7 +232,7 @@ const BuildingLine = ({ b, team }: { b: BuildingRow; team: Team }) => {
       </div>
       <div className="w-5 shrink-0 font-bold text-white/80">{b.mini ? 'M' : `L${b.level}`}</div>
       <Bar pct={b.building ? b.builtPct : hp} color={b.sapped ? '#ff4b3e' : b.building ? '#d9d9d9' : '#7cd67c'} className="flex-1" />
-      <div className="w-[58px] shrink-0 truncate text-right font-semibold text-white/85">{b.sapped ? 'SAPPED' : b.detail}</div>
+      <div className="w-[80px] shrink-0 truncate text-right font-semibold text-white/85">{b.sapped ? 'SAPPED' : b.detail}</div>
     </div>
   )
 }
@@ -231,7 +255,7 @@ export const PovWeaponHud = React.memo(({ renderTick }: { renderTick: number }) 
   const hasBody = model.weapon || model.metal !== null || model.buildings || model.uber || model.cloak !== null || model.disguise || model.rage || model.stickies !== null || model.charge
 
   return (
-    <div data-hl="pov-weapon-hud" className="flex w-[220px] flex-col items-stretch gap-1 text-white [text-shadow:0_0_3px_#000000]">
+    <div data-hl="pov-weapon-hud" data-hl-layout="pov-weapon-hud" className="flex w-[220px] flex-col items-stretch gap-1 text-white [text-shadow:0_0_3px_#000000]">
       {model.header && (
         <div
           className="self-end truncate rounded-lg bg-pp-panel/70 px-3 py-1 text-xs font-bold"

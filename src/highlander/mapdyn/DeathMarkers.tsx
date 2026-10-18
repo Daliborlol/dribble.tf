@@ -10,7 +10,7 @@ import { useFrame } from '@react-three/fiber'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 
 import { DEATH_MARKER_BAR } from './constants'
-import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
+import { drawn, frameTickF, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import {
   MARKER_SURFACE,
@@ -38,10 +38,9 @@ const _markers: DeathMarker[] = []
 let activeGround: { airborne: number; dropped: number; analysed: boolean; ground: Float32Array } | null = null
 export const getActiveMarkerGround = () => activeGround
 
-export const DeathMarkers = React.memo(({ renderTick }: { renderTick: number }) => {
+export const DeathMarkers = React.memo((_props: { renderTick: number }) => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.deathMarkers') !== false
-  const tickRef = useRenderTickRef(renderTick)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.ragdolls
@@ -70,7 +69,7 @@ export const DeathMarkers = React.memo(({ renderTick }: { renderTick: number }) 
 
   useFrame(() => {
     if (!mesh || !x) return
-    const tickF = tickFOf(tickRef.current)
+    const tickF = frameTickF()
     if (tickF === lastTickF.current) return
     lastTickF.current = tickF
     let n = 0

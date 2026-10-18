@@ -9,7 +9,7 @@ import { DROP } from '@highlander/extras/enums'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 
 import { DROP_AMMO_SIZE, DROP_GIB_SIZE, DROP_WEAPON_SIZE } from './constants'
-import { drawn, tickFOf, useInstancedMesh, useRenderTickRef } from './frame'
+import { drawn, frameTickF, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { forEachDropAt } from './markers'
 
@@ -22,10 +22,9 @@ const _m = new THREE.Matrix4()
 const _c = new THREE.Vector3()
 const _up = new THREE.Vector3()
 
-export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
+export const Drops = React.memo((_props: { renderTick: number }) => {
   const x = useExtras()
   const enabled = useHlSetting<boolean>('map.drops') !== false
-  const tickRef = useRenderTickRef(renderTick)
   const lastTickF = useRef(NaN)
 
   const active = !!x && enabled && x.meta.available.drops
@@ -47,7 +46,7 @@ export const Drops = React.memo(({ renderTick }: { renderTick: number }) => {
 
   useFrame(() => {
     if (!x || !active) return
-    const tickF = tickFOf(tickRef.current)
+    const tickF = frameTickF()
     if (tickF === lastTickF.current) return
     lastTickF.current = tickF
     const meshes = [ammo, gib, weapon]

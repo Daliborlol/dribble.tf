@@ -24,6 +24,7 @@ import { HL } from '@highlander/extras/enums'
 import { flagsAt, fovAt, medigunAt, verticalFov } from '@highlander/extras/getters'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import { povFovAt } from '@highlander/pov/fov'
 import { entityIdOfPlayer, getPovSubject, usePovSubject, type PovSubject } from '@highlander/pov/subject'
 import { allActors, getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
@@ -44,15 +45,55 @@ const _forward = new THREE.Vector3()
 const _quat = new THREE.Quaternion()
 const _target = new THREE.Vector3()
 
-/** Source horizontal FOV (4:3) the subject's camera shows at tickF, or null when POV FOV is not TF2's. */
+/**
+ * Source horizontal FOV (4:3) the subject's camera shows at tickF: the networked zoom for his own and spectated
+ * eyes (povFovAt: fovAt with the transition on the server timeline), 90 for the chase and death cameras.
+ */
 export function povSourceFov(x: HighlanderExtras | undefined, subject: PovSubject, tickF: number): number {
   if ((subject.camera === 'own' || subject.camera === 'spectated') && x && x.meta.available.fov && subject.p >= 0) {
-    return fovAt(x, subject.p, tickF, 90)
+    return povFovAt(x, subject.p, tickF, 90)
   }
   return 90
 }
 
-/** Places the chase camera behind and above the subject's eye, looking along his view. */
+// ─── map raycasts (wall probes only: one ray costs 3.6 to 10.6 ms on the HL maps) ──
+
+const _ray = new THREE.Raycaster()
+let worldRef: THREE.Object3D | null = null
+
+/** The map's `world` group, cached while it stays in the scene (World replaces it on map and mode changes). */
+function mapWorld(): THREE.Object3D | null {
+  if (worldRef && worldRef.parent) return worldRef
+  worldRef = useInstance.getState().threeScene?.getObjectByName('world') ?? null
+  return worldRef
+}
+
+/** Raycaster ignores `visible`; hidden map nodes (render-mode-10 brushes, the 3D skybox) must not block. */
+function drawnUnder(object: THREE.Object3D, root: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = object; n; n = n.parent) {
+    if (!n.visible) return false
+    if (n === root) return true
+  }
+  return true
+}
+
+/** Distance from `origin` along the unit `dir` to the first drawn map surface within `far`, or null. */
+function mapHitDistance(origin: THREE.Vector3, dir: THREE.Vector3, far: number): number | null {
+  const world = mapWorld()
+  if (!world) return null
+  _ray.set(origin, dir)
+  _ray.near = 0
+  _ray.far = far
+  for (const hit of _ray.intersectObject(world, true)) if (drawnUnder(hit.object, world)) return hit.distance
+  return null
+}
+
+/**
+ * Places the chase camera behind and above the subject's eye, looking along his view. There is no wall collision
+ * (contract): the map hides the chased player in about a fifth of the ticks (18 % on koth_product, 24 % on pl_vigil,
+ * measured with the 'pov.wallScan' probe in 'chase' mode), but a three.js raycast against those maps costs 3.6 to
+ * 10.6 ms, too much for every frame without an acceleration structure.
+ */
 function placeChase(camera: THREE.PerspectiveCamera, subject: PovSubject): boolean {
   const aim = getActor(subject.entityId)?.aim
   if (!aim) return false
@@ -255,6 +296,8 @@ registerHlProbe('pov.state', (tick?: number) => {
     deathTick: subject.deathTick ?? null,
     fovH: r(fovH),
     fovV: r(tf2 ? verticalFov(fovH) : useStore.getState().settings.camera.fov),
+    // the contract getter (zoom spline from m_flFOVTime, in the player's tickbase time), for comparison
+    fovHNetworked: x && subject.p >= 0 && (subject.camera === 'own' || subject.camera === 'spectated') ? r(fovAt(x, subject.p, at, 90)) : null,
     eyeZ: getEyeHeight(subject.entityId, classId, at),
     near: camera ? camera.near : null,
     cameraFov: camera ? r(camera.fov) : null,
@@ -269,30 +312,74 @@ registerHlProbe('pov.state', (tick?: number) => {
 // Probe: distance from a player's eye (his povCamera; default: the active camera) to the map along his view and
 // 20 degrees below it, where the viewmodel sits. Used to find moments where a POV player hugs a wall (the viewmodel
 // depth-clear check). With entityId 'all', every registered actor.
-const _ray = new THREE.Raycaster()
-function wallDistances(camera: THREE.Object3D, world: THREE.Object3D): { ahead: number | null; low: number | null } {
+function wallDistances(camera: THREE.Object3D): { ahead: number | null; low: number | null } {
   camera.updateWorldMatrix(true, false)
   const origin = camera.getWorldPosition(new THREE.Vector3())
   const q = camera.getWorldQuaternion(new THREE.Quaternion())
   const out = { ahead: null as number | null, low: null as number | null }
   for (const [name, down] of [['ahead', 0], ['low', 20]] as const) {
     const dir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(1, 0, 0), (-down * Math.PI) / 180).applyQuaternion(q)
-    _ray.set(origin, dir)
-    _ray.far = 400
-    const hit = _ray.intersectObject(world, true)[0]
-    out[name] = hit ? Math.round(hit.distance) : null
+    const hit = mapHitDistance(origin, dir, 400)
+    out[name] = hit === null ? null : Math.round(hit)
   }
   return out
 }
 registerHlProbe('pov.wallDistance', (entityId?: number | 'all') => {
-  const world = useInstance.getState().threeScene?.getObjectByName('world')
-  if (!world) return null
+  if (!mapWorld()) return null
   if (entityId === 'all') {
     return Array.from(allActors()).map(a => {
       const camera = a.aim.getObjectByName('povCamera')
-      return { entityId: a.entityId, ...(camera ? wallDistances(camera, world) : { ahead: null, low: null }) }
+      return { entityId: a.entityId, ...(camera ? wallDistances(camera) : { ahead: null, low: null }) }
     })
   }
   const camera = entityId !== undefined ? getActor(entityId)?.aim.getObjectByName('povCamera') : lastActiveCamera
-  return camera ? wallDistances(camera, world) : null
+  return camera ? wallDistances(camera) : null
+})
+
+// Probe: ticks in [from, to) where player p's eye is within `maxDist` of the map straight ahead, from the base
+// position, view angles and eye height alone (no seeking), with whether he heals. Finds natural "viewmodel against a
+// wall" moments for the depth-clear check. Mode 'chase' instead casts from the eye to the chase camera spot (150 back,
+// 20 up) and reports the ticks where the map is in between. Mode 'vm' casts toward where the viewmodel sits (forward 20,
+// right 9, down 9), only on ticks where p heals, and keeps the hits whose view straight ahead is open for 300 units:
+// the viewmodel would clip into a wall at the side while the heal beam and the world ahead stay on screen.
+registerHlProbe('pov.wallScan', (p: number, from: number, to: number, step = 10, maxDist = 40, mode: 'ahead' | 'chase' | 'vm' = 'ahead') => {
+  const { parsedDemo: demo, extras, extrasStatus } = useInstance.getState()
+  if (!demo || !mapWorld()) return null
+  const x = extrasStatus === 'ready' ? extras : undefined
+  const entityId = entityIdOfPlayer(demo, p)
+  const origin = new THREE.Vector3()
+  const dir = new THREE.Vector3()
+  const right = new THREE.Vector3()
+  const up = new THREE.Vector3()
+  const out: { t: number; dist: number; healing: boolean | null }[] = []
+  let samples = 0
+  const started = performance.now() // probe timing only, not effect logic
+  for (let t = Math.max(1, from); t < Math.min(to, demo.ticks); t += step) {
+    if (!((demo.playerCache.healthCache.get(p, t) || 0) > 0)) continue
+    const healing = x ? !!medigunAt(x, p, t)?.healing : null
+    if (mode === 'vm' && !healing) continue
+    const pos = demo.playerCache.positionCache.getPosition(p, t)
+    const ang = demo.playerCache.viewAnglesCache.getAngles(p, t)
+    const classId = demo.playerCache.metaCache.getMeta(p, t).classId
+    origin.set(pos.x, pos.y, pos.z + getEyeHeight(entityId, classId, t))
+    const pitch = (ang.x * Math.PI) / 180, yaw = (ang.y * Math.PI) / 180
+    // Appendix B.4: forward, right and up of Source view angles
+    dir.set(Math.cos(pitch) * Math.cos(yaw), Math.cos(pitch) * Math.sin(yaw), -Math.sin(pitch))
+    let far = maxDist
+    if (mode === 'chase') {
+      dir.multiplyScalar(-CHASE_BACK).setZ(dir.z + CHASE_UP)
+      far = dir.length()
+      dir.multiplyScalar(1 / far)
+    } else if (mode === 'vm') {
+      samples++
+      if (mapHitDistance(origin, dir, 300) !== null) continue // the view ahead must be open
+      right.set(Math.sin(yaw), -Math.cos(yaw), 0)
+      up.set(Math.sin(pitch) * Math.cos(yaw), Math.sin(pitch) * Math.sin(yaw), Math.cos(pitch))
+      dir.multiplyScalar(20).addScaledVector(right, 9).addScaledVector(up, -9).normalize()
+    }
+    samples++
+    const hit = mapHitDistance(origin, dir, far)
+    if (hit !== null) out.push({ t, dist: Math.round(hit), healing })
+  }
+  return { ms: Math.round(performance.now() - started), samples, hits: out }
 })

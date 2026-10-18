@@ -32,8 +32,13 @@ const OWN_DOT_SIZE = 2
 const BEAM_OPACITY = 0.3
 const LASER_BEAM_OPACITY = 0.5
 const BEAM_WIDTH_PX = 2.5
-/** Smallest on-screen size of a dot's outer glow, so dots stay visible from an RTS camera far away. */
-const MIN_DOT_PX = 9
+/**
+ * Smallest on-screen sizes of a dot's outer glow and of its core, so a sniper's aim point stays findable from an RTS
+ * camera far away (an uncharged dot's core is 0.6 units: under a pixel at RTS distance). The contract sizes rule up
+ * close.
+ */
+const MIN_DOT_PX = 14
+const MIN_CORE_PX = 5
 /** Below the viewmodel depth clear (1e6), above ordinary transparent effects. */
 const DOT_ORDER = 900
 
@@ -157,7 +162,7 @@ export const SniperLayer = React.memo(({ renderTick }: { renderTick: number }) =
       slot.outer.position.set(dot.x, dot.y, dot.z)
       slot.inner.position.set(dot.x, dot.y, dot.z)
       slot.outer.scale.setScalar(base)
-      slot.inner.scale.setScalar(base * s)
+      slot.inner.scale.setScalar(Math.min(base, Math.max(base * s, MIN_CORE_PX * pxWorld)))
       slot.outer.visible = slot.inner.visible = true
 
       // Beam from the owner's eye (interpolated actor + eye height) to the dot

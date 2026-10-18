@@ -6,6 +6,7 @@
 // the fixed set of shapes the builders use.
 
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
 import { DARK_METAL, METAL, NEUTRAL, TEAM_DARK, TEAM_FX, TEAM_HUD } from '@highlander/constants'
 
@@ -36,15 +37,59 @@ const DEG = Math.PI / 180
 const materials = new Map<string, THREE.Material>()
 
 /**
- * Flat-shaded Lambert for solid parts. `transparent` is what puts the viewmodel in the late transparent pass after
- * the depth clear (contract render-order trick); opacity stays 1. A little emissive keeps faces that point away from
- * both map lights readable.
+ * Studio light of the viewmodel, in view space (x right, y up, z toward the eye): a key from the upper left behind
+ * the eye, a weak fill from the lower right and a sky/ground term. The world's lights stay in at a fifth of their
+ * weight. Without it every face of a weapon that points back at the eye gets the same light from the map's two
+ * overhead directional lights, and boxes read as flat cut-outs; with it the top, the left and the right faces of
+ * every part differ in brightness wherever the player looks, which is what makes the low-poly shapes read as
+ * objects. The uniforms are shared by every viewmodel solid.
+ */
+const STUDIO_UNIFORMS = {
+  vmKeyDir: { value: new THREE.Vector3(-0.42, 0.74, 0.52).normalize() },
+  vmFillDir: { value: new THREE.Vector3(0.72, -0.2, 0.36).normalize() },
+  // base, sky-up, key, fill: top faces about 1.6, faces toward the eye 1.3, left 1.05, right 0.7, bottom 0.35
+  vmStudio: { value: new THREE.Vector4(0.3, 0.22, 1.45, 0.32) },
+  vmWorld: { value: 0.18 },
+}
+
+function studioLight(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  Object.assign(shader.uniforms, STUDIO_UNIFORMS)
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', 'uniform vec3 vmKeyDir;\nuniform vec3 vmFillDir;\nuniform vec4 vmStudio;\nuniform float vmWorld;\nvoid main() {')
+    .replace(
+      '#include <lights_fragment_end>',
+      [
+        '#include <lights_fragment_end>',
+        '{',
+        '  float vmKey = max(dot(normal, vmKeyDir), 0.0);',
+        '  float vmFill = max(dot(normal, vmFillDir), 0.0);',
+        '  float vmUp = 0.5 + 0.5 * normal.y;',
+        '  float vmLight = vmStudio.x + vmStudio.y * vmUp + vmStudio.z * vmKey + vmStudio.w * vmFill;',
+        '  reflectedLight.directDiffuse = diffuseColor.rgb * vmLight + vmWorld * reflectedLight.directDiffuse;',
+        '  reflectedLight.indirectDiffuse *= vmWorld;',
+        '}',
+      ].join('\n')
+    )
+}
+
+function withStudioLight<T extends THREE.MeshLambertMaterial>(m: T): T {
+  m.onBeforeCompile = studioLight
+  m.customProgramCacheKey = () => 'hl-viewmodel-studio-1'
+  return m
+}
+
+/**
+ * Flat-shaded Lambert for solid parts, lit by the studio light above. `transparent` is what puts the viewmodel in the
+ * late transparent pass after the depth clear (contract render-order trick); opacity stays 1. `emissive` below 0.5
+ * only lifts the darkest faces a little (the studio light does the shaping); 0.5 and above marks self-lit parts
+ * (team accents, lenses) that should stay bright in any light.
  */
 export function solid(color: string, emissive = 0.2): THREE.MeshLambertMaterial {
   const key = `s:${color}:${emissive}`
   let m = materials.get(key) as THREE.MeshLambertMaterial | undefined
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: emissive, flatShading: true })
+    const intensity = emissive >= 0.5 ? emissive * 0.75 : emissive * 0.3
+    m = withStudioLight(new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: intensity, flatShading: true }))
     m.transparent = true
     m.depthTest = true
     m.depthWrite = true
@@ -87,7 +132,7 @@ export function ownGlow(color: string, opacity = 1): THREE.MeshBasicMaterial {
 
 /** A solid part whose emissive changes per instance (the medigun canister): its own material, not cached. */
 export function ownSolid(color: string, emissive = 0.2): THREE.MeshLambertMaterial {
-  return solid(color, emissive).clone()
+  return withStudioLight(solid(color, emissive).clone()) // clone() does not carry onBeforeCompile
 }
 
 // ─── geometries ────────────────────────────────────────────────────────────────
@@ -105,16 +150,45 @@ function cachedGeometry(key: string, make: () => THREE.BufferGeometry): THREE.Bu
 
 const q = (v: number) => Math.round(v * 100) / 100
 
-/** Box with sizes along X (forward), Y (left), Z (up). */
+/**
+ * Box with sizes along X (forward), Y (left), Z (up). Parts at least 0.9 thick get chamfered edges: under the flat
+ * shading and the studio light each chamfer catches a highlight, which is most of what separates a designed low-poly
+ * part from a raw box. Thin plates stay plain boxes.
+ */
 export function boxGeometry(lx: number, ly: number, lz: number): THREE.BufferGeometry {
-  return cachedGeometry(`b:${q(lx)}:${q(ly)}:${q(lz)}`, () => new THREE.BoxGeometry(lx, ly, lz))
+  return cachedGeometry(`b:${q(lx)}:${q(ly)}:${q(lz)}`, () => {
+    const min = Math.min(lx, ly, lz)
+    if (min < 0.9) return new THREE.BoxGeometry(lx, ly, lz)
+    return new RoundedBoxGeometry(lx, ly, lz, 1, Math.min(0.45, 0.17 * min))
+  })
+}
+
+/**
+ * Lathe around +Y with chamfered rims: radius r at -len/2, r2 at +len/2. A facet faces each principal direction
+ * (phiStart), so 6- and 8-sided barrels show a flat top instead of an edge.
+ */
+function chamferedLathe(r: number, r2: number, len: number, segs: number): THREE.BufferGeometry {
+  const h = len / 2
+  const c = Math.min(0.32, 0.18 * Math.min(r, r2), 0.2 * len)
+  const points =
+    c < 0.06 || Math.min(r, r2) < 0.7
+      ? [new THREE.Vector2(0, -h), new THREE.Vector2(r, -h), new THREE.Vector2(r2, h), new THREE.Vector2(0, h)]
+      : [
+          new THREE.Vector2(0, -h),
+          new THREE.Vector2(r - c, -h),
+          new THREE.Vector2(r, -h + c),
+          new THREE.Vector2(r2, h - c),
+          new THREE.Vector2(r2 - c, h),
+          new THREE.Vector2(0, h),
+        ]
+  return new THREE.LatheGeometry(points, segs, -Math.PI / segs)
 }
 
 /** Cylinder or cone along +X, centred on the origin; `r2` is the radius at the front (+X) end. */
 export function cylXGeometry(r: number, len: number, segs = 8, r2 = r): THREE.BufferGeometry {
   return cachedGeometry(`cx:${q(r)}:${q(r2)}:${q(len)}:${segs}`, () => {
-    const g = new THREE.CylinderGeometry(r2, r, len, segs)
-    g.rotateZ(-Math.PI / 2) // +Y (top, radius r2) to +X
+    const g = chamferedLathe(r, r2, len, segs)
+    g.rotateZ(-Math.PI / 2) // +Y (radius r2) to +X
     return g
   })
 }
@@ -122,7 +196,7 @@ export function cylXGeometry(r: number, len: number, segs = 8, r2 = r): THREE.Bu
 /** Cylinder along +Z, centred on the origin. */
 export function cylZGeometry(r: number, len: number, segs = 8, r2 = r): THREE.BufferGeometry {
   return cachedGeometry(`cz:${q(r)}:${q(r2)}:${q(len)}:${segs}`, () => {
-    const g = new THREE.CylinderGeometry(r2, r, len, segs)
+    const g = chamferedLathe(r, r2, len, segs)
     g.rotateX(Math.PI / 2) // +Y to +Z
     return g
   })
@@ -130,7 +204,7 @@ export function cylZGeometry(r: number, len: number, segs = 8, r2 = r): THREE.Bu
 
 /** Cylinder along +Y, centred on the origin. */
 export function cylYGeometry(r: number, len: number, segs = 8): THREE.BufferGeometry {
-  return cachedGeometry(`cy:${q(r)}:${q(len)}:${segs}`, () => new THREE.CylinderGeometry(r, r, len, segs))
+  return cachedGeometry(`cy:${q(r)}:${q(len)}:${segs}`, () => chamferedLathe(r, r, len, segs))
 }
 
 /** Low-poly sphere. */
@@ -246,10 +320,19 @@ export class Rig {
     return this.mesh(ballGeometry(r), material, pos, opts)
   }
 
-  /** Square-section bar from a to b. */
+  /**
+   * Bar from a to b, `w` wide and `h` high. Built from a box of the bar's own length (not a stretched unit box), so
+   * the chamfers keep their size. The rotation is the shortest one from +X, so a bar in the X-Z plane keeps its width
+   * along rig Y.
+   */
   bar(a: V3, b: V3, w: number, material: THREE.Material, opts?: { parent?: THREE.Object3D; h?: number; name?: string }): THREE.Mesh {
-    const mesh = new THREE.Mesh(unitBoxGeometry(), material)
-    orientBetween(mesh, a, b, w, opts?.h ?? w)
+    _a.set(a[0], a[1], a[2])
+    _b.set(b[0], b[1], b[2])
+    _dir.subVectors(_b, _a)
+    const len = Math.max(0.01, _dir.length())
+    const mesh = new THREE.Mesh(boxGeometry(len, w, opts?.h ?? w), material)
+    mesh.position.addVectors(_a, _b).multiplyScalar(0.5)
+    mesh.quaternion.setFromUnitVectors(X_AXIS, _dir.multiplyScalar(1 / len))
     ;(opts?.parent ?? this.root).add(mesh)
     if (opts?.name) {
       mesh.name = opts.name
@@ -292,7 +375,7 @@ export class Rig {
       const local = new THREE.Vector3(eye[0] - anchor[0], -(eye[1] - anchor[1]), eye[2] - anchor[2]).applyQuaternion(inv).multiplyScalar(1 / scale)
       const parent = h.parent ?? this.root
       parent.worldToLocal(local) // rig.root has no parent and an identity transform here, so world = rig space
-      addArm(this, h.at, [local.x, local.y, local.z], h.thick === 1 ? style : { ...style, thick: style.thick * h.thick }, parent)
+      addArm(this, h.at, [local.x, local.y, local.z], h.thick === 1 ? style : { ...style, thick: style.thick * h.thick }, parent, h.side)
     }
   }
 
@@ -331,12 +414,19 @@ export function armStyle(classId: number, team: TeamKey): ArmStyle {
   }
 }
 
+const _gx = new THREE.Vector3()
+const _gy = new THREE.Vector3()
+const _gz = new THREE.Vector3()
+const _basis = new THREE.Matrix4()
+
 /**
- * A gloved hand at `hand` with the forearm running back to `elbow` (off screen). The glove's long axis follows the
- * forearm. The contract's 7 x 5 x 5 hand boxes covered the pistols and grips at viewmodel FOV 70, so the glove is a
- * smaller palm (3.6 x 2.7 x 3.0) plus knuckles and a thumb, scaled by the class thickness.
+ * A gloved hand at `hand` with the forearm running back to `elbow` (off screen). The glove's frame follows the
+ * forearm (X), with the back of the hand turned up (Z as close to rig +Z as the forearm allows) and the thumb on the
+ * inner side: rig +Y (left) for the right hand, -Y for the left. The contract's 7 x 5 x 5 hand boxes covered the
+ * pistols and grips at viewmodel FOV 70, so the glove is a smaller chamfered back of the hand, a curled block of
+ * fingers and a thumb, scaled by the class thickness.
  */
-export function addArm(rig: Rig, hand: V3, elbow: V3, style: ArmStyle, parent?: THREE.Object3D): THREE.Group {
+export function addArm(rig: Rig, hand: V3, elbow: V3, style: ArmStyle, parent?: THREE.Object3D, side: 'right' | 'left' = 'right'): THREE.Group {
   const arm = new THREE.Group()
   arm.name = 'vmArm'
   ;(parent ?? rig.root).add(arm)
@@ -344,25 +434,38 @@ export function addArm(rig: Rig, hand: V3, elbow: V3, style: ArmStyle, parent?: 
   _a.set(hand[0], hand[1], hand[2])
   _b.set(elbow[0], elbow[1], elbow[2])
   _dir.subVectors(_a, _b).normalize() // elbow -> hand
-  const wrist: V3 = [hand[0] - _dir.x * 1.8 * t, hand[1] - _dir.y * 1.8 * t, hand[2] - _dir.z * 1.8 * t]
-  const cuffEnd: V3 = [wrist[0] - _dir.x * 1.1, wrist[1] - _dir.y * 1.1, wrist[2] - _dir.z * 1.1]
+  const wrist: V3 = [hand[0] - _dir.x * 1.9 * t, hand[1] - _dir.y * 1.9 * t, hand[2] - _dir.z * 1.9 * t]
+  const cuffEnd: V3 = [wrist[0] - _dir.x * 1.2, wrist[1] - _dir.y * 1.2, wrist[2] - _dir.z * 1.2]
 
-  // Glove: a palm block with a thumb on the inner side and knuckles, so it reads as a hand and not a box
+  // Glove frame: X along the forearm, Z (back of the hand) toward rig up
+  _gx.copy(_dir)
+  _gz.set(0, 0, 1).addScaledVector(_gx, -_gx.z)
+  if (_gz.lengthSq() < 1e-4) _gz.set(-1, 0, 0).addScaledVector(_gx, _gx.x)
+  _gz.normalize()
+  _gy.crossVectors(_gz, _gx)
+  _basis.makeBasis(_gx, _gy, _gz)
+
   const gloveMat = solid(style.glove, 0.3)
-  const glove = new THREE.Mesh(boxGeometry(3.6 * t, 2.7 * t, 3.0 * t), gloveMat)
+  const glove = new THREE.Group()
+  glove.name = 'vmGlove'
   glove.position.copy(_a)
-  glove.quaternion.setFromUnitVectors(X_AXIS, _dir)
+  glove.quaternion.setFromRotationMatrix(_basis)
   arm.add(glove)
-  const knuckles = new THREE.Mesh(boxGeometry(1.2 * t, 2.5 * t, 2.4 * t), gloveMat)
-  knuckles.position.set(2.0 * t, 0, 0.25 * t)
-  glove.add(knuckles)
-  const thumb = new THREE.Mesh(boxGeometry(2.1 * t, 0.95 * t, 0.95 * t), gloveMat)
-  thumb.position.set(0.8 * t, 1.35 * t, 1.25 * t)
-  thumb.rotation.z = 0.4
+  const inner = side === 'right' ? 1 : -1
+  const backOfHand = new THREE.Mesh(boxGeometry(3.3 * t, 2.8 * t, 2.2 * t), gloveMat)
+  backOfHand.position.set(-0.2 * t, 0, 0.35 * t)
+  glove.add(backOfHand)
+  const fingers = new THREE.Mesh(boxGeometry(1.7 * t, 2.7 * t, 2.5 * t), gloveMat)
+  fingers.position.set(1.75 * t, 0, -0.35 * t)
+  fingers.rotation.y = 0.35 // curled down around the grip
+  glove.add(fingers)
+  const thumb = new THREE.Mesh(boxGeometry(2.2 * t, 1.0 * t, 1.0 * t), gloveMat)
+  thumb.position.set(0.9 * t, 1.45 * t * inner, 0.55 * t)
+  thumb.rotation.z = 0.45 * inner
   glove.add(thumb)
 
-  rig.tube(wrist, cuffEnd, 1.75 * t, 1.75 * t, solid(style.cuff, 0.25), arm)
-  rig.tube(cuffEnd, elbow, 1.6 * t, 2.1 * t, solid(style.sleeve, 0.18), arm)
+  rig.tube(wrist, cuffEnd, 1.8 * t, 1.8 * t, solid(style.cuff, 0.25), arm)
+  rig.tube(cuffEnd, elbow, 1.6 * t, 2.15 * t, solid(style.sleeve, 0.18), arm)
   return arm
 }
 

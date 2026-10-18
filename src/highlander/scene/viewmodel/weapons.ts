@@ -104,8 +104,9 @@ const shotgun: Builder = ({ rig, team }) => {
   rig.box([1.2, 1.4, 1.0], light(), [29, 0, 4.9])                              // bead sight
   const pump = rig.group([0, 0, 0], { name: 'pump' })
   rig.box([7, 3.0, 2.8], wood(), [14.4, 0, 2.0], { parent: pump })
-  rig.bar([-2.4, 0, 2.6], [-13, 0, -1.8], 2.6, wood(), { h: 4.2 })             // stock
-  rig.box([1.4, 2.8, 4.8], darkWood(), [-13.5, 0, -1.9], { rot: [0, -18, 0] }) // butt
+  for (const x of [12.2, 13.8, 15.4, 17]) rig.box([0.35, 3.1, 0.45], darkWood(), [x, 0, 3.25], { parent: pump }) // grooves
+  // Stock kept short and steep: it leaves the frame at the lower right instead of filling the corner
+  rig.bar([-2.2, 0, 2.2], [-7.6, 0, -2.4], 2.0, darkWood(), { h: 3.0 })
   rig.box([2.6, 2.0, 4.6], darkWood(), [-0.2, 0, 0.2], { rot: [0, -18, 0] })  // grip
   rig.setMuzzle([30, 0, 4.0])
   rig.hand([0, 0, 0.2], 'right')
@@ -122,8 +123,8 @@ const scattergun: Builder = ({ rig, team }) => {
   rig.box([9, 3.8, 2.2], wood(), [7, 0, -1.0], { parent: barrels })             // fore-end
   rig.box([1.6, 0.5, 1.6], accent(team), [3, 2.0, -1.0], { parent: barrels })
   rig.box([6.5, 3.8, 4.4], metal(), [1.5, 0, 2.8])                             // receiver
-  rig.bar([-1.8, 0, 2.2], [-12, 0, -2.0], 3.0, wood(), { h: 4.4 })
-  rig.box([1.4, 3.2, 5.0], darkWood(), [-12.4, 0, -2.0], { rot: [0, -18, 0] })
+  rig.box([3.2, 0.4, 1.4], light(), [2.4, 1.95, 3.4])                          // hinge plate
+  rig.bar([-1.6, 0, 1.8], [-7.4, 0, -2.6], 2.2, darkWood(), { h: 3.0 })        // short stock, leaves the frame
   rig.box([2.6, 2.1, 4.6], darkWood(), [-0.2, 0, 0.2], { rot: [0, -18, 0] })
   rig.setMuzzle([22.4, 0, 1.0], barrels)
   rig.hand([0, 0, 0.2], 'right')
@@ -151,7 +152,8 @@ const pistol: Builder = ({ rig, team, itemClass }) => {
     rig.setMuzzle([9.8, 0, 2.8])
   }
   rig.hand([-0.6, 0, -0.9], 'right')
-  return { ...SHORT, kick: [0.9, 1.6] }
+  // A little further out and turned so the left side of the slide shows, not just the back of the gun
+  return { ...SHORT, anchor: [20.5, 8.5, -7.4], aim: [-6, 3, 9], kick: [0.9, 1.6] }
 }
 
 const revolver: Builder = ({ rig, team }) => {
@@ -170,20 +172,20 @@ const revolver: Builder = ({ rig, team }) => {
 
 const smg: Builder = ({ rig, team }) => {
   const { metal, dark, light } = mats
-  rig.box([12, 2.4, 3.2], metal(), [3.8, 0, 2.4])                              // receiver
-  rig.cyl(0.7, 6, dark(), [12.6, 0, 3.0], { segs: 8 })
-  rig.cyl(1.1, 2.6, dark(), [10.4, 0, 3.0], { segs: 8 })                       // shroud
-  rig.box([1.7, 1.5, 6.5], dark(), [6, 0, -1.6], { rot: [0, 12, 0] })          // magazine
-  rig.box([2.3, 1.8, 4.6], dark(), [0, 0, -0.3], { rot: [0, -16, 0] })
-  rig.bar([-2, 0, 3.2], [-10, 0, 1.8], 0.7, dark())                            // wire stock
-  rig.bar([-2, 0, 1.4], [-10, 0, 0.8], 0.7, dark())
-  rig.box([0.8, 2.0, 3.0], dark(), [-10.2, 0, 1.3])
-  rig.box([4, 1.2, 1.1], light(), [3.4, 0, 4.4])                               // sight rail
-  rig.box([4, 0.35, 1.3], accent(team), [4.4, 1.25, 2.4])
-  rig.setMuzzle([15.8, 0, 3.0])
+  // Compact SMG held out in front (TF2's sniper SMG): a short receiver, a stubby barrel and a long box magazine
+  rig.box([8.5, 2.2, 2.8], metal(), [3.6, 0, 2.4])                             // receiver
+  rig.box([8.6, 2.3, 0.9], dark(), [3.6, 0, 3.9])                              // top cover
+  rig.cyl(0.6, 4.4, dark(), [9.8, 0, 2.8], { segs: 8 })                        // barrel
+  rig.cyl(1.0, 2.0, dark(), [8.6, 0, 2.8], { segs: 8 })                        // shroud
+  rig.box([1.6, 1.4, 5.6], dark(), [5.2, 0, -1.4], { rot: [0, 10, 0] })        // magazine
+  rig.box([2.3, 1.8, 4.4], dark(), [0, 0, -0.3], { rot: [0, -16, 0] })         // grip
+  rig.box([2.6, 0.5, 1.5], light(), [4.2, 0, 4.6])                             // rear sight
+  rig.box([3.4, 0.3, 1.2], accent(team), [3.2, 1.15, 2.4])
+  rig.bar([-1.6, 0, 3.0], [-5.6, 0, 1.6], 0.6, dark())                         // folded wire stock
+  rig.setMuzzle([12.2, 0, 2.8])
   rig.hand([-0.2, 0, -0.4], 'right')
-  rig.hand([6.4, 0, -3.0], 'left')
-  return { ...LONG, anchor: [19.5, 9, -7.6], kick: [0.7, 0.9] }
+  rig.hand([5.4, 0, -2.6], 'left')
+  return { ...LONG, anchor: [22, 9, -8.2], aim: [0, 2, 3.5], kick: [0.7, 0.9] }
 }
 
 const sniperRifle: Builder = ({ rig, team, weaponMode }) => {
@@ -199,8 +201,7 @@ const sniperRifle: Builder = ({ rig, team, weaponMode }) => {
   rig.cyl(1.45, 0.35, lens, [13.5, 0, 5.8], { segs: 8 })                        // lens
   rig.box([1.4, 1.2, 1.4], metal(), [1.4, 0, 4.5])                             // mounts
   rig.box([1.4, 1.2, 1.4], metal(), [8, 0, 4.5])
-  rig.bar([-2.4, 0, 2.2], [-14, 0, -1.0], 2.6, wood(), { h: 4.4 })             // stock
-  rig.box([1.6, 2.8, 5.2], darkWood(), [-14.4, 0, -1.1], { rot: [0, -14, 0] })
+  rig.bar([-2.4, 0, 2.0], [-8.6, 0, -1.8], 2.2, wood(), { h: 3.4 })            // stock, cut where it leaves the frame
   rig.box([2.6, 2.0, 4.6], darkWood(), [-0.2, 0, 0.1], { rot: [0, -18, 0] })
   const bolt = rig.group([1.6, 0, 3.6], { name: 'bolt' })
   rig.cylY(0.45, 3.6, light(), [0, -1.8, 0], { parent: bolt })
@@ -265,8 +266,10 @@ const minigun: Builder = ({ rig, team }) => {
   rig.box([2.4, 2.2, 5.6], dark(), [-8, 0, -2.6], { rot: [0, -10, 0] })        // rear grip
   rig.setMuzzle([33.5, 0, 2.0])
   rig.hand([-8, 0, -3.2], 'right', undefined, { thick: 1.1, elbowEye: [8, 22, -24] })
-  rig.hand([0, 6.4, 1.6], 'left', undefined, { thick: 1.1, elbowEye: [14, -4, -26] })
-  return { ...LONG, anchor: [27, 10, -12.5], aim: [0, 1, 4], pivot: [-16, -2, -10], kick: [0.15, 0.2], reloads: false }
+  rig.hand([4, 5.4, 0.6], 'left', undefined, { thick: 1.15, elbowEye: [14, -4, -26] })
+  // Held at the hip with the muzzle tilted up and in toward the crosshair, so the barrel cluster shows along its
+  // length from the lower right; the housing and the carry handle only peek in at the bottom edge
+  return { ...LONG, anchor: [24, 12.5, -15.5], aim: [0, -11, 11], pivot: [-16, -2, -10], kick: [0.15, 0.2], reloads: false }
 }
 
 const flamethrower: Builder = ({ rig, team }) => {
@@ -319,8 +322,7 @@ const grenadeLauncher: Builder = ({ rig, team, itemClass }) => {
     rig.cyl(0.9, 5.8, dark(), [0, Math.cos(a) * 2.2, Math.sin(a) * 2.2], { parent: drum, segs: 6 })
   }
   rig.box([1.8, 0.5, 1.8], accent(team), [0, 3.4, 0], { parent: drum })
-  rig.bar([-1.4, 0, 2.2], [-11, 0, -1.0], 2.4, wood(), { h: 4.0 })
-  rig.box([1.4, 2.6, 4.6], darkWood(), [-11.4, 0, -1.1], { rot: [0, -16, 0] })
+  rig.bar([-1.4, 0, 2.0], [-7.4, 0, -2.2], 2.0, wood(), { h: 3.0 })           // short stock, leaves the frame
   rig.box([2.6, 2.0, 4.6], darkWood(), [-0.2, 0, 0], { rot: [0, -18, 0] })
   rig.setMuzzle([23, 0, 3.4])
   rig.hand([0, 0, 0.1], 'right')
@@ -338,7 +340,7 @@ const stickyLauncher: Builder = ({ rig, team }) => {
   rig.box([9, 3.6, 4.4], metal(), [1.6, 0, 3.0])                               // body
   rig.box([5.4, 1.6, 1.2], light(), [2, 0, 5.6])                               // charge meter housing
   rig.box([4.6, 0.7, 0.6], accent(team), [2, 0, 6.3], { name: 'meter' })
-  rig.bar([-2.8, 0, 2.8], [-10, 0, 0.2], 2.2, darkWood(), { h: 3.4 })
+  rig.bar([-2.8, 0, 2.6], [-7.6, 0, -1.6], 2.0, darkWood(), { h: 3.0 })      // short stock, leaves the frame
   rig.box([2.6, 2.0, 4.6], dark(), [-0.2, 0, -0.2], { rot: [0, -18, 0] })
   rig.setMuzzle([25.4, 0, 3.6], tube)
   rig.hand([0, 0, 0.1], 'right')
@@ -377,7 +379,7 @@ const syringeGun: Builder = ({ rig, team }) => {
     rig.cyl(0.7, 10, vial, [8.5, Math.cos(a) * 2.0, 3.0 + Math.sin(a) * 2.0], { segs: 6 })
   }
   rig.cyl(2.2, 1.6, dark(), [3, 0, 3.0], { segs: 8 })
-  rig.bar([-1, 0, 3.0], [-9, 0, 0.6], 2.0, dark(), { h: 3.0 })
+  rig.bar([-1, 0, 2.8], [-6.4, 0, -0.6], 1.8, dark(), { h: 2.6 })
   rig.box([2.6, 2.0, 4.6], dark(), [-0.2, 0, -0.2], { rot: [0, -16, 0] })
   rig.setMuzzle([21.8, 0, 3.0])
   rig.hand([0, 0, 0], 'right')
@@ -385,8 +387,9 @@ const syringeGun: Builder = ({ rig, team }) => {
 }
 
 const crossbow: Builder = ({ rig, team }) => {
-  const { metal, dark, wood, light } = mats
-  rig.box([20, 2.2, 2.6], wood(), [7, 0, 2.0])                                 // stock
+  const { metal, dark, wood, darkWood, light } = mats
+  rig.box([15, 2.2, 2.6], wood(), [9.5, 0, 2.0])                               // rail
+  rig.bar([2.4, 0, 1.6], [-5.6, 0, -2.2], 2.0, darkWood(), { h: 2.6 })         // short stock, leaves the frame
   rig.box([3, 1.8, 4.8], dark(), [0, 0, -0.2], { rot: [0, -16, 0] })
   rig.bar([15.6, 0, 2.6], [12, 12, 3.0], 1.2, metal(), { h: 1.8 })             // limbs
   rig.bar([15.6, 0, 2.6], [12, -12, 3.0], 1.2, metal(), { h: 1.8 })
@@ -511,16 +514,18 @@ const wrench: Builder = ({ rig, team }) => {
 }
 
 const fists: Builder = ({ rig, team, def }) => {
-  const left = rig.group([0, 15, 0], { name: 'leftFist' })
+  // A boxing guard: both fists up at the lower corners, knuckles forward (the provider jabs one at a time)
+  const left = rig.group([0, 16.5, 0], { name: 'leftFist' })
   const right = rig.group([0, 0, 0], { name: 'rightFist' })
-  rig.hand([0, 0, 0], 'right', right, { thick: 1.3, elbowEye: [8, 20, -22] })
-  rig.hand([0, 0, 0], 'left', left, { thick: 1.3, elbowEye: [8, -14, -22] })
+  rig.hand([0, 0, 0], 'right', right, { thick: 1.35, elbowEye: [6, 19, -21] })
+  rig.hand([0, 0, 0], 'left', left, { thick: 1.35, elbowEye: [6, -15, -21] })
   if (def === 43 || def === 239 || def === 1084 || def === 1100) {             // boxing gloves
     rig.ball(3.8, accent(team), [1.4, 0, 0.4], { parent: right })
     rig.ball(3.8, accent(team), [1.4, 0, 0.4], { parent: left })
   }
   rig.setMuzzle([4, 0, 0], right)
-  return { ...MELEE, anchor: [22, 8, -10], aim: [0, -8, 0], pivot: [-10, -3, -6] }
+  // High enough that both fists clear the playback bar and the weapon panel at the bottom of the viewer
+  return { ...MELEE, anchor: [19, 8, -6.4], aim: [0, -6, 0], pivot: [-10, -3, -6] }
 }
 
 const watchWeapon: Builder = ({ rig, team, def }) => {
@@ -604,37 +609,57 @@ const pda: Builder = ({ rig, team, itemClass }) => {
     rig.hand([-0.2, 0, -0.6], 'right')
     return { ...SHORT, flash: false, reloads: false, kick: [0, 0] }
   }
-  if (itemClass === 'tf_weapon_builder' || itemClass === 'tf_weapon_sapper') {  // toolbox while placing a building
-    rig.box([11, 5.6, 7], solid(TEAM_HUD[team], 0.3), [3.4, 0, -2.4])
-    rig.box([11.2, 5.8, 0.9], metal(), [3.4, 0, 1.5])
-    rig.bar([0.8, 0, 1.6], [0.8, 0, 3.8], 0.7, dark())
-    rig.bar([6, 0, 1.6], [6, 0, 3.8], 0.7, dark())
-    rig.bar([0.8, 0, 3.8], [6, 0, 3.8], 0.7, dark())
-    rig.setMuzzle([9, 0, 0])
-    rig.hand([3.4, 0, 3.8], 'right')
-    return { ...MELEE, melee: false, anchor: [21, 7, -9], aim: [0, 0, 8] }
+  if (itemClass === 'tf_weapon_builder' || itemClass === 'tf_weapon_sapper') {
+    // Toolbox carried by its handle at the right while the engineer carries or places a building. The box is a darker
+    // shade of the team colour, so it does not merge with the sleeve, and the forearm comes in from the right edge.
+    const boxColor = `#${new THREE.Color(TEAM_HUD[team]).multiplyScalar(0.6).getHexString()}`
+    rig.box([8.4, 4.4, 5.4], solid(boxColor, 0.3), [3.2, 0, -3.0])
+    rig.box([8.6, 4.6, 0.8], metal(), [3.2, 0, 0.1])                            // lid
+    rig.box([0.9, 4.7, 0.6], light(), [0.4, 0, -1.6])                           // bands
+    rig.box([0.9, 4.7, 0.6], light(), [6.0, 0, -1.6])
+    rig.box([1.4, 0.3, 1.0], accent(team), [3.2, 2.3, -0.9])                    // latch
+    rig.bar([1.4, 0, 0.5], [1.4, 0, 2.4], 0.6, dark())                          // handle
+    rig.bar([5.0, 0, 0.5], [5.0, 0, 2.4], 0.6, dark())
+    rig.bar([1.4, 0, 2.4], [5.0, 0, 2.4], 0.6, dark())
+    rig.setMuzzle([7.4, 0, -1])
+    rig.hand([3.2, 0, 2.4], 'right', undefined, { elbowEye: [8, 26, -3] })
+    return { ...MELEE, melee: false, anchor: [21, 9, -5.8], aim: [0, 10, 18] }
   }
-  if (itemClass === 'tf_weapon_pda_spy') {                                     // disguise kit: cigarette case, lid open
+  if (itemClass === 'tf_weapon_pda_spy') {
+    // Disguise kit: the open cigarette case on the right palm, cards toward the eye, the lid standing behind them
     const brass = solid(BRASS, 0.3)
-    rig.box([5.2, 3.6, 0.7], brass, [2.6, 0, 0])
-    rig.box([5.2, 3.6, 0.5], brass, [0.1, 0, 2.4], { rot: [0, -78, 0] })
-    rig.box([4.4, 3.0, 0.3], solid(TEAM_HUD[team], 0.35), [2.6, 0, 0.45])
-    for (let i = 0; i < 3; i++) rig.cyl(0.32, 3.6, solid('#e9e4d6', 0.4), [2.6, -1 + i, 0.8], { segs: 6 })
-    rig.setMuzzle([5.2, 0, 0])
-    rig.hand([-0.6, 0, -0.8], 'right')
-    return { ...MELEE, melee: false, anchor: [18, 5, -7.5], aim: [0, 24, 6] }
+    rig.box([5.6, 4.6, 0.6], brass, [2.6, 0, 0])                               // base
+    rig.box([4.9, 3.9, 0.2], solid(TEAM_DARK[team], 0.35), [2.6, 0, 0.36])     // felt
+    for (let i = 0; i < 3; i++) {                                              // class cards fanned across the case
+      const card = rig.group([1.6 + i * 1.1, 1.3 - i * 1.3, 0.62], { rot: [0, 0, -10 + i * 10] })
+      rig.box([2.6, 1.15, 0.12], solid('#ece6d6', 0.45), [0, 0, 0], { parent: card })
+      rig.box([0.9, 0.6, 0.06], accent(team), [0.3, 0, 0.09], { parent: card })
+    }
+    // The lid is modelled closed (lying over the base from the far-edge hinge, lining down) and swung open by 134
+    // degrees: with the case tilted 34 degrees toward the eye (aim), it stands just past vertical, lining to the eye
+    const lid = rig.group([5.4, 0, 0.3], { rot: [0, 134, 0] })
+    rig.box([5.6, 4.6, 0.5], brass, [-2.8, 0, 0.25], { parent: lid })
+    rig.box([4.6, 3.6, 0.1], solid(TEAM_HUD[team], 0.45), [-2.8, 0, -0.05], { parent: lid })
+    rig.setMuzzle([-5.6, 0, 0.3], lid)
+    rig.hand([0.8, -0.2, -1.6], 'right')
+    return { ...MELEE, melee: false, anchor: [19, 10.5, -8.0], aim: [-8, -34, 8], scale: 0.8 }
   }
-  // Engineer build / destroy PDA: a tablet held in both hands, screen toward the eye
-  const tablet = rig.group([0, 5, 0], { rot: [0, 42, 0] })
-  rig.box([0.9, 10, 6.6], dark(), [0, 0, 0], { parent: tablet })
-  rig.box([0.3, 8.4, 5.0], solid(TEAM_DARK[team], 0.9), [-0.55, 0, 0.3], { parent: tablet })   // screen
-  rig.box([0.32, 3.2, 0.5], accent(team), [-0.72, -1.6, 1.4], { parent: tablet })               // building glyphs
-  rig.box([0.32, 2.0, 0.5], accent(team), [-0.72, 1.8, 1.4], { parent: tablet })
-  for (let i = 0; i < 3; i++) rig.box([0.4, 1.6, 0.9], light(), [-0.55, -2.6 + i * 2.6, -2.9], { parent: tablet })
+  // Engineer build / destroy PDA: a tablet held in both hands below the crosshair, its screen tilted up toward the
+  // eye and showing the build menu (sentry, dispenser, entrance, exit)
+  const tablet = rig.group([0, 4.4, 0.6], { rot: [0, 28, 0] })
+  rig.box([1.0, 9.6, 6.2], dark(), [0, 0, 0], { parent: tablet })
+  rig.box([0.2, 8.0, 4.6], solid(TEAM_DARK[team], 0.9), [-0.55, 0, 0.3], { parent: tablet })   // screen
+  for (let i = 0; i < 4; i++) {
+    const y = 2.85 - i * 1.9
+    rig.box([0.14, 1.4, 1.4], i === 0 ? accent(team) : light(), [-0.7, y, 0.95], { parent: tablet })   // building icons
+    rig.box([0.14, 1.2, 0.35], solid(TEAM_FX[team], 0.5), [-0.7, y, -0.45], { parent: tablet })         // metal costs
+  }
+  rig.box([0.3, 2.2, 0.5], light(), [-0.5, 0, -2.55], { parent: tablet })                               // button
   rig.setMuzzle([0, 0, 3], tablet)
-  rig.hand([0, 0, -1.4], 'right')
-  rig.hand([0, 10, -1.4], 'left')
-  return { ...MELEE, melee: false, anchor: [19, 6, -9], aim: [0, 0, 4] }
+  rig.hand([-0.2, 0.2, -0.6], 'right')
+  rig.hand([-0.2, 8.6, -0.6], 'left')
+  // Right of the playback bar and above the weapon panel, turned a little toward the crosshair
+  return { ...MELEE, melee: false, anchor: [17, 9.5, -5.4], aim: [0, 0, 6] }
 }
 
 const generic: Builder = ({ rig, team }) => {
@@ -651,11 +676,14 @@ const generic: Builder = ({ rig, team }) => {
 /** The spy's watch on the left wrist (viewmodel 1). Rig origin at the wrist; the hand points forward. */
 export function buildWatch(rig: Rig, team: TeamKey, def: number): void {
   const deadRinger = def === 59 || def === 947
-  rig.hand([4, 0, 0], 'left', undefined, { elbowEye: [8, -16, -26] })
-  rig.cylZ(2.0, 0.9, deadRinger ? solid(BRASS, 0.35) : mats.dark(), [0, 0, 2.4], { segs: deadRinger ? 12 : 8 })
-  rig.cylZ(1.55, 0.35, deadRinger ? solid('#efe6c8', 0.4) : accent(team), [0, 0, 2.95], { segs: deadRinger ? 12 : 8 })
-  rig.box([1.1, 0.25, 0.25], mats.dark(), [0.45, 0, 3.2])
-  rig.box([4.6, 3.6, 0.6], mats.dark(), [0, 0, 1.9])                           // strap
+  const segs = deadRinger ? 12 : 10
+  rig.hand([4.2, 0, 0], 'left', undefined, { elbowEye: [8, -16, -26] })
+  rig.box([1.9, 4.2, 0.5], mats.dark(), [0, 0, 1.95])                          // strap across the wrist
+  rig.cylZ(2.15, 1.0, deadRinger ? solid(BRASS, 0.35) : mats.metal(), [0, 0, 2.45], { segs })   // case
+  rig.cylZ(1.75, 0.3, deadRinger ? solid('#efe6c8', 0.5) : accent(team), [0, 0, 3.05], { segs }) // face
+  rig.box([1.3, 0.28, 0.2], mats.dark(), [0.5, 0, 3.25])                       // hands
+  rig.box([0.28, 0.9, 0.2], mats.dark(), [0, -0.35, 3.25])
+  rig.cylZ(0.45, 0.6, mats.light(), [2.45, 0, 2.45], { segs: 6 })              // crown
 }
 
 const BUILDERS: Record<string, Builder> = {

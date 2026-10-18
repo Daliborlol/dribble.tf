@@ -240,7 +240,8 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
     heal: pose.heal,
     cycle: r(pose.cycle),
     loaded: pose.loaded,
-    flip: input.flip,
+    flip: input.flip, // misc.flip of the subject (m_bFlipViewModels)
+    flipDrawn: live ? live.flip : null, // what the layer drew, including the viewmodel.debug override
     fireTicks: input.fireTicks.slice(-4),
     scale: live ? r(live.scale) : null,
     muzzleWorld: live ? [r(live.muzzleWorld.x), r(live.muzzleWorld.y), r(live.muzzleWorld.z)] : null,

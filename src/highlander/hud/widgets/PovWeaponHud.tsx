@@ -28,6 +28,7 @@ import {
   weaponStateAt,
 } from '@highlander/extras/getters'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
+import { trackIndexAt } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { itemKind, itemName, itemSlot } from '@highlander/items'
 import { getPovSubject, usePovSubject, type PovSubject } from '@highlander/pov/subject'
@@ -62,6 +63,18 @@ const PHLOG_DEF = 594
 
 const titleCase = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 const className = (cls: number) => titleCase(CLASS_MAP[cls] ?? '')
+const BUILDING_NAME: Record<number, string> = { 0: 'Dispenser', 1: 'Teleporter', 2: 'Sentry' }
+
+/**
+ * The engineer's builder (item 28) is named "PDA" in the item schema; while it is out he carries or places a
+ * building, so name that instead from his builder state (m_iObjectType of the owned builder, 255 unknown).
+ */
+function builderLabel(x: HighlanderExtras, p: number, tick: number, carrying: boolean): string {
+  const t = x.players.builder
+  const i = trackIndexAt(t, p, tick)
+  const name = i >= 0 ? BUILDING_NAME[t.type[i]] : undefined
+  return `${carrying ? 'Carrying' : 'Placing'} ${name ?? 'a building'}`
+}
 
 function playerName(demo: AsyncParser, p: number): string {
   return demo.entityPlayerMap.get(p)?.user.name ?? `#${p}`
@@ -110,11 +123,13 @@ export function weaponHudAt(x: HighlanderExtras, demo: AsyncParser, subject: Pov
   const weapon = x.meta.available.weapon ? activeWeaponAt(x, p, tick, classId) : null
   const ws = local && x.meta.available.wstate ? weaponStateAt(x, p, tick) : null
   const ammo = local && x.meta.available.ammo ? ammoAt(x, p, tick) : null
+  const misc = miscAt(x, p, tick)
   if (weapon) {
     const slot = itemSlot(weapon.def, classId)
     const gun = GUN_KINDS.has(weapon.kind)
     const reserve = gun && ammo ? (slot === 'primary' ? ammo.primary : slot === 'secondary' ? ammo.secondary : null) : null
-    model.weapon = { name: weapon.name, clip: ws && ws.clip >= 0 ? ws.clip : null, reserve }
+    const name = classId === 9 && weapon.cls === 'CTFWeaponBuilder' ? builderLabel(x, p, tick, !!misc?.carrying) : weapon.name
+    model.weapon = { name, clip: ws && ws.clip >= 0 ? ws.clip : null, reserve }
     if (ws?.chargeTick != null && (weapon.kind === 'bow' || weapon.kind === 'sticky_launcher')) {
       const seconds = (tick - ws.chargeTick) * x.meta.intervalPerTick
       const pct = Math.min(1, Math.max(0, seconds / (weapon.kind === 'bow' ? 1 : 4)))
@@ -122,7 +137,6 @@ export function weaponHudAt(x: HighlanderExtras, demo: AsyncParser, subject: Pov
     }
   }
 
-  const misc = miscAt(x, p, tick)
   switch (classId) {
     case 9: // engineer
       if (ammo) model.metal = ammo.metal
@@ -180,6 +194,7 @@ const BuildingLine = ({ b, team }: { b: BuildingRow; team: Team }) => {
   const arrow = b.type === 1 ? (b.mode === 1 ? '▼' : '▲') : ''
   return (
     <div
+      data-hl="pov-building-row"
       className={cn('flex h-5 items-center gap-1.5 rounded px-1 text-[11px] leading-none', b.sapped && 'ring-1 ring-[#ff4b3e]', b.carried && 'opacity-60')}
     >
       <div className="flex h-4 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-black text-white" style={{ background: TEAM_HUD[team] }}>

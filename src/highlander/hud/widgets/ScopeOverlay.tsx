@@ -17,10 +17,11 @@ import { useInstance, useStore } from '@zus/store'
 import { TEAM_HUD } from '@highlander/constants'
 import { registerHlProbe } from '@highlander/debug'
 import { HL } from '@highlander/extras/enums'
-import { activeWeaponAt, flagsAt, fovAt, hasLocalTables, sniperChargeAt } from '@highlander/extras/getters'
+import { activeWeaponAt, flagsAt, hasLocalTables, sniperChargeAt } from '@highlander/extras/getters'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { itemInfo } from '@highlander/items'
+import { povFovAt } from '@highlander/pov/fov'
 import { getPovSubject, usePovSubject, type PovSubject } from '@highlander/pov/subject'
 import { dotsAt } from '@highlander/scene/layers/SniperLayer'
 
@@ -37,7 +38,8 @@ export function scopeStateAt(x: HighlanderExtras | undefined, subject: PovSubjec
   const meta = demo ? demo.playerCache.metaCache.getMeta(subject.p, tick) : { classId: 2, teamId: 2 }
   const weapon = activeWeaponAt(x, subject.p, tick, meta.classId)
   if (!weapon || weapon.kind !== 'sniper_rifle') return null
-  const fov = x.meta.available.fov ? fovAt(x, subject.p, tick, 90) : 20
+  // The camera's zoom (povFovAt), so the overlay fades exactly with the FOV the scene shows
+  const fov = x.meta.available.fov ? povFovAt(x, subject.p, tick, 90) : 20
   const opacity = Math.min(1, Math.max(0, (90 - fov) / 70))
   let charge: number | null = null
   if (x.meta.available.sniper && hasLocalTables(x, subject.p)) {

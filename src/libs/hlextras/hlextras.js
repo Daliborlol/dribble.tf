@@ -48,6 +48,24 @@ export function parse_demo_cache(buffer) {
 }
 
 /**
+ * Base cache for demos the committed base parser cannot start (dribble.tf task B1): the same
+ * output as `parse_demo_cache_with_progress`, except that the cache also starts when the demo's
+ * world bounds are still all zero after the warmup. `options` = `{ boundaryMin?, boundaryMax? }`
+ * (the map's bounds); positions are then relative to `boundaryMin` and `world` reports the given
+ * bounds. The result carries `startedWithoutWorld`. Returns an error string for bad options.
+ * @param {Uint8Array} buffer
+ * @param {any} options
+ * @param {Function} progress_callback
+ * @returns {any}
+ */
+export function parse_demo_cache_fallback(buffer, options, progress_callback) {
+    const ptr0 = passArray8ToWasm0(buffer, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.parse_demo_cache_fallback(ptr0, len0, options, progress_callback);
+    return ret;
+}
+
+/**
  * @param {Uint8Array} buffer
  * @param {Function} progress_callback
  * @returns {any}
@@ -133,6 +151,10 @@ function __wbg_get_imports() {
         },
         __wbg___wbindgen_is_function_0095a73b8b156f76: function(arg0) {
             const ret = typeof(arg0) === 'function';
+            return ret;
+        },
+        __wbg___wbindgen_is_null_ac34f5003991759a: function(arg0) {
+            const ret = arg0 === null;
             return ret;
         },
         __wbg___wbindgen_is_object_5ae8e5880f2c1fbd: function(arg0) {

@@ -20,6 +20,15 @@ export class ExtrasInput {
 
 export function parse_demo_cache(buffer: Uint8Array): any;
 
+/**
+ * Base cache for demos the committed base parser cannot start (dribble.tf task B1): the same
+ * output as `parse_demo_cache_with_progress`, except that the cache also starts when the demo's
+ * world bounds are still all zero after the warmup. `options` = `{ boundaryMin?, boundaryMax? }`
+ * (the map's bounds); positions are then relative to `boundaryMin` and `world` reports the given
+ * bounds. The result carries `startedWithoutWorld`. Returns an error string for bad options.
+ */
+export function parse_demo_cache_fallback(buffer: Uint8Array, options: any, progress_callback: Function): any;
+
 export function parse_demo_cache_with_progress(buffer: Uint8Array, progress_callback: Function): any;
 
 /**
@@ -40,6 +49,7 @@ export interface InitOutput {
     readonly free_string: (a: number) => void;
     readonly parse_demo_cache: (a: number, b: number) => any;
     readonly parse_demo_cache_with_progress: (a: number, b: number, c: any) => any;
+    readonly parse_demo_cache_fallback: (a: number, b: number, c: any, d: any) => any;
     readonly parse_demo_extras: (a: number, b: number, c: any, d: any) => any;
     readonly __wbg_extrasinput_free: (a: number, b: number) => void;
     readonly extrasinput_new: (a: number) => number;

@@ -279,10 +279,13 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     return () => unregisterActor(handles)
   }, [user.entityId])
 
-  // Nameplate declutter (X1): the Actors pass reads this every frame; it is the state of the latest render
+  // Nameplate declutter (X1): the Actors pass reads this every frame; it is the state of the latest render. A plate
+  // at opacity 0 shows nothing (F1: an enemy spy cloaked in the POV player's view, pinned because he is cloaked), so
+  // it counts as not drawn: it takes none of the cap's slots and cannot be hovered.
   const showPlate = settings.ui.nameplate.enabled && !isFocusedPOV
+  const plateOpacity = fx.nameplate?.opacity ?? 1
   const plateState = useRef<PlateState>({ drawn: false, pinned: false })
-  plateState.current = { drawn: showPlate && alive, pinned: !!fx.nameplate?.pinned }
+  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: !!fx.nameplate?.pinned }
   useEffect(() => {
     if (!actorRef.current) return
     return registerPlate(user.entityId, actorRef.current, nameplateRef, plateState)
@@ -290,7 +293,6 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
 
   // Nameplate distance fade: 1 up to the fade distance, linear to 0 at twice that (0 disables it)
   const fadeDistance = hlEnabled && !fx.nameplate?.pinned ? nameplateFadeDistance || 0 : 0
-  const plateOpacity = fx.nameplate?.opacity ?? 1
   useFrame(({ camera }) => {
     const element = nameplateRef.current
     if (!element || !actorRef.current) return

@@ -28,7 +28,10 @@ const SCREEN_MARGIN = 1.05
 
 /** What an actor tells the pass about his plate; updated on every render of the actor. */
 export interface PlateState {
-  /** the plate's Html is mounted with content (nameplates on, alive, not rendered from his own eyes) */
+  /**
+   * the plate's Html is mounted with visible content: nameplates on, alive, not rendered from his own eyes, and not
+   * at opacity 0 (F1 hides an enemy spy's plate that way while he is cloaked in the POV player's view)
+   */
   drawn: boolean
   /** F1: exempt from the cap and the distance fade */
   pinned: boolean
@@ -235,14 +238,15 @@ export function setNameplateCap(enabled: boolean): void {
   capEnabled = enabled
 }
 
-// Probe: the last pass, per registered plate: distance to the camera, rank among the drawn plates, shown and why.
+// Probe: the last pass, per registered plate: distance to the camera (null for a plate the pass skipped as not
+// drawn, whose distance it does not measure), rank among the drawn plates, shown and why.
 registerHlProbe('nameplates.declutter', () => {
   const rows = Array.from(entries.values())
     .map(e => ({
       entityId: e.entityId,
       drawn: e.state.current.drawn,
       pinned: e.state.current.pinned,
-      distance: Math.round(e.distance),
+      distance: e.reason === 'notDrawn' ? null : Math.round(e.distance),
       rank: e.rank,
       shown: e.shown,
       reason: e.reason,

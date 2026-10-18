@@ -80,12 +80,16 @@ const MARKER_COLOR = '#37ff5f'
 // Children of the per-tick render whose props never change between ticks (X1): DemoViewer re-renders on every store
 // update, about once per frame while playing. Each reads its own state through hooks, so skipping the parent's
 // re-render changes nothing they draw.
+//
+// Only components whose store selectors return primitives, props or immutably updated state can be wrapped. The
+// UPDATE_SETTINGS_OPTION reducer runs lodash set() on a shallow clone of the settings, so a nested settings object
+// keeps its reference while its fields change in place; a memoized component that selects one never re-renders.
+// Crosshair selects settings.ui.crosshair, so it is not wrapped and re-renders with DemoViewer as before X1.
 const MemoLights = memo(Lights)
 const MemoCanvasKeyHandler = memo(CanvasKeyHandler)
 const MemoWorld = memo(World)
 const MemoStickers = memo(Stickers)
 const MemoSkybox = memo(Skybox)
-const MemoCrosshair = memo(Crosshair)
 const MemoFpsCounter = memo(FpsCounter)
 const MemoPlaybackPanel = memo(PlaybackPanel)
 
@@ -872,7 +876,8 @@ class DemoViewer extends Component<DemoViewerProps> {
         {settings.ui.showStats && <MemoFpsCounter />}
 
         <div className="ui-layer pointer-events-none items-center justify-center">
-          <MemoCrosshair />
+          {/* Not memoized: it selects settings.ui.crosshair, which settings changes mutate in place */}
+          <Crosshair />
         </div>
 
         <div className="ui-layers" ref={this.uiLayers}>

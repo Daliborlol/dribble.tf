@@ -1,6 +1,6 @@
 # Highlander implementation contract
 
-Version 2.2, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
+Version 2.3, 2026-10-18 (section 11 lists the amendments after the foundation merge, section 12 those after the feature wave, section 13 those after wave 2). This file is the binding contract for the Highlander (9v9) work in dribble.tf and
 `../dribble-parser`. It was written from the four research documents in this folder, all of which were present:
 `parser-probe.md`, `maps.md`, `tf2-reference.md` and `frontend.md`. It also reflects a read of the current code
 (`dribble-parser/src/lib.rs`, the Analyse/Data layer, `store.ts`, `actions.ts`, `DemoViewer.tsx`, `Actors.tsx`,
@@ -3191,6 +3191,121 @@ memory regression beyond 300 MB, add that routing; otherwise record the measurem
 kinds without a local demo) and a new `specs/highlander/STATUS.md` (per contract task: what is implemented, the
 acceptance state, accepted deviations, follow-ups from section 9's "later" rows). DOCS does not edit sections 0 to 12
 of this contract.
+
+## 13. Amendments after the wave-2 merge (version 2.3)
+
+X1, P2 and B2 are merged on `highlander` at `ab4f613`; the parser's `highlander` is at `41fe9f3` (P2's extras
+additions; `src/libs/hlextras` is rebuilt from it and still exports `parse_demo_cache_fallback`). These amendments
+bind X2, DOCS and the final verification and override the text above where they differ. The wave-2 final reports are
+in `$S/handoff/wave2-results.json` (per task: `impl`, `reviews`, `final`); read the parts your task touches.
+
+### 13.1 Accepted deviations of wave 2
+
+| task | accepted deviation |
+|---|---|
+| X1 | Nameplate declutter (`src/highlander/perf/nameplates.ts`): one pass per frame shows the 12 plates nearest the camera that are on screen, plus the focused player, the POV subject, the hovered player (the scene pointer over the player's screen hull or plate; a PlayerStatuses row does not count) and every pinned plate. A plate drawn at opacity 0 counts as not drawn. The cap is off with Highlander off. The rule thins by distance only, so tight far clusters can still stack plates. DOM plates stay drawn over F2's canvas labels (HTML cannot interleave with WebGL depth). The nameplate fade default stays 0 and `HUD_TICK_STEP` stays 3. |
+| X1 | `fetchMapMeta` requests `map-meta.json` only when `conversion.json` lists `files.meta`. A folder whose `conversion.json` is absent (or answered with `index.html`) resolves to `null`, cached, without a request; only a failed request stays uncached and retries. `src/utils/mapAssets.ts` gains the additive export `isCachedMapConversion(map, request)`. |
+| X1 | Not done: crit hitscan tracers look like normal ones under additive blending; sentry kills still aim the death camera at the engineer (F4 deviation); a player model's first appearance compiles its shader (one 120 to 133 ms long task, pre-existing). |
+| P2 | Behaviour changes: (1) the 5CP HUD of the 6v6 sample padlocks the points behind the frontier; (2) the KOTH point shows a padlock while `WAITING_FOR_PLAYERS` is set (before the first round and in the post-game tail), as TF2 does; (3) a point whose first previous point is itself ignores `m_bCPLocked` (the SDK's early return); (4) thrown items rest on the bottom of their collision box and never bob or tilt, so on slopes the placeholder can hover a few units over the downhill side; (5) thrown items also draw on textured GLBs; (6) seen from a POV player's own eyes, a thrown item is hidden while its placeholder centre is within `POV_HIDE_DISTANCE` (40 units) of that camera; (7) probe additions of 13.2; (8) the `pickupTaken` definition of 13.2; (9) the checker's memory limit is A9's `max(2.6 x file + 100, 140)` MB. |
+| P2 | Unvalidated for lack of a local demo: dropped kit-model items (Candy Cane, `DropHealthPack`, bottom offset 0) and the arena branch of `TeamMayCapturePoint` (the extras carry no `m_flCapturePointEnableTime`, so a stalemate counts as cappable). A disguised spy at full health who takes a thrown item fires no `item_pickup`, so that row has no taker. |
+| B2 | (a) Delayed-start route: when parser2's timeline starts at least `DELAYED_START_FALLBACK_SECONDS` (5 s) after the tick of the demo's 100th frame, the file goes to B1's fallback (locally only 1428628, 55.2 s late). Like B1's route it ignores `settings.highlander.enabled`, so with Highlander off 1428628 loads from demo tick 94 with the fork's cache (`positionScale` 32) and rule 7.4 does not hold for that demo. (b) On 1428628 a moment's cache tick moves by +3678 against `fa3997b`: `?tick=` links and bookmarks saved before B2 point 55.2 s earlier, and tick-phase effects (F1's uber-fading blink) change phase. (c) When the fallback of a delayed start fails, parser2 parses the file once more (`{lateStart: true}`) and the demo loads with parser2's late timeline; `parsedDemo.parserFallbackFailure` records the error and `parserFallback` stays false. A failed no-timeline fallback, or a crash of the fallback worker itself (its file buffer was transferred), still fails the load. The progress shown continues from the previous pass and never falls back. |
+
+### 13.2 Schema and API additions (binding text for the sections they extend)
+
+- 2.5 and `types.ts`: `XPickups.xform` is an `XformTrack` holding the absolute transform of pickups whose transform
+  changes after creation (thrown lunchbox items, dropped kits); static pickups have no entries. `XControlPoints`
+  gains `prevRed` and `prevBlu` (I8, 24 entries = 8 points x 3 slots, index `point * 3 + slot`, -1 for none), `baseRed`
+  and `baseBlu` (numbers, -1 for none) and `miniRounds` (boolean), all static per demo (the 133-demo survey found no
+  change within a demo).
+- 2.5.7: the plate rule `(^|/)models/(items|workshop)/(.*/)?plate[^/]*\.mdl$` is a medium health kit; the chocolate,
+  banana and fishcake plates are small (size 0).
+- 3.5: hydration also shifts `pickups.xform.x/y/z`.
+- 3.7.2: `pickupMoves`, `pickupPositionAt(x, j, tickF, out, maxGap = snapshotInterval)`, `pickupRestTick`,
+  `cpOwnerAt`, `previousPointsOf`, `farthestOwnedPointAt`, `teamMayCapturePointAt` (a port of
+  `CTFGameRules::TeamMayCapturePoint`).
+- 3.8 `pickupTaken`: rows `{tick, instance, player?, note?: 'thrown'}`. Deletions at a round restart and kits that
+  leave for good are not takes; a thrown item deleted at an `item_pickup` event of its kind is a take (note
+  `'thrown'`); `player` is set when exactly one `item_pickup` event matches the tick and kind.
+- F5: `pointLockedAt(x, flags, owner, point?, tick?)` follows `CControlPointIcon::IsPointLocked` with
+  `teamMayCapturePointAt`; without `point` or `tick` it keeps the old rule.
+- F6: thrown and dropped items draw along their xform track and at rest with the kit placeholder of their size, until
+  deleted or taken. Probes: `mapdyn.moving(tick?, floors?)` (new), moving rows in `mapdyn.pickups`
+  (`{spot: null, moving: true, visible, nearPov}`), the skip reason `'moving'` in `mapdyn.kits`, `movingPickups` in
+  `mapdyn.summary`.
+- X1: `PovSubject.deathOfEntityId` marks the teammate-death camera (12.2 item 1): `entityId` and `p` are the dead
+  teammate, camera `'deathcam'`, `deathTick` his death, `killerEntityId` his base killer (absent for world or
+  suicide); `pov.state` reports it. `src/highlander/integration/ownMuzzle.ts` installs F4's viewmodel muzzle as F3's
+  own-muzzle source while `PovLayer` is mounted; `SentryTracerFx.startFrom` is `'barrel'` or `'reach'`. Probes
+  `nameplates.declutter` and `nameplates.cap(bool)` (reasons near, pinned, followed, hovered, capped, offscreen,
+  notDrawn). `fxSettingsKey(settings)` caches up to 32 settings objects; the returned objects are shared and must not
+  be mutated.
+- B2: `ParseWorker.ts` exports `WARMUP_PACKETS`, `DELAYED_START_FALLBACK_SECONDS`, `demoWarmup(bytes)` and
+  `delayedStartOf(result, bytes)`. Requests: `{buffer}`, `{buffer, fallback: ParserFallbackWork}`,
+  `{buffer, lateStart: true}`; replies: `{progress}`, `{error}`, a `CachedDemo`, `{fallbackRequest, fileBuffer}`,
+  `{fallbackFailed: {error}, fileBuffer}`. `parserFallbackInfo.trigger` is `'no-timeline'` or `'delayed-start'`.
+  Bounds order for the fallback: the map's `OVERWRITE_MAP_BOUNDARIES` entry, else `conversion.json` `worldBounds`,
+  else (after a delayed start) the world bounds parser2 read.
+
+### 13.3 Facts for X2, DOCS and the final verification
+
+- Settings reducer: `UPDATE_SETTINGS_OPTION` runs lodash `set()` on a shallow clone of the settings, so nested
+  settings objects (`ui.crosshair`, `ui.nameplate`, `highlander.*`) keep their reference while their fields change.
+  Never wrap a component in `memo` (or memoise on a reference) when it selects a nested settings object; select
+  primitives, as `useHlSetting` does. `Crosshair` is deliberately not memoized in `DemoViewer.tsx`.
+- `DemoViewer.tsx`: the render-path memo wrappers are module-level; the outline composer is `OutlineComposer({enabled})`;
+  the projectile block reads only the current and the next tick, and `positionPrev`/`positionNext2` are aliases kept
+  for the `InterpolatedProjectile` type.
+- Both tetsudo demos now use the fallback cache: 1429417 (no timeline) and 1428628 (delayed start, starts at demo tick
+  94, ends at its last packet). On 1429417 the fallback's projectile cache is 641 of 702 MB of base caches. Check
+  1428628 in the browser (extras alignment 241 of 241) or with
+  `flock $S/heavy.lock node scripts/hl/check-delayed-start.mjs <demo> --tmp <dir on disk>`, not with P2's native
+  self-check (`scripts/hl/expect/1428628.json` uses parser2's start rule through `--options-from`). B1's
+  `scripts/hl/fallback-values.mjs` and `check-fallback.mjs` still mirror only the no-timeline rule (a follow-up:
+  call `delayedStartOf` there). `node scripts/hl/check-parse-routes.mjs <demo> [--fake-delay s] [--force-empty]
+  [--fail-fallback string|throw|empty] [--expect route]` runs AsyncParser and ParseWorker end to end.
+- Base parser2 limits (B2, unchanged): positions are offset by `m_WorldMins` at the cache start while the result
+  reports the end-of-demo bounds (+1/32 unit in x on tetsudo, moot now); the timeline is sized by the header, so
+  pauses and cut files leave empty tails (-9: 397 s, 1442402: 104 s, 1429425: 80 s, 1426663, 1422900).
+- `findTicks('busiest')[0]` returns the earliest of the top windows, not the busiest one.
+- Known out-of-scope cost: `src/pages/ViewerPage.tsx`'s `loadingDownloads` selector builds a new array on every store
+  update, so ViewerPage (with DemoDrawing's forced layouts) re-renders every tick, about 2.4 % of main-thread time.
+- Harness: an init script can be injected with B2's copy `/home/dalibor/programming/personal/dribble.tf-wt/b2-out/fix/shot-init.mjs`
+  (env `B2_INIT_SCRIPT`). `reqfail ... textured_compressed.glb net::ERR_ABORTED` on the stubbed boot map is noise, like
+  the player-GLB lines. Page memory "final" varies by about 120 MB between runs of the same code: compare peaks. To
+  reach the default RTS camera in a plan, come from a POV step (`reset: true` does not restore it while the controls
+  are already in RTS).
+- Performance at the wave-2 merge (X1, every HL setting on / Highlander off): 1438891 21000 RTS 1x 58.0 / 60.0 fps;
+  1433441 7939 RTS 1x 59.3 / 60.1 and 2x 59.1 / 60.0; paused 60.2; long demos 1437285 59.0 fps (peak 1566 MB) and
+  1432698 59.9 fps (1570 MB). Browser PSS on 1438891 1249 MB with every setting on (pre-Highlander 1535 MB).
+
+### 13.4 Wave 3 tasks
+
+**X2** (section 5 X2 with the 12.3 and 13.3 facts), from `highlander` at `ab4f613`:
+- Find every reader of the base projectile cache (`projectileCache`, `getProjectilesAtTick`, `ProjectileCache`
+  methods) in the whole app, including analysis, drawing and export code. Route each through the adapter, or keep the
+  cache for the session when a reader needs a field the adapter cannot serve, and record which.
+- The adapter keeps entities through [hidden, deleted) (12.3), serves fallback caches as well as parser2 caches, and
+  holds no module-level demo or extras reference (12.3 memory rule).
+- Release only when extras are ready with `available.projectiles` true; with Highlander off, extras unavailable,
+  `projectiles` excluded by the memory plan, or an extras error, the base cache stays and nothing changes.
+- Once released, the adapter is the only projectile source for the rest of the session: toggling Highlander off at
+  runtime, an extras restart or reload, or a later extras error must keep base projectiles drawn exactly as before.
+  The adapter keeps what it needs in an object owned by the demo (WeakMap keyed by the demo, 12.3), not in the
+  extras status.
+- Acceptance: section 5 X2, plus identical projectile positions at one tick of 1429417 and of 1428628 (fallback
+  caches), the memory drop measured on 1438891, 1429417 and one long demo, determinism after seeking, and the
+  baseline plan.
+- X2 may also fix the `ViewerPage.tsx` `loadingDownloads` selector of 13.3 (select a primitive or compare
+  shallowly), measured before and after; nothing else in that file.
+
+**DOCS** (12.4), from the same base, in parallel with X2: `AGENTS.md` and `specs/highlander/STATUS.md`, with B2's
+fallback text, the `fetchMapMeta` rule, the settings-reducer gotcha, the 13.1 deviations and the 13.2 APIs. DOCS does
+not edit sections 0 to 13 of this contract. After X2's review, DOCS adds X2's final state.
+
+**Final verification**, on the merged tree: smoke on every local map and the 6v6 sample with Highlander on and off;
+an adversarial review of the whole diff from `598e328` by dimension, each finding verified independently; a
+completeness critic against sections 5 and 9 and the 12.4 and 13.4 task lists. Confirmed findings get fixed before
+the final report.
 
 ## Appendix A. `src/highlander/extras/enums.ts`
 

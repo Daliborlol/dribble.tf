@@ -91,6 +91,19 @@ export function packViewmodelsOn(): boolean {
 
 export interface VmKeys { arms: string; weapon: string }
 
+/**
+ * Weapon kinds whose pack pose is known wrong, so they keep the placeholder per weapon. The minigun family
+ * (CTFMinigun): its m_* clips put the heavy's fists at the bottom centre and the bone-merged gun out of frame
+ * (V-provider review, 1434434 heavy). Remove the entry once the pose is fixed.
+ */
+const PACK_POSE_EXCLUDED = new Set(['minigun'])
+
+/** The reason a weapon keeps the placeholder although the pack lists it, or null. */
+export function packPoseExcluded(kind: string, weaponClass?: string): string | null {
+  const k = resolveKind(kind, weaponClass)
+  return PACK_POSE_EXCLUDED.has(k) ? `pose:${k}` : null
+}
+
 /** Arms and weapon model keys of (class, weapon def), or null when the pack is off or lists none. */
 export function glbViewmodelKeys(classId: number, weaponDef: number): VmKeys | null {
   if (!packViewmodelsOn()) return null
@@ -439,7 +452,10 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
 export const glbViewmodelProvider: ViewmodelProvider = {
   id: GLB_PROVIDER_ID,
   priority: 10,
-  supports: input => input.localTables === true && glbModelsReady(glbViewmodelKeys(input.classId, input.weaponDef)),
+  supports: input =>
+    input.localTables === true &&
+    !packPoseExcluded(input.kind, input.weaponClass) &&
+    glbModelsReady(glbViewmodelKeys(input.classId, input.weaponDef)),
   create: createGlb,
 }
 

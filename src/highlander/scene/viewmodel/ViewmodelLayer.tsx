@@ -34,7 +34,7 @@ import { computePose, MELEE_KINDS } from './animate'
 import { resolveKind } from './weapons'
 import { vmShared, type VmLive } from './shared'
 import './placeholderProvider'
-import { chooseSequence, GLB_PROVIDER_ID, glbModelsReady, glbViewmodelKeys, heldViewmodelModels, requestViewmodelModels, type GlbInstance } from './glbProvider'
+import { chooseSequence, GLB_PROVIDER_ID, glbModelsReady, glbViewmodelKeys, heldViewmodelModels, packPoseExcluded, requestViewmodelModels, type GlbInstance } from './glbProvider'
 
 /** Instances kept per layer (spy quick-switch: three weapons plus the disguise kit). */
 const INSTANCE_CACHE_SIZE = 6
@@ -83,7 +83,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
   const localTables = !!(extras && subject && subject.p >= 0 && hasLocalTables(extras, subject.p))
   const packOn = pack.status === 'ready' && packEnabled && packModels && packViewmodels
   const glbKeys =
-    weapon && state?.block === 'ok' && localTables && packOn
+    weapon && state?.block === 'ok' && localTables && packOn && !packPoseExcluded(weapon.kind, weapon.cls)
       ? glbViewmodelKeys(state.classId, weapon.def)
       : null
   const glbArms = glbKeys?.arms ?? null
@@ -91,6 +91,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
   useEffect(() => {
     if (!glbArms || !glbWeapon) return
     return requestViewmodelModels({ arms: glbArms, weapon: glbWeapon }, gl, scene, defaultCamera, () => setPackVersion(v => v + 1))
+    // defaultCamera only serves the shader compile, so a camera swap need not request the pair again
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glbArms, glbWeapon, gl, scene])
   const glb = glbModelsReady(glbKeys)
@@ -287,6 +288,8 @@ function packRows(input: ReturnType<typeof buildViewmodelInput>, live: VmLive | 
       arms: keys.arms,
       weapon: keys.weapon,
       ready: glbModelsReady(keys),
+      excluded: packPoseExcluded(input.kind, input.weaponClass),
+      failed: heldViewmodelModels().filter(h => h.failed && (h.key === keys.arms || h.key === keys.weapon)).map(h => h.key),
       localTables: input.localTables ?? null,
       vm0: input.vm0 ? { model: input.vm0.model, seq: input.vm0.seq, since: input.vm0.since, rate: input.vm0.rate, nodraw: input.vm0.nodraw } : null,
       sequence: choice ? { seq: choice.seq, name: choice.name, clip: choice.clip, time: Math.round(choice.time * 1000) / 1000, source: choice.source, since: choice.since } : null,

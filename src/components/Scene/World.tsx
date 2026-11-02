@@ -18,6 +18,7 @@ import {
   getMapFileUrl,
   getMapFolder,
   getMapModelUrl,
+  publicMapIdentity,
 } from '@utils/mapAssets'
 import { useHlSetting } from '@highlander/extras/hooks'
 import {
@@ -30,7 +31,11 @@ import {
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
 import { StaticProps, useStockProps } from '@highlander/map/StaticProps'
-import { isAssetPackSettled, resolveAssetPack } from '@pack/pack'
+import { getAssetSetting } from '@pack/hooks'
+import { loadPackItem } from '@pack/items'
+import { loadPackGltf, warmUpObject } from '@pack/loaders'
+import { assetPackFile, getAssetPackState, isAssetPackSettled, resolveAssetPack } from '@pack/pack'
+import { acquirePackTexture, releasePackTexture, setPackWorldInfo } from '@pack/textures'
 
 const INVISIBLE_TOOL_MATERIALS = new Set([
   'toolsnodraw',
@@ -77,6 +82,8 @@ interface LoadedMap {
   folder: string
   conversion: MapConversion | null
   lightmap: THREE.Texture | null
+  /** A textured world from the asset pack (asset contract 12.5): its materials, made before it was shown. */
+  pack?: { materials: BspMaterials; textureKeys: string[]; released: boolean }
 }
 
 export interface WorldProps {
@@ -99,6 +106,8 @@ export const World = (props: WorldProps) => {
   const { map, mode } = props
   const mapModel = loadedMap?.root ?? null
   const scene = useThree(state => state.scene)
+  const gl = useThree(state => state.gl)
+  const camera = useThree(state => state.camera)
 
   const bounds = useStore(state => state.scene.bounds)
   const brightness = useHlSetting<number>('map.brightness') ?? 1
@@ -190,6 +199,26 @@ export const World = (props: WorldProps) => {
       const conversion = await fetchMapConversion(map)
       if (isStale()) return
       pipeline = conversion?.pipeline === 'bsp-to-glb' ? 'bsp-to-glb' : 'textured'
+
+      // Textured world from the asset pack (contract 12.5); any failure falls back to the public files.
+      const packFiles = pipeline === 'bsp-to-glb' ? packWorldFiles(folder, conversion, mode) : null
+      if (packFiles) {
+        const packed = await loadPackWorld(packFiles, folder, conversion, {
+          gl,
+          camera,
+          scene,
+          brightness: brightnessRef.current,
+        })
+        if (isStale()) {
+          if (packed) disposeLoadedMap(packed)
+          return
+        }
+        if (packed) {
+          setLoadedMap(packed)
+          return
+        }
+      }
+      setPackWorldInfo(folder, packFiles ? 'fallback' : null)
       const modelUrl = getMapModelUrl(map, conversion)
       if (!modelUrl) throw new Error(`No model file for ${map}`)
 
@@ -380,6 +409,14 @@ export const World = (props: WorldProps) => {
   useEffect(() => {
     if (!loadedMap) return
     const mapModel = loadedMap.root
+
+    if (loadedMap.pack) {
+      // Materials were made, and their programs compiled, before the pack world was shown (load above).
+      bspMaterialsRef.current = loadedMap.pack.materials
+      return () => {
+        if (bspMaterialsRef.current === loadedMap.pack?.materials) bspMaterialsRef.current = null
+      }
+    }
 
     if (loadedMap.pipeline === 'bsp-to-glb') {
       // One shared material per kind (src/highlander/map/bspMaterials.ts). Vertex colours are the
@@ -585,6 +622,11 @@ function freezeStaticMapSubtree(root: THREE.Object3D) {
 const SHARED_MATERIALS = new Set<THREE.Material>([MAP_UNTEXTURED_MATERIAL])
 
 function disposeLoadedMap(loaded: LoadedMap) {
+  if (loaded.pack && !loaded.pack.released) {
+    loaded.pack.released = true
+    loaded.pack.materials.dispose()
+    loaded.pack.textureKeys.forEach(releasePackTexture)
+  }
   const textures = new Set<THREE.Texture>()
   loaded.root.traverse(node => {
     const mesh = node as THREE.Mesh
@@ -594,7 +636,8 @@ function disposeLoadedMap(loaded: LoadedMap) {
     materials.forEach(material => {
       if (!material || SHARED_MATERIALS.has(material) || isSharedMapMaterial(material)) return
       Object.values(material).forEach(value => {
-        if (value instanceof THREE.Texture) textures.add(value)
+        // Pack textures are shared and released above, never disposed here.
+        if (value instanceof THREE.Texture && !value.userData.dribblePack) textures.add(value)
       })
       material.dispose()
     })
@@ -708,6 +751,116 @@ function loadGLTF(url: string, name?: string, meshopt = false) {
       reject(error)
     }
   })
+}
+
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>
+    return `{${Object.keys(object)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonicalJson(object[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value ?? null)
+}
+
+interface PackWorldFiles {
+  world: string
+  lightmap: string
+  conversion: string
+}
+
+/**
+ * The pack world files of a folder (contract 12.5), or null: pack not ready, assets.enabled or
+ * assets.mapTextures off, a render mode other than textured (untextured and wireframe keep the public look), no
+ * world in the entry, or an entry built from another BSP (3.5; StaticProps logs that once). Synchronous, so a
+ * page without a pack adds no await to the map load.
+ */
+function packWorldFiles(
+  folder: string,
+  conversion: MapConversion | null,
+  mode: WorldProps['mode']
+): PackWorldFiles | null {
+  const pack = getAssetPackState()
+  if (pack.status !== 'ready' || (mode ?? 'textured') !== 'textured') return null
+  if (!getAssetSetting('enabled') || !getAssetSetting('mapTextures')) return null
+  const entry = pack.manifest?.maps?.[folder]
+  const files = entry?.files
+  if (!entry || !files?.world || !files.lightmap || !files.conversion) return null
+  const identity = publicMapIdentity(conversion)
+  if (
+    !identity ||
+    entry.mapName !== identity.mapName ||
+    canonicalJson(entry.publicProps ?? null) !== canonicalJson(identity.props)
+  )
+    return null
+  if (!assetPackFile(files.world) || !assetPackFile(files.lightmap) || !assetPackFile(files.conversion))
+    return null
+  return { world: files.world, lightmap: files.lightmap, conversion: files.conversion }
+}
+
+/**
+ * Loads the pack's conversion.json, world.glb and lightmap (one converter run), acquires every texture the
+ * world's materials name, builds the materials and compiles their programs before the world is shown (4.3).
+ * Null when any of the three files fails (each warns once through loadPackItem); a missing texture only leaves
+ * its material on the flat albedo.
+ */
+async function loadPackWorld(
+  files: PackWorldFiles,
+  folder: string,
+  conversion: MapConversion | null,
+  ctx: { gl: THREE.WebGLRenderer; camera: THREE.Camera; scene: THREE.Scene; brightness: number }
+): Promise<LoadedMap | null> {
+  const packConversion = await loadPackItem(files.conversion, async url => {
+    const response = await fetch(url, { cache: 'no-cache' })
+    if (!response.ok) throw new Error(`conversion.json answered ${response.status}`)
+    return (await response.json()) as MapConversion
+  })
+  if (!packConversion?.lightmap) return null
+  const [gltf, lightmap] = await Promise.all([
+    loadPackItem(files.world, loadPackGltf),
+    loadPackItem(files.lightmap, async url => {
+      const texture = await loadLightmap(url, packConversion.lightmap?.uvChannel ?? 0)
+      if (!texture) throw new Error('lightmap failed to load')
+      return texture
+    }),
+  ])
+  if (!gltf?.scene || !lightmap) {
+    lightmap?.dispose()
+    if (gltf?.scene) disposeLoadedMap({ root: gltf.scene, pipeline: 'bsp-to-glb', folder, conversion, lightmap: null })
+    return null
+  }
+  const keys = new Set<string>()
+  gltf.scene.traverse(node => {
+    const material = (node as THREE.Mesh).material as THREE.Material | undefined
+    const record = (material && !Array.isArray(material) ? material.userData?.dribble?.texture : null) as
+      | { key?: string; blend?: { key?: string } }
+      | null
+    if (record?.key) keys.add(record.key)
+    if (record?.blend?.key) keys.add(record.blend.key)
+  })
+  const textureKeys = [...keys].sort()
+  const loaded = await Promise.all(textureKeys.map(key => acquirePackTexture(key, ctx.gl)))
+  const textures = new Map(textureKeys.map((key, i) => [key, loaded[i]]))
+  const materials = applyBspMaterials(gltf.scene, {
+    mode: 'textured',
+    lightmap,
+    lightmapRange: packConversion.lightmap.range ?? 1,
+    brightness: ctx.brightness,
+    textures,
+  })
+  await warmUpObject(ctx.gl, gltf.scene, ctx.camera, ctx.scene)
+  const bound = loaded.filter(Boolean).length
+  setPackWorldInfo(folder, 'pack', { textures: textureKeys.length, bound, failed: textureKeys.length - bound })
+  return {
+    root: gltf.scene,
+    pipeline: 'bsp-to-glb',
+    folder,
+    conversion,
+    lightmap,
+    pack: { materials, textureKeys, released: false },
+  }
 }
 
 // The atlas has no padding between faces, so no mipmaps (they would bleed) and linear filtering.

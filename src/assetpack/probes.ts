@@ -9,6 +9,13 @@ import {
   isAssetPackResolutionStarted,
   subscribeAssetPack,
 } from './pack'
+import {
+  activePackTextureFormat,
+  getPackTextureItem,
+  getPackWorldInfo,
+  heldPackTextures,
+  packTextureGpuBytes,
+} from './textures'
 
 function status() {
   const { status, reason, url, manifest } = getAssetPackState()
@@ -68,3 +75,38 @@ registerHlProbe('assets.items', (filter?: string) =>
   listAssetItems(typeof filter === 'string' ? filter : undefined)
 )
 registerHlProbe('assets.waitIdle', waitIdle)
+
+const MB = 1048576
+
+/**
+ * Texture GPU memory of the pack's maps (contract 12.6), computed from the manifest: DDS as stored, WebP as
+ * width x height x 4 x 4/3, per map entry and for the textures held right now; plus the drawn pack world.
+ */
+function textures(folder?: string) {
+  const manifest = getAssetPackState().manifest
+  const maps: Record<string, { textures: number; listed: number; gpuMB: number; webpGpuMB: number }> = {}
+  for (const [name, entry] of Object.entries(manifest?.maps ?? {})) {
+    if (folder && name !== folder) continue
+    const keys = ((entry as { textures?: string[] }).textures ?? []) as string[]
+    let dds = 0
+    let webp = 0
+    let listed = 0
+    for (const key of keys) {
+      const item = getPackTextureItem(key)
+      if (!item) continue
+      listed++
+      dds += packTextureGpuBytes(item, 'dds')
+      webp += packTextureGpuBytes(item, 'webp')
+    }
+    maps[name] = { textures: keys.length, listed, gpuMB: +(dds / MB).toFixed(2), webpGpuMB: +(webp / MB).toFixed(2) }
+  }
+  const held = heldPackTextures()
+  let heldBytes = 0
+  for (const row of held) {
+    const item = getPackTextureItem(row.key)
+    if (item && row.loaded) heldBytes += packTextureGpuBytes(item, activePackTextureFormat() ?? 'dds')
+  }
+  return { world: getPackWorldInfo(), format: activePackTextureFormat(), maps, held: held.length, heldLoaded: held.filter(r => r.loaded).length, heldGpuMB: +(heldBytes / MB).toFixed(2) }
+}
+
+registerHlProbe('assets.textures', (folder?: string) => textures(typeof folder === 'string' ? folder : undefined))

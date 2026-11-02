@@ -37,6 +37,7 @@ const AssetSettingsRows = () => {
   // Primitives only: settings.assets keeps its reference while its fields change (settings reducer).
   const enabled = useStore(s => s.settings.assets?.enabled ?? true)
   const stockProps = useStore(s => s.settings.assets?.stockProps ?? true)
+  const mapTextures = useStore(s => s.settings.assets?.mapTextures ?? true)
   const offByUrl = isAssetsOffByUrl()
 
   useEffect(() => {
@@ -44,6 +45,7 @@ const AssetSettingsRows = () => {
   }, [])
 
   const hasMaps = Object.keys(pack.manifest?.maps ?? {}).length > 0
+  const hasWorlds = Object.values(pack.manifest?.maps ?? {}).some(entry => !!entry?.files?.world)
 
   return (
     <>
@@ -64,6 +66,14 @@ const AssetSettingsRows = () => {
           label="Stock static props"
           checked={stockProps}
           onChange={checked => updateSettingsOptionAction('assets.stockProps', checked)}
+        />
+      )}
+
+      {hasWorlds && (
+        <ToggleOption
+          label="Textured maps (applies on next map load)"
+          checked={mapTextures}
+          onChange={checked => updateSettingsOptionAction('assets.mapTextures', checked)}
         />
       )}
     </>

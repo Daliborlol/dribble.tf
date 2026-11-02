@@ -8,8 +8,20 @@
 //   wireframe   MAP_WIREFRAME_MATERIAL, the viewer's wireframe material for every map pipeline
 // It remembers the converter info on `mesh.userData.dribbleMaterial`, so a later call with another mode
 // (or a caller such as the respawn-visualizer toggle) still finds it after the swap.
+//
+// Textured pack worlds (asset contract 12.5): a material whose info carries `texture` (convert-bsp.mjs
+// --texture-uvs) and whose texture is in `options.textures` gets its own MeshBasicMaterial per (kind, lightmap,
+// texture): the pack texture times the lightmap, the alpha rule of contract 2.6, and for WorldVertexTransition
+// a second texture blended by the vertex attribute. Without its texture it draws the flat albedo as before.
 
 import * as THREE from 'three'
+
+import {
+  applyPackTextureAlpha,
+  getPackTextureItem,
+  packTextureForChannel,
+  type PackTextureRecord,
+} from '@pack/textures'
 
 export type MapRenderMode = 'textured' | 'untextured' | 'wireframe'
 
@@ -18,6 +30,7 @@ export interface BspMaterialInfo {
   kind: 'opaque' | 'translucent' | 'water' | 'unlit' | 'visualizer' | string
   lightmap: boolean
   hiddenByDefault?: boolean // respawn-room visualizers: shown only with settings map.respawnVisualizers
+  texture?: PackTextureRecord // textured pack worlds only
 }
 
 export const MAP_WIREFRAME_MATERIAL = new THREE.MeshStandardMaterial({
@@ -73,6 +86,8 @@ export interface BspMaterialOptions {
   lightmapRange: number
   /** settings.highlander.map.brightness at the time of the call. */
   brightness: number
+  /** Pack textures by key (textured pack worlds); materials without theirs keep the flat albedo. */
+  textures?: Map<string, THREE.Texture | null>
 }
 
 export interface BspMaterials {
@@ -87,9 +102,28 @@ export interface BspMaterials {
  * disposes the GLB's own materials the first time. Call it again after a mode change, after disposing
  * the previous result.
  */
+/** WorldVertexTransition: mixes `map2` over the base map by the vertex attribute (0 base, 1 map2). */
+function addVertexBlend(material: THREE.MeshBasicMaterial, map2: THREE.Texture, attribute: string) {
+  const name = attribute.replace(/[^A-Za-z0-9_]/g, '')
+  material.onBeforeCompile = shader => {
+    shader.uniforms.dribbleMap2 = { value: map2 }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\nattribute float ${name};\nvarying float vDribbleBlend;`)
+      .replace('#include <uv_vertex>', `#include <uv_vertex>\nvDribbleBlend = ${name};`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D dribbleMap2;\nvarying float vDribbleBlend;')
+      .replace(
+        '#include <map_fragment>',
+        '#include <map_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuse * texture2D(dribbleMap2, vMapUv).rgb, clamp(vDribbleBlend, 0.0, 1.0));'
+      )
+  }
+  material.customProgramCacheKey = () => `dribble-wvt-${name}`
+}
+
 export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOptions): BspMaterials {
   const { mode, lightmap, lightmapRange } = options
   const created = new Map<string, THREE.MeshBasicMaterial>()
+  const textures = options.textures
   const original = new Set<THREE.Material>()
 
   const materialFor = (info: BspMaterialInfo): THREE.Material => {
@@ -99,6 +133,28 @@ export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOpti
       return transparent ? BSP_UNTEXTURED_TRANSLUCENT_MATERIAL : BSP_UNTEXTURED_MATERIAL
     }
     const lit = info.lightmap && !!lightmap
+    const record = info.texture
+    const map = record && textures?.get(record.key)
+    if (record && map) {
+      const map2 = record.blend ? textures?.get(record.blend.key) ?? null : null
+      const key = `${info.kind}:${lit}:${record.key}:${map2 ? record.blend!.key : ''}:${record.flatAlpha ?? 1}`
+      let material = created.get(key)
+      if (!material) {
+        material = new THREE.MeshBasicMaterial({
+          map: packTextureForChannel(map, record.uv ?? 0),
+          lightMap: lit ? lightmap : null,
+          lightMapIntensity: bspLightMapIntensity(lightmapRange, options.brightness),
+          side: info.kind === 'water' || info.kind === 'visualizer' ? THREE.DoubleSide : THREE.FrontSide,
+        })
+        applyPackTextureAlpha(material, record, getPackTextureItem(record.key), transparent)
+        if (map2) addVertexBlend(material, packTextureForChannel(map2, record.uv ?? 0), record.blend!.attribute)
+        material.name = `dribble_${info.kind}${lit ? '_lit' : ''}:${record.key}`
+        material.userData.dribbleLit = lit
+        material.userData.dribble = { kind: info.kind, lightmap: lit, texture: record }
+        created.set(key, material)
+      }
+      return material
+    }
     const key = `${info.kind}:${lit}`
     let material = created.get(key)
     if (!material) {

@@ -41,7 +41,9 @@ are fixed. A task may add optional fields and new files inside its own folders.
   are unchanged." Those pre-existing files are the 18 player GLBs, the rocket, pipe and sticky models, about 270 MB
   of upstream textured maps and the 257 kill icons. Real TF2 content beyond them appears only from a local pack the
   user built. Data embedded in the BSPs (lightmaps, PAK props, PAK skies) stays allowed in `public/`, as before.
-- **D5, amended.** `koth_product_final` is excluded from map packs. It keeps its upstream `textured_compressed.glb`,
+- **D5, amended** (superseded by as/product, see `STATUS.md` "koth_product_final in the pack": the maps stage now
+  builds it, and with a pack entry and `assets.mapTextures` World loads the pack world; without a pack nothing
+  changed). Original text: `koth_product_final` is excluded from map packs. It keeps its upstream `textured_compressed.glb`,
   has no `mapNodes`, and with Highlander off it is the base viewer's map. `--maps all` means the 10 bsp-to-glb
   folders, those whose public `conversion.json` has `pipeline: 'bsp-to-glb'`, so it never includes it. The pack
   builder exits 2 only when `koth_product_final` is named explicitly in `--maps`.

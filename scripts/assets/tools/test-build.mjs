@@ -4,8 +4,8 @@
 //
 //   node scripts/assets/tools/test-build.mjs --tf2 <dir> [--hl2 <dir>] --base <dir> [--keep] [--out f.json]
 //
-//   1. refusals (exit 2): --out in a git work tree, under /tmp, --tmp under /tmp, --maps
-//      koth_product_final, an unknown option, a stage name, a non-pack directory
+//   1. refusals (exit 2): --out in a git work tree, under /tmp, --tmp under /tmp, an unknown map, an
+//      unknown option, a stage name, a non-pack directory (koth_product_final is a maps-stage folder since as/product)
 //   2. two builds without stages give a valid manifest and pass check-determinism
 //   3. two builds with the fixture stages (tools/fixture-stages: real model exports through
 //      lib/model-export.mjs, placeholder map entries) pass check-determinism
@@ -57,8 +57,6 @@ const refusals = [
   ['out in a git work tree', [...vpkArgs, '--out', path.join(CHECKOUT, 'pack-test')]],
   ['out under /tmp', [...vpkArgs, '--out', '/tmp/pack-test']],
   ['tmp under /tmp', [...vpkArgs, '--out', path.join(absBase, 'r1'), '--tmp', '/tmp/pack-test-tmp']],
-  ['koth_product_final', [...vpkArgs, '--out', path.join(absBase, 'r2'), '--maps', 'koth_product_final']],
-  ['koth_product_final among others', [...vpkArgs, '--out', path.join(absBase, 'r2'), '--maps', 'pl_vigil_rc10,koth_product_final']],
   ['unknown map', [...vpkArgs, '--out', path.join(absBase, 'r2'), '--maps', 'cp_nowhere']],
   ['unknown option', [...vpkArgs, '--out', path.join(absBase, 'r3'), '--frobnicate']],
   ['unknown stage', [...vpkArgs, '--out', path.join(absBase, 'r4'), '--stages', 'maps,textures']],

@@ -111,7 +111,7 @@ Step 1 found that both 1434434 floating examples are stock `prop_static`. With t
 | pl_vigil_rc10 | 8.22 | 1406 | 263 | 4 | 12.6 |
 | tow_tetsudo_b10c | 6.41 | 1166 | 118 | 1 | 9.2 |
 
-The ten maps total 70.7 MB and take 113.4 s, with 0 missing models. `--maps koth_product_final` exits 2.
+The ten maps total 70.7 MB and take 113.4 s, with 0 missing models. `--maps koth_product_final` exited 2 until as/product (below).
 
 Acceptance:
 - Two builds of vigil and tetsudo are byte-identical, and a rebuild at the tip reproduces all ten files.
@@ -245,3 +245,11 @@ Four polish leftovers, on `as/leftovers` from `highlander` `592ac0d`. tsc gave t
   - W-projectiles, W-mapitems, and W-cart (the cart is a named or parented `prop_dynamic` that the props pass skips).
 - **Phase 4, viewmodels.** A GLB provider at priority 10 that reads the pack. The instance cache must take the model's ready state into its key. Old demos without local tables keep the placeholder.
 - **Not scheduled.** Third-person weapon models, KTX2 hosting, overlays on displacements, light styles, other maps.
+
+## koth_product_final in the pack (as/product)
+
+- The maps stage builds `koth_product_final` (`PACK_WORLD_ONLY_MAPS`, also in `--maps all`): world, lightmap, `conversion.json`, `props-stock.glb` (874 instances, 156 models, 6.0 MB) and `props-pak.glb` (41 instances, 0.5 MB), 8.7 MB in total, about 25 s. The public folder is unchanged. This supersedes D5's exclusion.
+- World loads the pack world for it when the entry matches (`mapName`; no `publicProps` on either side), so product looks like the ten pack maps: textured world with displacement blends, lightmap, stock and PAK props, moving spawn doors, F6 kits and lockers.
+- `/home/dalibor/tf2-pack` gained the entry with a maps-stage build of that map alone; the other ten entries and every other item are unchanged (checked against the previous manifest).
+- Gates: tsc 10 known errors, build passes, no-pack 1438891 baseline compare against `ref-a06e4c7` exits 0, pack run on test.dem 0 app errors and 0 failed requests. RTS at tick 1861: 225 draw calls and p95 17.7 ms with the pack world (no pack 290 and 17.9 ms).
+- Not done: the sky stays `sky_morningsnow_01` (map-meta names `sky_trainyard_01`), and lights still use the legacy `lightEnvironment`. The cliff props (`props_forest/cliff_wall_*`) look lavender-grey and low-contrast under VHV lighting.

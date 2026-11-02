@@ -24,7 +24,7 @@ flock <lock> npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /ho
 |---|---|
 | `--out <dir>` | pack directory, default `~/tf2-pack`. Refused inside any git work tree, under `/tmp`, and when the directory is not empty but holds no pack. |
 | `--stages maps,models,viewmodels` | stages to run, always in that order; `none` runs none. `--only` is the same option. Default: every stage that exists. |
-| `--maps <folder,...>` / `all` | folders for the maps stage. `all` (default) is the bsp-to-glb folders under `public/models/maps/` (`conversion.json` `pipeline: 'bsp-to-glb'`). `koth_product_final` is refused (exit 2). |
+| `--maps <folder,...>` / `all` | folders for the maps stage. `all` (default) is the bsp-to-glb folders under `public/models/maps/` (`conversion.json` `pipeline: 'bsp-to-glb'`) plus `koth_product_final` (`PACK_WORLD_ONLY_MAPS`: its public folder keeps the older textured GLB, its pack entry gets a bsp-to-glb world, lightmap, `conversion.json`, `props-stock.glb` and `props-pak.glb`, without `publicProps`). An unknown folder exits 2. |
 | `--bsp-dir <dir>` | map BSPs, default the Steam install's `tf/maps/`. |
 | `--tmp <dir>` | scratch dir, default `<out>/.tmp`, removed after the build. Never under `/tmp`. |
 | `--force` | ignore the previous manifest and rebuild every item. |

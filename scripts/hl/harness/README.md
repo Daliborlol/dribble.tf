@@ -243,6 +243,8 @@ node scripts/hl/harness/shot.mjs ... --asset-pack <dir> --query assets=off   # p
 - `--asset-pack <dir>` builds the checkout with `VITE_ASSET_PACK_URL=/tf2-assets/` and serves `<dir>` at
   `/tf2-assets/` by the rules of contract 3.3: GET and HEAD only (other methods 405), the resolved path, symlinks
   included, must stay inside the folder, and a missing file answers 404 `text/plain`, never `index.html`.
+  A raw request path that starts with `/tf2-assets/` but leaves it through dot segments (`../`, `%2e%2e/`) also
+  answers 404, although URL normalisation would turn it into another route; the check reads `req.url` as sent.
   Types: `.json` `application/json`, `.glb` `model/gltf-binary`, `.dds` `application/octet-stream`, `.webp`
   `image/webp`, anything else `application/octet-stream`; `Cache-Control: no-cache`. The folder must exist; a
   folder without a valid v1 `manifest.json` gives a warning, and the page sees what the server answers.

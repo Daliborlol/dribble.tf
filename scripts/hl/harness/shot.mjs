@@ -1364,6 +1364,10 @@ function startServer({ distDir, publicDir, demoPath, demoMap, stubOtherMaps, pac
     try {
       const url = new URL(req.url, 'http://127.0.0.1')
       if (url.pathname.startsWith(PACK_ROUTE) || url.pathname === PACK_ROUTE.slice(0, -1)) return servePack(req, res, url.pathname)
+      // A raw path under the pack route whose dot segments (also %2e%2e) left it after URL normalisation stays a 404,
+      // so such a request never falls through to the build or the SPA index.
+      const rawPath = String(req.url).split(/[?#]/, 1)[0]
+      if (rawPath.startsWith(PACK_ROUTE) || rawPath === PACK_ROUTE.slice(0, -1)) return send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
       const pathname = decodeURIComponent(url.pathname)
       if (url.pathname === demoRoute) return sendFile(req, res, demoPath)
       if (pathname.startsWith('/umami/')) return send(res, 204, {}, '')

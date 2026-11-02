@@ -167,6 +167,7 @@ const clipPredicate = keep => {
  * @param {string} o.output
  * @param {boolean} [o.lod0=true]
  * @param {boolean|RegExp|string[]|Function} [o.keepClip=true]  which animations stay (by name)
+ * @param {string} [o.restPoseClip]   animation whose frame 0 becomes the nodes' rest pose (before pruning)
  * @param {boolean} [o.dropTextures=true]
  * @param {boolean} [o.meshopt=true]
  * @param {'high'|'medium'} [o.level='high']
@@ -196,6 +197,29 @@ export async function postProcessModel(o) {
     for (const mesh of root.listMeshes()) {
       const lod = mesh.getExtras()?.sourceLod
       if (lod !== undefined && lod !== 0) mesh.dispose()
+    }
+  }
+  // Rest pose = frame 0 of `restPoseClip` (the model's default sequence), before clips are pruned: Source
+  // always draws a sequence frame, never the bind pose, and many models (sentries, dispensers) only stand
+  // upright through their sequences' root-bone rotation.
+  let restPose = null
+  if (o.restPoseClip) {
+    const animation = root.listAnimations().find(a => a.getName() === o.restPoseClip)
+    if (animation) {
+      restPose = { clip: o.restPoseClip, channels: 0 }
+      for (const channel of animation.listChannels()) {
+        const node = channel.getTargetNode()
+        const output = channel.getSampler()?.getOutput()
+        const target = channel.getTargetPath()
+        if (!node || !output) continue
+        const size = target === 'rotation' ? 4 : 3
+        if (target === 'weights' || output.getCount() < 1) continue
+        const value = output.getElement(0, new Array(size))
+        if (target === 'translation') node.setTranslation(value)
+        else if (target === 'rotation') node.setRotation(value)
+        else if (target === 'scale') node.setScale(value)
+        restPose.channels++
+      }
     }
   }
   const keep = clipPredicate(o.keepClip)
@@ -234,7 +258,7 @@ export async function postProcessModel(o) {
   return {
     bytes: glb.length,
     sha256: sha256(glb),
-    stats: { before, after: countDoc(doc), lodsRemoved, clipsKept, clipsRemoved, emptyWeights, zeroWeightsRemoved: zeroWeights },
+    stats: { before, after: countDoc(doc), restPose, lodsRemoved, clipsKept, clipsRemoved, emptyWeights, zeroWeightsRemoved: zeroWeights },
   }
 }
 

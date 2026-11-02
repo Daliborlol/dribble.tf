@@ -224,7 +224,12 @@ export class PropLodController {
         const matrices = side.matrices[m]
         const colors = side.colors[m]
         const dst = mesh.instanceMatrix.array as Float32Array
-        const dstColor = mesh.instanceColor?.array as Float32Array | undefined
+        // Wireframe stashes instanceColor in userData (StaticProps setInstanceLight); keep that copy in row order too.
+        const colorAttr = (mesh.instanceColor ?? mesh.userData.dribbleInstanceColor) as
+          | THREE.InstancedBufferAttribute
+          | null
+          | undefined
+        const dstColor = colorAttr?.array as Float32Array | undefined
         let n = 0
         for (let i = 0; i < pair.rows.length; i++) {
           if (pair.level[i] !== want) continue
@@ -234,7 +239,7 @@ export class PropLodController {
         }
         mesh.count = n
         mesh.instanceMatrix.needsUpdate = true
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+        if (colorAttr) colorAttr.needsUpdate = true
       })
     }
     write(pair.near, 0)

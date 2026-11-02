@@ -3,7 +3,7 @@
 // For each selected bsp-to-glb folder it reads the map's BSP from --bsp-dir, runs the two bsp-to-glb passes
 // scripts/convert-bsp.mjs runs for its props pass (entities + PAK, then the render export with --props-out,
 // same flags, outputs in this stage's scratch dir), and calls convertStaticProps (scripts/lib/static-props.mjs)
-// with the VPK set as its stock source and `stockOnly`. The result is maps/<folder>/props-stock.glb: every
+// with the VPK set as its stock source, which makes the output stock-only. The result is maps/<folder>/props-stock.glb: every
 // prop_static whose model is not in the BSP's PAK (plus unnamed, unparented, non-animated prop_dynamic
 // entities with stock models), drawn like the PAK props of public props.glb: flat albedo (VTF reflectivity) x
 // VRAD's per-vertex lighting from the PAK's sp[_hdr]_<n>.vhv, in the world lightmap's exposure. Lighting
@@ -15,7 +15,7 @@
 // timings and warnings goes to reports/maps/<folder>.json, which the runtime never reads.
 //
 // Incremental: a folder whose input key (VPK fingerprint, generator version, BSP sha256, the public
-// conversion.json values used, the converter's own source hash and the bsp-to-glb version) equals the one
+// conversion.json values used, the hash of CONVERTER_SOURCES and the bsp-to-glb version) equals the one
 // recorded in its previous entry, and whose file is still in the pack, keeps its entry.
 //
 // Options (--set): propsMeshopt=false (quantization only), propsBakeVertexBudget=<n>, propsKeepTmp=true.
@@ -31,9 +31,27 @@ import { findBspToGlb, bspToGlbVersion } from '../lib/model-export.mjs'
 import { sha256File } from '../lib/fsutil.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const STATIC_PROPS_SOURCE = path.resolve(HERE, '..', '..', 'lib', 'static-props.mjs')
+// Every source file whose code decides the bytes of props-stock.glb, in a fixed order: this stage, the
+// converter and the A0-pack libraries that stock mode reads VPKs, VMTs and VTFs through. A change to any
+// of them changes the input key, so incremental builds never keep a file an older converter wrote.
+const CONVERTER_SOURCES = [
+  path.resolve(HERE, 'stage.mjs'),
+  path.resolve(HERE, '..', '..', 'lib', 'static-props.mjs'),
+  path.resolve(HERE, '..', 'lib', 'vmt.mjs'),
+  path.resolve(HERE, '..', 'lib', 'vpk.mjs'),
+  path.resolve(HERE, '..', 'lib', 'vtf.mjs'),
+  path.resolve(HERE, '..', 'lib', 'model-export.mjs'),
+  path.resolve(HERE, '..', 'lib', 'fsutil.mjs'),
+]
 
-const sha256Of = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+function sourcesHash(files) {
+  const hash = crypto.createHash('sha256')
+  for (const file of files) {
+    const bytes = fs.readFileSync(file)
+    hash.update(`${path.basename(file)}\0${bytes.length}\0`).update(bytes)
+  }
+  return hash.digest('hex')
+}
 
 function runTool(binary, argv, label) {
   const result = spawnSync(binary, argv, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
@@ -101,7 +119,7 @@ export async function run(ctx) {
   const vtfToPngPath = path.join(path.dirname(bspToGlb), 'vtf-to-png')
   const vtfToPng = fs.existsSync(vtfToPngPath) ? vtfToPngPath : null
   const toolVersion = bspToGlbVersion(bspToGlb)
-  const converterHash = sha256Of(STATIC_PROPS_SOURCE)
+  const converterHash = sourcesHash(CONVERTER_SOURCES)
   const options = {
     meshopt: set.propsMeshopt !== false,
     ...(Number.isFinite(set.propsBakeVertexBudget) ? { bakeVertexBudget: set.propsBakeVertexBudget } : {}),
@@ -168,7 +186,6 @@ export async function run(ctx) {
       meshopt: options.meshopt,
       ...(options.bakeVertexBudget !== undefined ? { bakeVertexBudget: options.bakeVertexBudget } : {}),
       stockSource: ctx.vpk,
-      stockOnly: true,
       log: message => ctx.log(`${folder}:${message}`),
     })
     if (!set.propsKeepTmp) fs.rmSync(tmp, { recursive: true, force: true })

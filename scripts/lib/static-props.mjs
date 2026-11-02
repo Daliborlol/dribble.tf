@@ -47,8 +47,8 @@
  *
  * Stock props (asset contract 9 "M3-props", task M3-props). With `stockSource` (the A0-pack VPK set of
  * scripts/assets/lib/vpk.mjs) a model, material or texture missing from the PAK is read from the user's
- * own VPKs; the PAK wins. `stockOnly` then writes the stock instances alone (props-stock.glb of the local
- * asset pack, never public/): every prop_static whose model is not in the PAK, plus unnamed, unparented,
+ * own VPKs; the PAK wins. A stock source always means stock-only output: the file holds the stock
+ * instances alone (props-stock.glb of the local asset pack, never public/): every prop_static whose model is not in the PAK, plus unnamed, unparented,
  * non-animated prop_dynamic entities with stock models (the PAK rule). Their light is the same VRAD
  * per-vertex lighting from the PAK's sp[_hdr]_<prop>.vhv, so they look exactly like the PAK props. In
  * stock mode VMTs follow asset contract 2.6 through scripts/assets/lib/vmt.mjs (last key wins, DX9

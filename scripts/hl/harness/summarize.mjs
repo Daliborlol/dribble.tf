@@ -5,6 +5,7 @@
 // - steps named sweep*: how many probes ran and each probe that returned an error;
 // - the step named status: extras status, unavailable groups, map status, fallback, probe count;
 // - every other step: render tick, screenshot file, step error, and the start of its eval result.
+// The request summary and every /tf2-assets/ request come before the steps.
 // Then the run's console.log: error lines, with the known harness noise (aborted GLB requests) counted apart.
 // The step names are the ones plans/smoke-gen.mjs writes; other plans print through the generic branch.
 
@@ -49,6 +50,13 @@ for (const input of inputs) {
 
   console.log('loaded:', dumps(m.loaded, 600))
   console.log('memoryMB:', dumps(m.memoryMB), 'warnings:', dumps((m.warnings ?? []).slice(0, 6)))
+  if (m.requestSummary) {
+    const pack = m.assetPack ?? {}
+    console.log('requests:', dumps(m.requestSummary), 'asset pack:', pack.dir ? `${pack.dir} fingerprint ${pack.fingerprint ?? 'null'}` : 'none')
+    const packRows = (m.requests ?? []).filter(r => String(r.path).startsWith('/tf2-assets/'))
+    for (const r of packRows.slice(0, 10)) console.log('   ', r.status, r.type, r.path, r.count > 1 ? `x${r.count}` : '', r.failure ?? '')
+    if (packRows.length > 10) console.log(`    ... ${packRows.length - 10} more /tf2-assets/ paths`)
+  }
   for (const st of m.shots ?? []) {
     const ev = st.eval
     const name = st.step?.name ?? ''

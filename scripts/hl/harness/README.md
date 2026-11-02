@@ -115,6 +115,8 @@ argument stops the run with a usage error before anything is built.
 | `--allow-network` | off | let the page reach hosts other than 127.0.0.1 |
 | `--query <a=1&b=2>` | | extra URL query parameters, repeatable (e.g. `hlExtrasBudget=1`) |
 | `--init-script <file>` | | script that runs in the page before the app, repeatable |
+| `--no-vsync` | off | uncapped frames: adds `--disable-gpu-vsync --disable-frame-rate-limit`; `manifest.browser.noVsync` and `perf.json` `spec.noVsync` record it |
+| `--asset-pack <dir\|missing>` | | serve a TF2 asset pack at `/tf2-assets/` and build with `VITE_ASSET_PACK_URL=/tf2-assets/`; see Asset pack |
 | `--timeout <sec>` | 900 | hard timeout for the whole run (exit 124) |
 | `--load-timeout <sec>` | 300 | time for the demo to parse and the scene to switch to its map |
 | `--lock <file>` | `$DRIBBLE_HARNESS_LOCK`, else `<os.tmpdir()>/dribble-heavy.lock` | lock that serialises heavy runs |
@@ -225,6 +227,36 @@ Plan gotchas:
 - An eval can switch the POV or camera itself (`await window.__dribble.setControlsMode('pov', { player: 7 })`)
   right before the shot.
 
+## Asset pack
+
+The asset phase (`specs/assets/contract.md`) loads TF2 content from a local pack folder, `/home/dalibor/tf2-pack`
+by default, which `scripts/assets/` builds from the user's own VPKs. Production builds request nothing from it
+unless `VITE_ASSET_PACK_URL` was set at build time (contract 3.2), so a harness run without `--asset-pack` builds
+and behaves like the hosted site.
+
+```sh
+node scripts/hl/harness/shot.mjs --demo <demo.dem> --plan <plan.json> --asset-pack /home/dalibor/tf2-pack ...
+node scripts/hl/harness/shot.mjs ... --asset-pack missing             # pack configured, but absent (404)
+node scripts/hl/harness/shot.mjs ... --asset-pack <dir> --query assets=off   # pack present, disabled
+```
+
+- `--asset-pack <dir>` builds the checkout with `VITE_ASSET_PACK_URL=/tf2-assets/` and serves `<dir>` at
+  `/tf2-assets/` by the rules of contract 3.3: GET and HEAD only (other methods 405), the resolved path, symlinks
+  included, must stay inside the folder, and a missing file answers 404 `text/plain`, never `index.html`.
+  Types: `.json` `application/json`, `.glb` `model/gltf-binary`, `.dds` `application/octet-stream`, `.webp`
+  `image/webp`, anything else `application/octet-stream`; `Cache-Control: no-cache`. The folder must exist; a
+  folder without a valid v1 `manifest.json` gives a warning, and the page sees what the server answers.
+- `--asset-pack missing` (the literal word) builds the same way and answers 404 for every `/tf2-assets/` path.
+- Without `--asset-pack`, the build gets no `VITE_ASSET_PACK_URL` (the harness removes one inherited from the
+  shell) and `/tf2-assets/` paths answer 404 as well.
+- The build cache keys an entry by checkout path and `VITE_ASSET_PACK_URL`: a pack build sits in
+  `<key>-pack-<6 hex>`, next to the plain `<key>` entry, so the two variants never rebuild each other.
+- The pack is served from its folder and is never copied into the build cache or the output folder. Screenshots
+  of a run with a real pack show Valve content: keep them in the task's `-out` folder (contract 1.2).
+- Before each step's settle wait, after its `eval`, the harness awaits the probe `assets.waitIdle(30000)` when the
+  page registers it, and stores the result as the step's `assetsIdle`. A result other than `idle: true` adds a
+  warning. A page without the probe (`a06e4c7` and older) gets `assetsIdle: null`.
+
 ## Smoke plans
 
 ```sh
@@ -236,6 +268,8 @@ node scripts/hl/harness/summarize.mjs ../runs/smoke-1434434
 
 Each smoke plan waits for the extras, records an extras status step, sweeps every probe except the slow and
 side-effecting ones at 40 % (on 1438891 also at 75 % in POV), and takes RTS and POV shots with probe reads.
+The sweep always reports `assets.status` and `assets.items`, as `absent` on a page without them, and skips
+`assets.waitIdle`, which the harness awaits itself; the status step records both results under `assets`.
 The plans are for 1438891 (koth_product, also run with `--perf-play 50%:10:rts`), 1434434 (pl_vigil, the
 quickest), 1440442 (cp_steel), 1429417 and 1428628 (tow_tetsudo, both through the base-parser fallback, gate
 3000 MB) and `sample` (`public/samples/i52_snakewater_gc.dem`, the bundled 6v6 demo). Their ticks and player
@@ -264,7 +298,17 @@ root, demo                     checkout and demo paths
 header                         { server, map, game, duration, ticks } from the demo header
 viewport                       { width, height }
 startedAt, finishedAt          ISO times
-browser                        { executablePath, gpu, renderer }
+browser                        { executablePath, gpu, renderer, noVsync }
+assetPack                      { dir, served, manifestSha256, fingerprint, generatorVersion }; every field null
+                               without --asset-pack. dir is the folder or "missing", served is false for
+                               missing; manifestSha256 hashes <dir>/manifest.json, fingerprint is its
+                               builtFrom.fingerprint and generatorVersion its generator.version
+requests[]                     every same-origin request of the page and its workers, one entry per method and
+                               path (query kept), in order of first occurrence:
+                               { path, method, status, type, count, failure }; status is the first response's
+                               (null when none came), type Playwright's resource type, failure the network error
+requestSummary                 { total, failed, byPrefix }: raw request counts; failed means no response, status
+                               400 or more, or a network error; byPrefix counts by first path segment ("/assets/")
 loaded                         { atSec, state, memoryMB } when the demo and map were ready
 shots[]                        one entry per step:
   index, step                  position and the step as written in the plan
@@ -272,6 +316,7 @@ shots[]                        one entry per step:
   modeResult                   { ok, scene } or { ok: false, error }
   cameraApplied                true when the step's camera was applied
   eval                         the eval result
+  assetsIdle                   the assets.waitIdle result, null when the page has no such probe
   state                        { playback, scene, perf } after settling
   players                      listPlayers() after settling
   file                         screenshot path (absent with screenshot: false)
@@ -414,10 +459,12 @@ code, all of it beam and FPS counter.
 
 ```sh
 node scripts/hl/harness/tools/compare-runs.mjs ../runs/baseline-before ../runs/baseline-after [outDir] \
-  [--threshold 24] [--max-pct <p>] [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]
+  [--threshold 24] [--max-pct <p>] [--allow-request <key>]... [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]
 ```
 
-It compares the two manifests path by path (every key and value type, array indices included), lists per step
+It compares the two manifests path by path (every key and value type, array indices included, except the
+subtrees `assetPack`, `requests`, `requestSummary` and each step's `assetsIdle` and `eval`), compares the
+request logs (below), lists per step
 the tick, render tick, camera mode, focused player and whether the eval result and player list are identical,
 and pixel-diffs every screenshot pair. It writes `<name>-diff.png` per changed shot (B dimmed, changed
 pixels magenta), `compare.json`, and `sheet.png` with A, B and the diff side by side for each step (a step
@@ -428,7 +475,7 @@ The exit code answers "did the two runs do the same thing?", like `diff`:
 
 | exit | meaning |
 |---|---|
-| 0 | same demo header, viewport and manifest structure, and every step the same (below); with `--max-pct`, no shot changed more than p percent |
+| 0 | same demo header, viewport, manifest structure and request keys, and every step the same (below); with `--max-pct`, no shot changed more than p percent |
 | 1 | something differs; each reason is listed under `result: DIFFERENT` |
 | 2 | the runs could not be compared: a `manifest.json` is missing or unreadable, or `sharp` cannot be loaded |
 | 64 | usage error |
@@ -441,6 +488,17 @@ not count; such a step is marked `timed`. Differences in eval results, the brows
 and the console's app-error count are printed as warnings and leave the exit code alone. Eval results can
 carry frame counts that change from run to run (`hud.snapshotStats` does), and the other three describe
 the setup and the console rather than what the runs did. Read every warning anyway.
+
+Requests follow the request-set rule of contract 5.1. Each logged path is reduced to its pathname, so the
+query, and with it the page URL's `--query` additions, takes no part. Under `/assets/` only, Vite's content
+hash becomes `[hash]` (`/assets/index-B-261qmv.js` is the key `/assets/index-[hash].js`), so a `src/` change
+that renames every bundle compares equal; `/tf2-assets/` and every other path compare verbatim. Each side maps
+a key to the number of distinct pathnames behind it, and the maps must be equal. A differing key is the failure
+`requests differ: <key> <count A> -> <count B>`; `--allow-request <pathname or key>` (repeatable) leaves that
+key out and lists it as an allowed difference among the warnings, as the N2 run (`--asset-pack missing`) does
+for `/tf2-assets/manifest.json`. A request log in only one run is a failure; none in either (two runs of the
+harness before the asset phase) is a warning. A different pack fingerprint, served flag or manifest hash is a
+warning. `compare.json` holds the keys under `requests` and both `assetPack` records.
 
 A pixel counts as changed when one of its channels moves by more than the threshold (24 of 255). Read a result
 like this:
@@ -464,7 +522,7 @@ and `sheet.mjs`) run themselves again as a child with sharp's fontconfig warning
 | tool | use |
 |---|---|
 | `summarize.mjs <run>...` | summary of one or more runs |
-| `tools/compare-runs.mjs` | two runs: structure, steps, pixels, side-by-side sheet; exit 0 when they did the same thing |
+| `tools/compare-runs.mjs` | two runs: structure, requests, steps, pixels, side-by-side sheet; exit 0 when they did the same thing |
 | `tools/imgdiff.mjs` | pixel diff of two folders |
 | `tools/sheet.mjs` | contact sheet |
 | `tools/gpu-probe.mjs [--browser ...]` | which WebGL flag sets give hardware rendering (launches Chromium 8 times) |
@@ -497,3 +555,7 @@ For anyone moving from `$S/harness/shot.mjs`:
   as `ERROR: null`.
 - The manifest format is unchanged. A browser revision other than the expected one adds an entry to
   `warnings`.
+- Asset phase (A0-harness): `--asset-pack`, `--no-vsync`, the manifest fields `assetPack`, `requests`,
+  `requestSummary`, `browser.noVsync` and per step `assetsIdle`, and the request comparison and
+  `--allow-request` of `compare-runs.mjs`. A run of the older harness has no request log, so compare runs made
+  by the same harness, as contract 5.1 asks (REF is this harness with `--root` at `a06e4c7`).

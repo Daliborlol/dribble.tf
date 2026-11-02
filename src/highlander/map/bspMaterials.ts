@@ -137,7 +137,7 @@ export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOpti
     const map = record && textures?.get(record.key)
     if (record && map) {
       const map2 = record.blend ? textures?.get(record.blend.key) ?? null : null
-      const key = `${info.kind}:${lit}:${record.key}:${map2 ? record.blend!.key : ''}:${record.flatAlpha ?? 1}`
+      const key = `${info.kind}:${lit}:${record.key}:${map2 ? record.blend!.key : ''}:${record.flatAlpha ?? 1}:${record.colorScale?.join(',') ?? ''}:${record.vertexAlpha ?? ''}`
       let material = created.get(key)
       if (!material) {
         material = new THREE.MeshBasicMaterial({
@@ -147,6 +147,15 @@ export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOpti
           side: info.kind === 'water' || info.kind === 'visualizer' ? THREE.DoubleSide : THREE.FrontSide,
         })
         applyPackTextureAlpha(material, record, getPackTextureItem(record.key), transparent)
+        if (record.colorScale) {
+          // Pack props (M3-props2): the vertex colours hold flat albedo x baked light, so the texture draws with
+          // them times 1 / albedo, and the vertex alpha (the flat coverage) is divided out of the texture's alpha.
+          material.vertexColors = true
+          material.userData.dribbleColorScale = record.colorScale
+          material.color.fromArray(record.colorScale).multiplyScalar(options.brightness)
+          if (record.alpha === 'test' || record.alpha === 'blend') material.opacity = 1 / Math.max(0.05, record.vertexAlpha ?? 1)
+          else if (transparent) material.opacity = 1
+        }
         if (map2) addVertexBlend(material, packTextureForChannel(map2, record.uv ?? 0), record.blend!.attribute)
         material.name = `dribble_${info.kind}${lit ? '_lit' : ''}:${record.key}`
         material.userData.dribbleLit = lit

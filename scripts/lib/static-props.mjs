@@ -64,7 +64,7 @@ import { spawnSync } from 'node:child_process'
 import { NodeIO, Document, Logger } from '@gltf-transform/core'
 import { ALL_EXTENSIONS, EXTMeshGPUInstancing, KHRMaterialsUnlit } from '@gltf-transform/extensions'
 import { meshopt, quantize, prune } from '@gltf-transform/functions'
-import { MeshoptEncoder } from 'meshoptimizer'
+import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer'
 
 import * as vmtRules from '../assets/lib/vmt.mjs'
 
@@ -405,7 +405,7 @@ function modelFiles(pak, modelPath) {
  * Runs `bsp-to-glb --studio-*` on one PAK model and reads back the LOD 0 meshes of each body part's
  * default model, in Source model space (static props have one identity `static_prop` bone).
  */
-async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordinal }) {
+async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordinal, allLods = false }) {
   const out = path.join(workDir, `model_${String(ordinal).padStart(3, '0')}`)
   const result = spawnSync(bspToGlb, [
     '--studio-source-path', modelPath,
@@ -442,13 +442,16 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
   // (never seen on a static prop) already reverses the winding itself.
   const reverse = !boneMatrix || determinant3(boneMatrix) > 0
   const primitives = []
+  const lods = new Map() // lod > 0 -> primitives (allLods only, M3-props2)
   for (const mesh of doc.getRoot().listMeshes()) {
     const extras = mesh.getExtras() || {}
-    if (extras.sourceLod !== 0 || extras.sourceModel !== 0) continue
+    if (extras.sourceModel !== 0) continue
+    if (extras.sourceLod !== 0 && !(allLods && extras.sourceLod > 0)) continue
     const prim = mesh.listPrimitives()[0]
     const position = prim?.getAttribute('POSITION')?.getArray()
     const normal = prim?.getAttribute('NORMAL')?.getArray()
     const indices = prim?.getIndices()?.getArray()
+    const uv = allLods ? prim?.getAttribute('TEXCOORD_0')?.getArray() : null
     if (!position || !normal || !indices || indices.length === 0) continue
     const positions = Float32Array.from(position)
     const normals = Float32Array.from(normal)
@@ -470,7 +473,7 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
         }
       }
     }
-    primitives.push({
+    const out = {
       bodyPart: extras.sourceBodyPart,
       mesh: extras.sourceMesh,
       materialSlot: extras.sourceMaterialSlot,
@@ -478,10 +481,18 @@ async function loadStudioModel({ bspToGlb, io, files, modelPath, workDir, ordina
       normals,
       indices: triangles, // counter-clockwise front faces (glTF)
       vertexCount: positions.length / 3,
-    })
+      ...(uv && uv.length === (positions.length / 3) * 2 ? { uvs: Float32Array.from(uv) } : {}),
+    }
+    if (extras.sourceLod === 0) primitives.push(out)
+    else {
+      if (!lods.has(extras.sourceLod)) lods.set(extras.sourceLod, [])
+      lods.get(extras.sourceLod).push(out)
+    }
   }
-  primitives.sort((a, b) => a.bodyPart - b.bodyPart || a.mesh - b.mesh)
-  return { manifest, primitives }
+  const byPart = (a, b) => a.bodyPart - b.bodyPart || a.mesh - b.mesh
+  primitives.sort(byPart)
+  for (const list of lods.values()) list.sort(byPart)
+  return { manifest, primitives, lods }
 }
 
 function determinant3(m) {
@@ -537,6 +548,141 @@ function vhvLayout(vtx, primitives) {
     prim.vhv = range
   }
   return { entries: entry, groupCounts: vtx.bodyParts.flat(4) }
+}
+
+// ─── far LOD (M3-props2) ─────────────────────────────────────────────────────
+
+// The far LOD of a model: the lowest VTX LOD that keeps at least FAR_LOD_MIN_SHARE of LOD 0's triangles, else
+// LOD 1. A model without such a VTX LOD and with at least SIMPLIFY_MIN_TRIANGLES gets a meshoptimizer
+// simplification of LOD 0 to SIMPLIFY_SHARE instead (borders locked, so UV seams and material edges hold).
+// None when neither saves FAR_LOD_MAX_SHARE. Instances switch to it beyond clamp(radius x FAR_LOD_RADIUS_SCALE,
+// FAR_LOD_DISTANCE) units (the runtime, src/highlander/map/propLod.ts).
+const FAR_LOD_MIN_SHARE = 0.15
+const FAR_LOD_MAX_SHARE = 0.8
+const FAR_LOD_RADIUS_SCALE = 16
+const FAR_LOD_DISTANCE = [500, 1800]
+const SIMPLIFY_MIN_TRIANGLES = 300
+const SIMPLIFY_SHARE = 0.3
+const SIMPLIFY_ERROR = 0.02
+
+/** LOD 0 simplified by meshoptimizer, as far primitives with their own (compacted) vertices and the vertex map. */
+function simplifiedLod(primitives) {
+  const prims = []
+  const map = []
+  for (const [p, prim] of primitives.entries()) {
+    const target = Math.max(3, Math.floor((prim.indices.length * SIMPLIFY_SHARE) / 3) * 3)
+    const [indices] = MeshoptSimplifier.simplify(prim.indices, prim.positions, 3, target, SIMPLIFY_ERROR, ['LockBorder'])
+    if (indices.length === 0) continue
+    const remap = new Map()
+    const used = []
+    const out = new Uint32Array(indices.length)
+    for (let i = 0; i < indices.length; i++) {
+      let n = remap.get(indices[i])
+      if (n === undefined) {
+        n = used.length
+        remap.set(indices[i], n)
+        used.push(indices[i])
+      }
+      out[i] = n
+    }
+    const pick = (array, size) => {
+      if (!array) return undefined
+      const result = new Float32Array(used.length * size)
+      used.forEach((v, i) => result.set(array.subarray(v * size, v * size + size), i * size))
+      return result
+    }
+    prims.push({ ...prim, positions: pick(prim.positions, 3), normals: pick(prim.normals, 3), ...(prim.uvs ? { uvs: pick(prim.uvs, 2) } : {}), indices: out, vertexCount: used.length })
+    const m = new Int32Array(used.length * 2)
+    used.forEach((v, i) => {
+      m[i * 2] = p
+      m[i * 2 + 1] = v
+    })
+    map.push(m)
+  }
+  return { prims, map }
+}
+
+function triangleCount(prims) {
+  return prims.reduce((a, prim) => a + prim.indices.length / 3, 0)
+}
+
+/** { lod, prims, map } or null; map[f][v] = [LOD 0 primitive index, vertex] nearest to far vertex v. */
+function farLodOf(primitives, lods) {
+  const t0 = triangleCount(primitives)
+  const levels = [...(lods ?? new Map())].sort((a, b) => a[0] - b[0]).filter(([, prims]) => triangleCount(prims) <= t0 * FAR_LOD_MAX_SHARE)
+  if (t0 === 0) return null
+  if (!levels.length) {
+    if (t0 < SIMPLIFY_MIN_TRIANGLES) return null
+    const simple = simplifiedLod(primitives)
+    const t = triangleCount(simple.prims)
+    return t > 0 && t <= t0 * FAR_LOD_MAX_SHARE ? { lod: 'simplified', prims: simple.prims, map: simple.map, triangles: t, triangles0: t0 } : null
+  }
+  const keep = levels.filter(([, prims]) => triangleCount(prims) >= t0 * FAR_LOD_MIN_SHARE)
+  const [lod, prims] = keep.length ? keep[keep.length - 1] : levels[0]
+  // Nearest LOD 0 vertex of the same material slot (any slot when none), through a uniform grid.
+  let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity]
+  for (const prim of primitives) {
+    for (let v = 0; v < prim.positions.length; v++) {
+      min[v % 3] = Math.min(min[v % 3], prim.positions[v])
+      max[v % 3] = Math.max(max[v % 3], prim.positions[v])
+    }
+  }
+  const cell = Math.max(1, Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 32)
+  const cellOf = (x, y, z) => `${Math.floor((x - min[0]) / cell)},${Math.floor((y - min[1]) / cell)},${Math.floor((z - min[2]) / cell)}`
+  const grids = new Map() // slot | 'any' -> Map(cell -> [p, v][])
+  const add = (slot, key, item) => {
+    if (!grids.has(slot)) grids.set(slot, new Map())
+    const grid = grids.get(slot)
+    if (!grid.has(key)) grid.set(key, [])
+    grid.get(key).push(item)
+  }
+  primitives.forEach((prim, p) => {
+    for (let v = 0; v < prim.vertexCount; v++) {
+      const key = cellOf(prim.positions[v * 3], prim.positions[v * 3 + 1], prim.positions[v * 3 + 2])
+      add(prim.materialSlot, key, [p, v])
+      add('any', key, [p, v])
+    }
+  })
+  const nearest = (grid, x, y, z) => {
+    const cx = Math.floor((x - min[0]) / cell), cy = Math.floor((y - min[1]) / cell), cz = Math.floor((z - min[2]) / cell)
+    let best = null, bestD = Infinity
+    for (let r = 0; r <= 64 && !best; r++) {
+      for (let i = cx - r; i <= cx + r; i++) for (let j = cy - r; j <= cy + r; j++) for (let k = cz - r; k <= cz + r; k++) {
+        if (Math.max(Math.abs(i - cx), Math.abs(j - cy), Math.abs(k - cz)) !== r) continue
+        for (const [p, v] of grid.get(`${i},${j},${k}`) ?? []) {
+          const q = primitives[p].positions
+          const d = (q[v * 3] - x) ** 2 + (q[v * 3 + 1] - y) ** 2 + (q[v * 3 + 2] - z) ** 2
+          if (d < bestD) { bestD = d; best = [p, v] }
+        }
+      }
+    }
+    return best ?? [0, 0]
+  }
+  const map = prims.map(prim => {
+    const grid = grids.get(prim.materialSlot) ?? grids.get('any')
+    const out = new Int32Array(prim.vertexCount * 2)
+    for (let v = 0; v < prim.vertexCount; v++) {
+      const [p, w] = nearest(grid, prim.positions[v * 3], prim.positions[v * 3 + 1], prim.positions[v * 3 + 2])
+      out[v * 2] = p
+      out[v * 2 + 1] = w
+    }
+    return out
+  })
+  return { lod, prims, map, triangles: triangleCount(prims), triangles0: t0 }
+}
+
+/** Per-vertex RGB values of a far primitive taken from LOD 0 arrays by the nearest-vertex map. */
+function mapToFar(map, byPrim) {
+  const out = new Float32Array((map.length / 2) * 3)
+  for (let v = 0; v < map.length / 2; v++) {
+    const src = byPrim.get(map[v * 2])
+    if (!src) { out[v * 3] = out[v * 3 + 1] = out[v * 3 + 2] = 1; continue }
+    const w = map[v * 2 + 1] * 3
+    out[v * 3] = src[w]
+    out[v * 3 + 1] = src[w + 1]
+    out[v * 3 + 2] = src[w + 2]
+  }
+  return out
 }
 
 // ─── materials ───────────────────────────────────────────────────────────────
@@ -711,6 +857,18 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) 
     else if (p.$alpha !== undefined && Number(p.$alpha) < 1) Object.assign(info, { kind: 'translucent', alpha: clamp01(Number(p.$alpha)) })
     if (typeof p.$basetexture === 'string') {
       const texture = normalizePath(`materials/${p.$basetexture.replace(/^materials[\\/]/i, '').replace(/\.vtf$/i, '')}.vtf`)
+      if (stock && (stock.pakIndex.has(texture) || stock.source.has(texture))) {
+        // Pack output (M3-props2): the base texture for the binding step, with the VMT alpha rule of contract 2.6.
+        const alphaRule = truthy(p.$alphatest) ? 'test' : truthy(p.$translucent) ? 'blend' : 'opaque'
+        const cutoff = Number(p.$alphatestreference)
+        info.texture = {
+          lookup: texture,
+          name: texture.slice('materials/'.length, -'.vtf'.length).replace(/\/{2,}/g, '/').replace(/^\//, ''),
+          source: stock.pakIndex.has(texture) ? 'pak' : 'vpk',
+          alpha: alphaRule,
+          cutoff: alphaRule === 'test' ? (Number.isFinite(cutoff) && cutoff > 0 ? cutoff : 0.5) : 0,
+        }
+      }
       // See-through materials take their opacity and colour from the texture's alpha when it is in
       // the PAK: dense cutouts draw opaque, blends use the mean alpha.
       const alphaTest = truthy(p.$alphatest)
@@ -737,6 +895,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) 
       }
       if (color) Object.assign(info, { source: 'pak', albedo: color.slice(0, 3) })
     }
+    info.untinted = info.albedo.slice()
     for (const tint of [parseVmtColor(p.$color2), parseVmtColor(p.$color)]) {
       if (tint) info.albedo = info.albedo.map((v, i) => clamp01(v * tint[i]))
     }
@@ -776,10 +935,18 @@ export async function convertStaticProps(o) {
   }
   fs.mkdirSync(o.workDir, { recursive: true })
   const pakIndex = indexPak(o.pakDir)
-  const stockMode = Boolean(o.stockSource)
-  // In stock mode a file missing from the PAK comes from the VPKs, extracted once into the work dir
+  // packMode: a VPK set is given (asset pack output). stockMode: the stock instances alone (props-stock.glb);
+  // o.select 'pak' instead writes the PAK instances with VPK materials (props-pak.glb, M3-props2).
+  const packMode = Boolean(o.stockSource)
+  const stockMode = packMode && o.select !== 'pak'
+  // M3-props2 (pack output only): UVs and one material per texture (o.textured), VTX far LODs (o.lod).
+  const textured = packMode && o.textured === true
+  const lodMode = packMode && o.lod === true
+  // In pack mode a file missing from the PAK comes from the VPKs, extracted once into the work dir
   // (bsp-to-glb and vtf-to-png read files on disk). Without a stock source `pak` is the PAK index itself.
-  const pak = stockMode ? stockFiles(pakIndex, o.stockSource, path.join(o.workDir, 'stock')) : pakIndex
+  const pak = packMode ? stockFiles(pakIndex, o.stockSource, path.join(o.workDir, 'stock')) : pakIndex
+  // Which models count as PAK models: in pack mode only those in the PAK itself, never the VPK fallbacks.
+  const pakOnly = packMode ? pakIndex : pak
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS)
   await MeshoptEncoder.ready
   io.registerDependencies({ 'meshopt.encoder': MeshoptEncoder })
@@ -820,11 +987,11 @@ export async function convertStaticProps(o) {
       addInstance(files, { ...prop, id: `sp:${prop.staticPropIndex}`, order: prop.staticPropIndex, dynamic: false, scale: 1, stock: true })
       continue
     }
-    const files = modelFiles(pak, prop.modelPath)
+    const files = modelFiles(pakOnly, prop.modelPath)
     if (!files) {
       counts.stock++
       if (prop.solidity) counts.stockSolid++
-      if (pak.has(normalizePath(prop.modelPath))) counts.unconvertible++
+      if (pakOnly.has(normalizePath(prop.modelPath))) counts.unconvertible++
       continue
     }
     if (inSkybox(prop.sourceOrigin)) {
@@ -843,7 +1010,7 @@ export async function convertStaticProps(o) {
   for (const entity of o.props.dynamicProps ?? []) {
     if (!/^prop_dynamic(_override)?$/i.test(entity.classname ?? '')) continue
     if (stockMode && modelFiles(pakIndex, entity.modelPath)) continue // a PAK model: props.glb's
-    const files = modelFiles(pak, entity.modelPath)
+    const files = modelFiles(stockMode ? pak : pakOnly, entity.modelPath)
     if (!files) continue
     const kv = {}
     for (const { key, value } of entity.keyValues ?? []) {
@@ -886,7 +1053,7 @@ export async function convertStaticProps(o) {
   let ordinal = 0
   for (const [key, entry] of [...byModel].sort((a, b) => a[0].localeCompare(b[0]))) {
     try {
-      const studio = await loadStudioModel({ bspToGlb: o.bspToGlb, io, files: entry.files, modelPath: entry.modelPath, workDir: o.workDir, ordinal: ordinal++ })
+      const studio = await loadStudioModel({ bspToGlb: o.bspToGlb, io, files: entry.files, modelPath: entry.modelPath, workDir: o.workDir, ordinal: ordinal++, allLods: textured || lodMode })
       if (studio.primitives.length === 0) throw new Error('no LOD 0 geometry')
       const vtx = parseVtxStripGroups(fs.readFileSync(entry.files.vtx))
       const checksum = mdlChecksum(fs.readFileSync(entry.files.mdl))
@@ -904,7 +1071,9 @@ export async function convertStaticProps(o) {
         const { agree, counted } = windingAgreement(prim)
         return { agree: sum.agree + agree, counted: sum.counted + counted }
       }, { agree: 0, counted: 0 })
-      models.push({ key, ...entry, ...studio, checksum, layout, winding })
+      if (lodMode) await MeshoptSimplifier.ready
+      const far = lodMode ? farLodOf(studio.primitives, studio.lods) : null
+      models.push({ key, ...entry, ...studio, checksum, layout, winding, far })
     } catch (error) {
       if (entry.instances.every(prop => prop.dynamic)) {
         entry.instances.forEach(() => skipDynamic('unsupported')) // e.g. a skinned, animated prop_dynamic
@@ -922,7 +1091,7 @@ export async function convertStaticProps(o) {
   // Stock mode: a model below WINDING_MIN_AGREEMENT (inside-out or two-sided cards authored with
   // flipped normals) is left out and listed; the pass-level gate below still applies to the rest.
   const excludedModels = []
-  if (stockMode) {
+  if (packMode) {
     for (let i = models.length - 1; i >= 0; i--) {
       const model = models[i]
       if (!model.winding.counted || model.winding.agree / model.winding.counted >= WINDING_MIN_AGREEMENT) continue
@@ -1032,9 +1201,9 @@ export async function convertStaticProps(o) {
     const n = Math.hypot(d[0], d[1], d[2])
     return n > 0 ? [-d[0] / n, -d[1] / n, -d[2] / n] : null // light_environment direction is the way light travels
   })()
-  const resolveMaterial = createMaterialResolver({ pak, vtfToPng: o.vtfToPng, workDir: o.workDir, warn, stock: stockMode ? { pakIndex, source: o.stockSource } : null })
+  const resolveMaterial = createMaterialResolver({ pak, vtfToPng: o.vtfToPng, workDir: o.workDir, warn, stock: packMode ? { pakIndex, source: o.stockSource } : null })
   const materialStats = new Map()
-  const stats = { models: 0, clusters: 0, patternSplits: 0, bakeDemand: null, nodes: 0, instancedNodes: 0, bakedInstances: 0, primitives: 0, vertices: 0, triangles: 0, renderedTriangles: 0, skippedPrimitives: 0, materials: { pak: 0, neutral: 0 }, worstSharedError: 0 }
+  const stats = { farPrimitives: 0, farTriangles: 0, farRenderedTriangles: 0, models: 0, clusters: 0, patternSplits: 0, bakeDemand: null, nodes: 0, instancedNodes: 0, bakedInstances: 0, primitives: 0, vertices: 0, triangles: 0, renderedTriangles: 0, skippedPrimitives: 0, materials: { pak: 0, neutral: 0 }, worstSharedError: 0 }
   const materialFor = async (model, skin, prim) => {
     const families = model.manifest.skinFamilies ?? []
     const family = families[skin] ?? families[0]
@@ -1108,6 +1277,11 @@ export async function convertStaticProps(o) {
       }
       if (parts.length === 0) continue
       const primIndex = parts.map(part => model.primitives.indexOf(part.prim))
+      const farParts = []
+      for (const [f, prim] of (model.far?.prims ?? []).entries()) {
+        const info = await materialFor(model, skin, prim)
+        if (!info.skip) farParts.push({ prim, info, f })
+      }
       const clusters = []
       for (const prop of props) {
         const R = angleMatrix(prop.sourceAngles)
@@ -1138,7 +1312,8 @@ export async function convertStaticProps(o) {
         }
         if (lit.length > 1) for (const entry of lit) entry.error = relativeError(entry.prop, primIndex, cluster.shading)
       }
-      groups.push({ model, skin, parts, primIndex, clusters })
+      const lodDistance = model.far && farParts.length ? round(Math.min(FAR_LOD_DISTANCE[1], Math.max(FAR_LOD_DISTANCE[0], radius * FAR_LOD_RADIUS_SCALE)), 1) : 0
+      groups.push({ model, skin, parts, primIndex, clusters, farParts: lodDistance ? farParts : [], lodDistance })
     }
   }
 
@@ -1247,7 +1422,7 @@ export async function convertStaticProps(o) {
   // about 160; files grow by 0.1 to 1.3 MB).
   let singletonsBaked = 0
   let pairsBaked = 0
-  if (stockMode) {
+  if (packMode) {
     for (const group of groups) {
       if (vertexCost(group) === 0) continue
       for (const cluster of group.clusters) {
@@ -1288,7 +1463,8 @@ export async function convertStaticProps(o) {
 
   // 6. Build the document.
   const doc = new Document()
-  doc.setLogger(new Logger(Logger.Verbosity.WARN))
+  // Pack output: quantize skips TEXCOORD_0 outside [0, 1] and _PROP on purpose, so its warnings are noise.
+  doc.setLogger(new Logger(packMode ? Logger.Verbosity.ERROR : Logger.Verbosity.WARN))
   const buffer = doc.createBuffer()
   const unlitExtension = doc.createExtension(KHRMaterialsUnlit)
   const instancing = doc.createExtension(EXTMeshGPUInstancing).setRequired(true)
@@ -1297,16 +1473,41 @@ export async function convertStaticProps(o) {
   scene.addChild(root)
   const accessor = (array, type) => doc.createAccessor().setType(type).setArray(array).setBuffer(buffer)
   const materialCache = new Map()
-  const getMaterial = kind => {
-    if (materialCache.has(kind)) return materialCache.get(kind)
-    const material = doc.createMaterial(`dribble_${kind}`)
+  // Textured pack output (M3-props2): one material per (kind, texture). The vertex colours stay the flat albedo
+  // x shading, so the material draws as before without its texture; with it, the runtime multiplies by
+  // colorScale (1 / the untinted albedo) and divides the vertex alpha out (asset contract 12.3 binding).
+  const textureList = {} // key -> { lookup, source, alpha, cutoff }
+  const textureRecord = (kind, info) => {
+    if (!textured || !info?.texture) return null
+    const t = info.texture
+    const key = (t.source === 'pak' ? `${o.texturePakPrefix ?? 'pak/'}${t.name}` : t.name).toLowerCase()
+    textureList[key] ??= { lookup: t.lookup, source: t.source, alpha: t.alpha, cutoff: t.cutoff }
+    const base = info.untinted ?? info.albedo
+    return {
+      key,
+      uv: 0,
+      alpha: t.alpha,
+      cutoff: t.cutoff,
+      colorScale: base.map(v => round(1 / Math.max(1e-3, v), 4)),
+      vertexAlpha: kind !== 'opaque' ? round(info.alpha, 3) : 1,
+    }
+  }
+  const materialKeyOf = (kind, info) => {
+    const record = textureRecord(kind, info)
+    return record ? `${kind}|${record.key}|${record.colorScale.join(',')}|${record.vertexAlpha}` : kind
+  }
+  const getMaterial = (kind, info) => {
+    const record = textureRecord(kind, info)
+    const cacheKey = materialKeyOf(kind, info)
+    if (materialCache.has(cacheKey)) return materialCache.get(cacheKey)
+    const material = doc.createMaterial(record ? `dribble_${kind}:${record.key}` : `dribble_${kind}`)
       .setBaseColorFactor([1, 1, 1, 1])
       .setMetallicFactor(0)
       .setRoughnessFactor(1)
-      .setExtras({ dribble: { kind, lightmap: false } })
+      .setExtras({ dribble: { kind, lightmap: false, ...(record ? { texture: record } : {}) } })
       .setExtension('KHR_materials_unlit', unlitExtension.createUnlit())
     if (kind !== 'opaque') material.setAlphaMode('BLEND')
-    materialCache.set(kind, material)
+    materialCache.set(cacheKey, material)
     return material
   }
   const rendered = new Map() // instance id -> dynamic, for every instance placed in some node
@@ -1322,6 +1523,7 @@ export async function convertStaticProps(o) {
     const positions = new Float32Array(total * 3)
     const normals = new Float32Array(total * 3)
     const colors = new Float32Array(total * stride)
+    const uvs = textured && prim.uvs ? new Float32Array(total * 2) : null
     for (let v = 0; v < n; v++) {
       let p = [prim.positions[v * 3], prim.positions[v * 3 + 1], prim.positions[v * 3 + 2]]
       let nn = [prim.normals[v * 3], prim.normals[v * 3 + 1], prim.normals[v * 3 + 2]]
@@ -1337,6 +1539,7 @@ export async function convertStaticProps(o) {
         normals.set([gn[0] * sign, gn[1] * sign, gn[2] * sign], slot * 3)
         for (let c = 0; c < 3; c++) colors[slot * stride + c] = clamp01((info.albedo[c] * (info.unlit ? 1 : shading[v * 3 + c])) / k)
         if (translucent) colors[slot * stride + 3] = info.alpha
+        if (uvs) uvs.set([prim.uvs[v * 2], prim.uvs[v * 2 + 1]], slot * 2)
       }
     }
     // prim.indices are counter-clockwise already (loadStudioModel); the $nocull back copy reverses them.
@@ -1349,7 +1552,7 @@ export async function convertStaticProps(o) {
         indices[prim.indices.length + t + 2] = prim.indices[t + 1] + n
       }
     }
-    return { positions, normals, colors, indices, translucent }
+    return { positions, normals, colors, indices, translucent, uvs }
   }
   const maxColor = (parts, shadings) => {
     let k = 0
@@ -1363,15 +1566,23 @@ export async function convertStaticProps(o) {
     })
     return Math.max(k, 1e-4)
   }
-  const addPrimitive = (mesh, arrays, kind, instances) => {
-    mesh.addPrimitive(
-      doc.createPrimitive()
-        .setAttribute('POSITION', accessor(arrays.positions, 'VEC3'))
-        .setAttribute('NORMAL', accessor(arrays.normals, 'VEC3'))
-        .setAttribute('COLOR_0', accessor(arrays.colors, arrays.translucent ? 'VEC4' : 'VEC3'))
-        .setIndices(accessor(arrays.indices, 'SCALAR'))
-        .setMaterial(getMaterial(kind))
-    )
+  const addPrimitive = (mesh, arrays, kind, instances, info = null, far = false) => {
+    const primitive = doc.createPrimitive()
+      .setAttribute('POSITION', accessor(arrays.positions, 'VEC3'))
+      .setAttribute('NORMAL', accessor(arrays.normals, 'VEC3'))
+      .setAttribute('COLOR_0', accessor(arrays.colors, arrays.translucent ? 'VEC4' : 'VEC3'))
+      .setIndices(accessor(arrays.indices, 'SCALAR'))
+      .setMaterial(getMaterial(kind, info))
+    if (arrays.uvs) primitive.setAttribute('TEXCOORD_0', accessor(arrays.uvs, 'VEC2'))
+    // Merged batch with LODs: the batch row of every vertex + 2 (out of the [-1, 1] range quantize touches).
+    if (arrays.props) primitive.setAttribute('_PROP', accessor(arrays.props, 'SCALAR'))
+    mesh.addPrimitive(primitive)
+    if (far) {
+      stats.farPrimitives++
+      stats.farTriangles += arrays.indices.length / 3
+      stats.farRenderedTriangles += (arrays.indices.length / 3) * instances
+      return
+    }
     stats.primitives++
     stats.vertices += arrays.positions.length / 3
     stats.triangles += arrays.indices.length / 3
@@ -1410,67 +1621,108 @@ export async function convertStaticProps(o) {
     origins: entries.map(entry => entry.prop.sourceOrigin.map(v => round(v, 1))), // Source units
     solid: entries.map(entry => entry.prop.solidity > 0),
     lighting: entries.map(entry => entry.lighting),
+    // sprp fade distance per row (0: none), honoured in POV and spectator views only (asset contract 4.5).
+    ...(lodMode ? { fadeMax: entries.map(entry => (!entry.prop.dynamic && Number(entry.prop.fadeMaxDistance) > 0 ? round(Number(entry.prop.fadeMaxDistance), 1) : 0)) } : {}),
   })
+  // Far LOD arrays of a group: the LOD 0 shading of each part mapped onto the far vertices.
+  const farArrays = (group, farPart, shadingByPrim, k, transform) => {
+    const shading = mapToFar(group.model.far.map[farPart.f], shadingByPrim)
+    return partArrays(farPart, shading, k, transform)
+  }
 
-  const bakedByKind = new Map() // kind -> { chunks: arrays[], entries: Set }
+  const bakedByMaterial = new Map() // material key -> { kind, info, items: { part, shading, entry, row, far }[] }
   const bakedEntries = []
-  for (const { model, skin, parts, primIndex, clusters } of groups) {
+  const pushBaked = (part, shading, entry, row, far) => {
+    const key = materialKeyOf(part.info.kind, part.info)
+    if (!bakedByMaterial.has(key)) bakedByMaterial.set(key, { kind: part.info.kind, info: part.info, items: [] })
+    bakedByMaterial.get(key).items.push({ part, shading, entry, row, far })
+  }
+  for (const group of groups) {
+    const { model, skin, parts, primIndex, clusters, farParts, lodDistance } = group
     const baseName = `prop_${model.key.replace(/^models\//, '').replace(/\.mdl$/, '').replace(/[^a-z0-9]+/g, '_')}${skin ? `_skin${skin}` : ''}`
     const litParts = parts.filter(part => !part.info.unlit)
     const unlitParts = parts.filter(part => part.info.unlit)
+    const farLit = farParts.filter(part => !part.info.unlit)
+    const farUnlit = farParts.filter(part => part.info.unlit)
     const lit = p => !parts[p].info.unlit
     clusters.forEach((cluster, c) => {
       const placed = cluster.members.filter(entry => !entry.baked)
       if (litParts.length && placed.length) {
         const shadings = cluster.shading.filter((_, p) => lit(p))
         const k = maxColor(litParts, shadings)
+        const name = clusters.length > 1 ? `${baseName}_${c}` : baseName
         const mesh = doc.createMesh(`${baseName}_${c}`)
-        litParts.forEach((part, p) => addPrimitive(mesh, partArrays(part, shadings[p], k), part.info.kind, placed.length))
-        emitNode(clusters.length > 1 ? `${baseName}_${c}` : baseName, mesh, placed, k, { model: model.modelPath, skin, ...describe(placed) })
+        litParts.forEach((part, p) => addPrimitive(mesh, partArrays(part, shadings[p], k), part.info.kind, placed.length, part.info))
+        const lod = farLit.length ? { lod: { level: 0, pair: name, distance: lodDistance } } : {}
+        emitNode(name, mesh, placed, k, { model: model.modelPath, skin, ...lod, ...describe(placed) })
+        if (farLit.length) {
+          const byPrim = new Map(litParts.map((part, p) => [model.primitives.indexOf(part.prim), shadings[p]]))
+          const farMesh = doc.createMesh(`${baseName}_${c}_far`)
+          farLit.forEach(part => addPrimitive(farMesh, farArrays(group, part, byPrim, k), part.info.kind, placed.length, part.info, true))
+          emitNode(`${name}_far`, farMesh, placed, k, { model: model.modelPath, skin, lod: { level: 1, pair: name, distance: lodDistance, vtxLod: model.far.lod }, ...describe(placed) })
+        }
       }
       for (const entry of cluster.members) {
         rendered.set(entry.prop.id, entry.prop.dynamic)
         if (!entry.baked || !litParts.length) continue
         // Exact VHV: shading = the instance's own light / its mean, vertices moved into place.
-        bakedEntries.push(entry)
+        const row = bakedEntries.length
+        bakedEntries.push({ ...entry, lodDistance: farLit.length ? round(lodDistance * entry.prop.scale, 1) : 0 })
+        const byPrim = new Map()
         parts.forEach((part, p) => {
           if (part.info.unlit) return
           const L = entry.prop.light[primIndex[p]]
           const shading = new Float32Array(L.length)
           for (let v = 0; v < L.length; v++) shading[v] = L[v] / Math.max(1e-4, entry.prop.mean[v % 3])
-          if (!bakedByKind.has(part.info.kind)) bakedByKind.set(part.info.kind, [])
-          bakedByKind.get(part.info.kind).push({ part, shading, entry })
+          byPrim.set(primIndex[p], shading)
+          pushBaked(part, shading, entry, row, false)
         })
+        for (const part of farLit) pushBaked(part, mapToFar(model.far.map[part.f], byPrim), entry, row, true)
       }
     })
     if (unlitParts.length) {
       const all = clusters.flatMap(cluster => cluster.members).map(entry => ({ ...entry, light: [1, 1, 1], lighting: 'unlit' }))
       const ones = unlitParts.map(part => new Float32Array(part.prim.vertexCount * 3).fill(1))
       const k = maxColor(unlitParts, ones)
-      const mesh = doc.createMesh(`${baseName}_unlit`)
-      unlitParts.forEach((part, p) => addPrimitive(mesh, partArrays(part, ones[p], k), part.info.kind, all.length))
-      emitNode(`${baseName}_unlit`, mesh, all, k, { model: model.modelPath, skin, ...describe(all) })
+      const name = `${baseName}_unlit`
+      const mesh = doc.createMesh(name)
+      unlitParts.forEach((part, p) => addPrimitive(mesh, partArrays(part, ones[p], k), part.info.kind, all.length, part.info))
+      const lod = farUnlit.length ? { lod: { level: 0, pair: name, distance: lodDistance } } : {}
+      emitNode(name, mesh, all, k, { model: model.modelPath, skin, ...lod, ...describe(all) })
+      if (farUnlit.length) {
+        const farMesh = doc.createMesh(`${name}_far`)
+        farUnlit.forEach(part => addPrimitive(farMesh, partArrays(part, new Float32Array(part.prim.vertexCount * 3).fill(1), k), part.info.kind, all.length, part.info, true))
+        emitNode(`${name}_far`, farMesh, all, k, { model: model.modelPath, skin, lod: { level: 1, pair: name, distance: lodDistance, vtxLod: model.far.lod }, ...describe(all) })
+      }
     }
   }
-  if (bakedByKind.size) {
-    // One merged mesh, one primitive per material kind, shown through a single identity instance whose
-    // colour carries k (the vertex colours stay in [0, 1]) and every baked instance's light (mean 1 x
-    // its own mean is folded into the vertex colour below).
+  if (bakedByMaterial.size) {
+    // One merged mesh, one primitive per material (per kind without textures), shown through a single identity
+    // instance whose colour carries k (the vertex colours stay in [0, 1]) and every baked instance's light (mean
+    // 1 x its own mean is folded into the vertex colour below). With far LODs a second merged mesh holds the far
+    // geometry of the rows that have one; `_PROP` tells the runtime which row a vertex belongs to.
     let k = 0
-    for (const items of bakedByKind.values()) {
+    for (const { items } of bakedByMaterial.values()) {
       for (const { part, shading, entry } of items) {
         for (let v = 0; v < shading.length; v++) k = Math.max(k, part.info.albedo[v % 3] * shading[v] * entry.light[v % 3])
       }
     }
     k = Math.max(k, 1e-4)
+    // With far LODs both levels of a row share the material's primitive: `_PROP` = 2 + row x 2 + (far ? 1 : 0)
+    // per vertex, and the runtime draws one level per row by rewriting the index buffer.
     const mesh = doc.createMesh('static_props_baked')
-    for (const [kind, items] of [...bakedByKind].sort((a, b) => a[0].localeCompare(b[0]))) {
-      const chunks = items.map(({ part, shading, entry }) => {
+    for (const [, batch] of [...bakedByMaterial].sort((a, b) => a[0].localeCompare(b[0]))) {
+      let farTriangles = 0
+      const chunks = batch.items.map(({ part, shading, entry, row, far }) => {
         const light = new Float32Array(shading.length)
         for (let v = 0; v < shading.length; v++) light[v] = shading[v] * entry.light[v % 3]
-        return partArrays(part, light, k, { R: entry.R, origin: entry.prop.sourceOrigin, scale: entry.prop.scale })
+        const arrays = partArrays(part, light, k, { R: entry.R, origin: entry.prop.sourceOrigin, scale: entry.prop.scale })
+        if (lodMode) arrays.props = new Uint16Array(arrays.positions.length / 3).fill(2 + row * 2 + (far ? 1 : 0))
+        if (far) farTriangles += arrays.indices.length / 3
+        return arrays
       })
       const concat = (key, Ctor) => {
+        if (!chunks[0][key]) return null
         const out = new Ctor(chunks.reduce((a, chunk) => a + chunk[key].length, 0))
         let offset = 0
         for (const chunk of chunks) {
@@ -1485,13 +1737,23 @@ export async function convertStaticProps(o) {
         for (let i = 0; i < chunk.indices.length; i++) indices[io3++] = chunk.indices[i] + base
         base += chunk.positions.length / 3
       }
-      addPrimitive(mesh, { positions: concat('positions', Float32Array), normals: concat('normals', Float32Array), colors: concat('colors', Float32Array), indices, translucent: chunks[0].translucent }, kind, 1)
+      addPrimitive(mesh, {
+        positions: concat('positions', Float32Array), normals: concat('normals', Float32Array), colors: concat('colors', Float32Array),
+        uvs: concat('uvs', Float32Array), props: concat('props', Uint16Array), indices, translucent: chunks[0].translucent,
+      }, batch.kind, 1, batch.info)
+      // addPrimitive counted both levels as drawn; the far triangles are drawn instead of near ones.
+      stats.triangles -= farTriangles
+      stats.renderedTriangles -= farTriangles
+      stats.farTriangles += farTriangles
+      stats.farRenderedTriangles += farTriangles
     }
+    const lodRows = lodMode ? { lodDistance: bakedEntries.map(entry => entry.lodDistance), lod: { level: 0, pair: 'static_props_baked', rows: true } } : {}
     emitNode('static_props_baked', mesh, [{ light: [1, 1, 1] }], k, {
       model: null,
       merged: true,
       ...describe(bakedEntries),
       models: bakedEntries.map(entry => entry.modelPath),
+      ...lodRows,
     })
     stats.bakedInstances = bakedEntries.length
   }
@@ -1511,6 +1773,8 @@ export async function convertStaticProps(o) {
         },
   })
 
+  if (packMode) root.setExtras({ dribble: { ...root.getExtras().dribble, textured, lod: lodMode } })
+
   fs.mkdirSync(path.dirname(o.outPath), { recursive: true })
   const any = counts.pak + counts.dynamic > 0
   if (any) {
@@ -1529,14 +1793,17 @@ export async function convertStaticProps(o) {
   }
 
   const neutralMaterials = [...materialStats.values()].filter(info => !info.skip && info.source !== 'pak').map(info => info.name)
-  if (stockMode) {
-    // counts.pak counted the rendered static instances, which are all stock here.
+  if (packMode) {
+    // counts.pak counted the rendered static instances, which are all stock in stock mode.
     return {
-      props: { stock: counts.pak, ...(counts.dynamic ? { dynamic: counts.dynamic } : {}) },
+      props: { [stockMode ? 'stock' : 'pak']: counts.pak, ...(counts.dynamic ? { dynamic: counts.dynamic } : {}) },
       file: any ? path.basename(o.outPath) : null,
+      textures: textureList,
       stats: {
         ms: Math.round(performance.now() - started),
         bytes: any ? fs.statSync(o.outPath).size : 0,
+        ...(lodMode ? { lod: { models: models.filter(model => model.far).length, farPrimitives: stats.farPrimitives, farTriangles: stats.farTriangles, farRenderedTriangles: stats.farRenderedTriangles } } : {}),
+        ...(textured ? { textures: Object.keys(textureList).length } : {}),
         instances: counts.pak + counts.dynamic,
         staticInstances: counts.pak,
         dynamicInstances: counts.dynamic,

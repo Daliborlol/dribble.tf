@@ -30,7 +30,7 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
-import { StaticProps, useStockProps } from '@highlander/map/StaticProps'
+import { StaticProps, usePackPakProps, useStockProps } from '@highlander/map/StaticProps'
 import { getAssetSetting } from '@pack/hooks'
 import { loadPackItem } from '@pack/items'
 import { loadPackGltf, warmUpObject } from '@pack/loaders'
@@ -518,12 +518,22 @@ export const World = (props: WorldProps) => {
     loadedMap?.conversion ?? null
   )
 
+  // Textured PAK props of the pack (M3-props2) replace props.glb while assets.mapTextures is on.
+  const pakProps = usePackPakProps(
+    loadedMap?.pipeline === 'bsp-to-glb' && propsUrl ? loadedMap.folder : undefined,
+    loadedMap?.conversion ?? null
+  )
+
   return (
     // Account for valve maps using different axis system
     <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]}>
       {mapModel ? <primitive object={mapModel} /> : null}
       {mapOverlay ? <primitive object={mapOverlay} /> : null}
-      {propsUrl ? <StaticProps url={propsUrl} mode={mode ?? 'textured'} /> : null}
+      {pakProps ? (
+        <StaticProps key={pakProps.key} url={pakProps.url} itemKey={pakProps.key} mode={mode ?? 'textured'} />
+      ) : propsUrl ? (
+        <StaticProps url={propsUrl} mode={mode ?? 'textured'} />
+      ) : null}
       {stockProps ? (
         <StaticProps
           key={stockProps.key}

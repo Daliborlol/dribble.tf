@@ -22,20 +22,30 @@
 // rules, map.brightness, the render mode and map.staticProps. The stock file loads through the pack item
 // registry (loadPackItem, one warning and the fallback, which is nothing, on failure) and the dynamic
 // GLTFLoader of src/assetpack, so a page without a pack runs none of that code.
+//
+// Textured pack props (asset task M3-props2): the pack's props-stock.glb and props-pak.glb (the PAK props again,
+// with VPK materials; World draws it in place of public props.glb while assets.mapTextures is on) carry UVs and
+// one material per texture (`userData.dribble.texture`, contract 12.3). With assets.mapTextures on and the
+// textured render mode, the file's textures are acquired through @pack/textures, the materials are built and
+// their programs compiled (warmUpObject) before the props are shown; a texture that fails keeps the flat look.
+// Far VTX LODs and sprp fades (POV and spectator only) run in propLod.ts.
 
 import React, { useEffect, useRef, useState } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
-import { useInstance } from '@zus/store'
+import { useInstance, useStore } from '@zus/store'
 import type { MapConversion } from '@utils/mapAssets'
 import { publicMapIdentity } from '@utils/mapAssets'
 import { useAssetSetting } from '@pack/hooks'
 import { assetPackFile, useAssetPack } from '@pack/pack'
 import { loadPackItem, releaseAssetItem, skipAssetItem, getAssetItem } from '@pack/items'
-import { loadPackGltf } from '@pack/loaders'
+import { loadPackGltf, warmUpObject } from '@pack/loaders'
+import { acquirePackTexture, releasePackTexture } from '@pack/textures'
+import { PropLodController } from '@highlander/map/propLod'
 import { registerHlProbe } from '@highlander/debug'
 import { useHlSetting } from '@highlander/extras/hooks'
 import {
@@ -53,8 +63,16 @@ export interface StaticPropsProps {
   mode: MapRenderMode
   /** 'pak' (default): public props.glb. 'stock': the asset pack's props-stock.glb, loaded as pack item `itemKey`. */
   source?: StaticPropsSource
-  /** Pack item key of a stock file (its pack path, maps/<folder>/props-stock.glb). */
+  /** Pack item key of a pack file (its pack path, maps/<folder>/props-stock.glb or props-pak.glb). */
   itemKey?: string
+}
+
+/** A loaded file: its root, the pack textures it holds (released with it) and the materials made for its warm-up. */
+interface LoadedProps {
+  url: string
+  root: THREE.Group
+  textures: Map<string, THREE.Texture | null> | null
+  prepared: { mode: MapRenderMode; textured: boolean; materials: BspMaterials } | null
 }
 
 type PropsState = 'off' | 'loading' | 'ready' | 'error'
@@ -68,6 +86,9 @@ interface PropsCurrent {
   /** The material rules actually applied: untextured shows the props with their textured material. */
   materialMode: MapRenderMode | null
   brightness: number | null
+  /** Pack textures: keys held and bound (M3-props2). */
+  textures: { keys: number; loaded: number } | null
+  lod: PropLodController | null
 }
 
 const emptyCurrent = (): PropsCurrent => ({
@@ -78,6 +99,8 @@ const emptyCurrent = (): PropsCurrent => ({
   mode: null,
   materialMode: null,
   brightness: null,
+  textures: null,
+  lod: null,
 })
 
 /** What each copy shows right now, for the probes (one World, so one entry per source). */
@@ -85,7 +108,7 @@ const currents: Record<StaticPropsSource, PropsCurrent> = { pak: emptyCurrent(),
 
 /** Loads one props file: public props.glb directly, a stock file through the pack item registry. */
 function loadPropsFile(source: StaticPropsSource, url: string, itemKey: string | undefined): Promise<THREE.Group> {
-  if (source === 'stock') {
+  if (source === 'stock' || itemKey) {
     if (!itemKey) return Promise.reject(new Error('stock props need a pack item key'))
     return loadPackItem(itemKey, loadPackGltf).then(gltf => {
       // null: failed before or now (the registry warned once), or skipped. Nothing draws.
@@ -105,11 +128,23 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
   const current = currents[source]
   const enabled = useHlSetting<boolean>('map.staticProps') ?? true
   const brightness = useHlSetting<number>('map.brightness') ?? 1
-  const [loaded, setLoaded] = useState<{ url: string; root: THREE.Group } | null>(null)
+  // Pack files only: their textures load with the file while assets.mapTextures is on (the next load after a change).
+  const packTextures = useAssetSetting('mapTextures') && !!itemKey
+  const gl = useThree(state => state.gl)
+  const camera = useThree(state => state.camera)
+  const scene = useThree(state => state.scene)
+  const [loaded, setLoaded] = useState<LoadedProps | null>(null)
   const requestRef = useRef(0)
   const materialsRef = useRef<BspMaterials | null>(null)
   const brightnessRef = useRef(brightness)
   brightnessRef.current = brightness
+  // The world.glb material rules. Baked light needs no scene lights: untextured keeps the unlit
+  // textured material, wireframe uses the shared wireframe material without the instance light.
+  // Pack textures draw in the textured render mode only.
+  const materialMode: MapRenderMode = mode === 'wireframe' ? 'wireframe' : 'textured'
+  const useTextures = mode === 'textured'
+  const modeRef = useRef({ materialMode, useTextures })
+  modeRef.current = { materialMode, useTextures }
 
   // Load once the props are wanted; switching them off afterwards only hides them.
   const wanted = enabled || loaded?.url === url
@@ -129,23 +164,55 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     const request = ++requestRef.current
     current.state = 'loading'
     current.error = null
+    let held: string[] = []
+    const releaseHeld = () => {
+      held.forEach(releasePackTexture)
+      held = []
+    }
     loadPropsFile(source, url, itemKey)
-      .then(root => {
-        if (request !== requestRef.current) {
-          disposeProps(root)
-          if (source === 'stock' && itemKey) releaseAssetItem(itemKey)
-          return
-        }
+      .then(async root => {
+        if (request !== requestRef.current) throw new Superseded(root)
         freeze(root)
-        setLoaded({ url, root })
+        let textures: Map<string, THREE.Texture | null> | null = null
+        let prepared: LoadedProps['prepared'] = null
+        const keys = packTextures ? packTextureKeys(root) : []
+        if (keys.length) {
+          held = keys
+          const list = await Promise.all(keys.map(key => acquirePackTexture(key, gl)))
+          if (request !== requestRef.current) throw new Superseded(root)
+          textures = new Map(keys.map((key, i) => [key, list[i]]))
+          // Materials and programs before the props are shown (asset contract 4.3); the effect below adopts them.
+          const { materialMode: m, useTextures: t } = modeRef.current
+          const materials = applyBspMaterials(root, {
+            mode: m,
+            lightmap: null,
+            lightmapRange: 1,
+            brightness: brightnessRef.current,
+            ...(t ? { textures } : {}),
+          })
+          prepared = { mode: m, textured: t, materials }
+          await warmUpObject(gl, root, camera, scene)
+          if (request !== requestRef.current) {
+            materials.dispose()
+            throw new Superseded(root)
+          }
+        }
+        held = []
+        setLoaded({ url, root, textures, prepared })
       })
       .catch(error => {
+        if (error instanceof Superseded) {
+          disposeProps(error.root)
+          releaseHeld()
+          if (itemKey) releaseAssetItem(itemKey)
+          return
+        }
+        releaseHeld()
         if (request !== requestRef.current) return
         current.state = 'error'
         current.error = error instanceof Error ? error.message : String(error)
         // A pack item already logged its one warning (asset contract 3.6).
-        if (!(error instanceof PackItemUnavailable) && source !== 'stock')
-          console.warn(`Static props unavailable: ${url}`, error)
+        if (!(error instanceof PackItemUnavailable) && !itemKey) console.warn(`Static props unavailable: ${url}`, error)
       })
     return () => {
       if (requestRef.current === request) requestRef.current += 1
@@ -157,28 +224,45 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     if (!loaded) return
     current.root = loaded.root
     current.state = 'ready'
+    const keys = loaded.textures ? [...loaded.textures.keys()] : []
+    current.textures = loaded.textures
+      ? { keys: keys.length, loaded: [...loaded.textures.values()].filter(Boolean).length }
+      : null
+    const lod = new PropLodController(loaded.root)
+    current.lod = lod.active ? lod : null
     return () => {
+      lod.dispose()
       disposeProps(loaded.root)
-      // A stock file whose copy is gone goes back to idle; the next mount loads it again.
-      if (source === 'stock' && itemKey) releaseAssetItem(itemKey)
+      keys.forEach(releasePackTexture)
+      // A pack file whose copy is gone goes back to idle; the next mount loads it again.
+      if (itemKey) releaseAssetItem(itemKey)
       if (current.root === loaded.root) {
         current.root = null
         current.state = 'off'
+        current.textures = null
+        current.lod = null
       }
     }
   }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The world.glb material rules. Baked light needs no scene lights: untextured keeps the unlit
-  // textured material, wireframe uses the shared wireframe material without the instance light.
-  const materialMode: MapRenderMode = mode === 'wireframe' ? 'wireframe' : 'textured'
   useEffect(() => {
     if (!loaded) return
-    const materials = applyBspMaterials(loaded.root, {
-      mode: materialMode,
-      lightmap: null,
-      lightmapRange: 1,
-      brightness: brightnessRef.current,
-    })
+    const prepared = loaded.prepared
+    let materials: BspMaterials
+    if (prepared && prepared.mode === materialMode && prepared.textured === useTextures) {
+      materials = prepared.materials
+    } else {
+      materials = applyBspMaterials(loaded.root, {
+        mode: materialMode,
+        lightmap: null,
+        lightmapRange: 1,
+        brightness: brightnessRef.current,
+        ...(useTextures && loaded.textures ? { textures: loaded.textures } : {}),
+      })
+    }
+    // Adopted or not, the prepared set is this effect's to free from now on.
+    loaded.prepared = null
+    if (prepared && prepared.materials !== materials) prepared.materials.dispose()
     materialsRef.current = materials
     setInstanceLight(loaded.root, materialMode !== 'wireframe')
     current.materialMode = materialMode
@@ -186,20 +270,24 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
       if (materialsRef.current === materials) materialsRef.current = null
       materials.dispose()
     }
-  }, [loaded, materialMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loaded, materialMode, useTextures]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     current.mode = mode
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // map.brightness: the vertex colours already hold the baked light, so the colour scales them.
+  // map.brightness: the vertex colours already hold the baked light, so the colour scales them (textured pack
+  // props: their 1 / albedo scale times the brightness).
   useEffect(() => {
     if (!loaded) return
     materialsRef.current?.setBrightness(brightness)
     forEachOwnMaterial(loaded.root, material => {
-      if (material instanceof THREE.MeshBasicMaterial) material.color.setScalar(brightness)
+      if (!(material instanceof THREE.MeshBasicMaterial)) return
+      const scale = material.userData.dribbleColorScale as number[] | undefined
+      if (scale) material.color.fromArray(scale).multiplyScalar(brightness)
+      else material.color.setScalar(brightness)
     })
     current.brightness = brightness
-  }, [loaded, materialMode, brightness]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loaded, materialMode, useTextures, brightness]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hidden props must also stop catching the world raycasts (RTS centre, stickers), which check each
   // hit object's own `visible` flag, so the meshes are toggled with the root.
@@ -208,8 +296,18 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     loaded.root.traverse(node => {
       if ((node as THREE.Mesh).isMesh) node.visible = enabled
     })
+    current.lod?.setEnabled(enabled)
     loaded.root.visible = enabled
-  }, [loaded, enabled])
+  }, [loaded, enabled]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Far LODs and sprp fades follow the camera (POV and spectator views fade, RTS never does).
+  const cameraWorld = useRef(new THREE.Vector3())
+  useFrame(() => {
+    const lod = current.lod
+    if (!lod || !loaded || current.root !== loaded.root) return
+    camera.getWorldPosition(cameraWorld.current)
+    lod.update(cameraWorld.current, useStore.getState().scene.controls.mode !== 'rts')
+  })
 
   // Unmounted (a map without props.glb): the probe reports nothing loaded, not the last map's file.
   useEffect(
@@ -226,6 +324,28 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
 
   return loaded && loaded.url === url ? <primitive object={loaded.root} /> : null
 })
+
+/** A load whose result is no longer wanted (another file or an unmount came first). */
+class Superseded extends Error {
+  constructor(readonly root: THREE.Object3D) {
+    super('superseded')
+  }
+}
+
+/** Pack texture keys the materials of a loaded pack file name (contract 12.3 `extras.dribble.texture`). */
+function packTextureKeys(root: THREE.Object3D): string[] {
+  const keys = new Set<string>()
+  root.traverse(node => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) {
+      const key = material?.userData?.dribble?.texture?.key
+      if (typeof key === 'string') keys.add(key.toLowerCase())
+    }
+  })
+  return [...keys].sort()
+}
 
 /**
  * Instance colours carry each instance's baked light. Wireframe mode moves them aside (three tints any
@@ -373,6 +493,7 @@ function summarizeProps(current: PropsCurrent) {
   let gpuInstances = 0
   let meshes = 0
   let triangles = 0
+  let drawnTriangles = 0
   let visibleMeshes = 0
   const instanceLighting = new Map<string, { lighting: string }>()
   const materials = new Set<string>()
@@ -405,7 +526,11 @@ function summarizeProps(current: PropsCurrent) {
     for (let parent: THREE.Object3D | null = mesh; parent; parent = parent.parent) {
       if (!parent.visible) visible = false
     }
-    if (visible) visibleMeshes += 1
+    if (visible) {
+      visibleMeshes += 1
+      const total = index ? index.count : mesh.geometry.attributes.position.count
+      drawnTriangles += (Math.min(total, mesh.geometry.drawRange.count) / 3) * count
+    }
     const material = mesh.material as THREE.Material
     if (material) {
       materials.add(material.name || material.type)
@@ -439,6 +564,9 @@ function summarizeProps(current: PropsCurrent) {
     materials: [...materials].sort(),
     colorScale: [...colorScale],
     models,
+    // Pack files only (M3-props2): textures held, far-LOD rows and the triangles drawn now.
+    ...(current.textures ? { textures: current.textures } : {}),
+    ...(current.lod ? { lod: current.lod.stats(), drawnTriangles: Math.round(drawnTriangles) } : {}),
   }
 }
 
@@ -488,9 +616,28 @@ export function useStockProps(
   folder: string | undefined,
   conversion: MapConversion | null
 ): { url: string; key: string } | null {
+  return usePackPropsFile(folder, conversion, 'propsStock')
+}
+
+/**
+ * The pack's props-pak.glb (M3-props2: the PAK props with VPK materials) that World draws in place of public
+ * props.glb, or null: as useStockProps, but gated by assets.mapTextures instead of assets.stockProps.
+ */
+export function usePackPakProps(
+  folder: string | undefined,
+  conversion: MapConversion | null
+): { url: string; key: string } | null {
+  return usePackPropsFile(folder, conversion, 'propsPak')
+}
+
+function usePackPropsFile(
+  folder: string | undefined,
+  conversion: MapConversion | null,
+  which: 'propsStock' | 'propsPak'
+): { url: string; key: string } | null {
   const pack = useAssetPack()
   const enabled = useAssetSetting('enabled')
-  const stockProps = useAssetSetting('stockProps')
+  const stockProps = useAssetSetting(which === 'propsStock' ? 'stockProps' : 'mapTextures')
   const entry = folder && pack.status === 'ready' ? pack.manifest?.maps?.[folder] : undefined
   const identity = entry ? publicMapIdentity(conversion) : null
   const stale =
@@ -507,7 +654,7 @@ export function useStockProps(
   }, [stale, folder, entry])
 
   if (!folder || !entry || stale || !enabled || !stockProps) return null
-  const file = entry.files?.propsStock
+  const file = entry.files?.[which]
   const url = file ? assetPackFile(file) : null
   return file && url ? { url, key: file } : null
 }

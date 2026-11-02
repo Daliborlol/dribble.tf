@@ -31,6 +31,10 @@ import { frameTime } from '@highlander/combat/time'
 import { TRAIL_HEAD_ALPHA, TRAIL_MIN_PIXELS } from '@highlander/combat/trails'
 import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
+import { usePackProjectileSets } from '@highlander/combat/packProjectiles'
+import { PROJ } from '@highlander/extras/enums'
+
+const SYRINGE_KINDS = [PROJ.SYRINGE]
 
 /** Tracers never get thinner than this on screen. */
 const TRACER_MIN_PIXELS = 1.2
@@ -110,6 +114,8 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
   const fx = useMemo(() => createCombatMeshes(), [])
   useEffect(() => () => disposeCombatMeshes(fx), [fx])
   const size = useThree(state => state.size)
+  // the pack syringe model, when loaded, replaces the placeholder needle (the streak stays)
+  const syringePack = usePackProjectileSets(SYRINGE_KINDS, 256)[PROJ.SYRINGE] ?? null
 
   const s = useMemo(
     () => ({
@@ -137,6 +143,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     const effects = combatEffectsAt(x, demo, source, tickF, resolve, ownEyes, settings)
     const m = fx.meshes
     for (const instances of Object.values(m)) instances.begin()
+    syringePack?.begin()
     camera.getWorldPosition(s.camera)
     const pixelScale = pixelScaleOf(camera, size.height)
     fx.tracers.begin(s.camera, pixelScale)
@@ -233,7 +240,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       s.dir.set(n.dir[0], n.dir[1], n.dir[2])
       quatForwardX(s.dir, s.quat)
       s.matrix.compose(at(n.pos), s.quat, s.scale.setScalar(1))
-      m.syringes.push(s.matrix, s.color.set(n.color))
+      if (!syringePack?.push(s.matrix, n.team)) m.syringes.push(s.matrix, s.color.set(n.color))
       const count = Math.min(n.trail.length, SYRINGE_TRAIL_POINTS)
       if (count < 2) continue
       for (let k = 0; k < count; k++) {
@@ -245,6 +252,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     }
 
     for (const instances of Object.values(m)) instances.end()
+    syringePack?.end()
     fx.tracers.end()
     fx.syringeTrails.end()
 
@@ -252,6 +260,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       resetRecord(combatRecord, tickF)
       for (const g of effects.glows) combatRecord.glows.set(g.instance, g.pos)
       for (const [name, instances] of Object.entries(m)) if (instances.count) combatRecord.counts[name] = instances.count
+      if (syringePack?.count) combatRecord.counts['pack:syringe'] = syringePack.count
       combatRecord.counts.tracerVertices = fx.tracers.vertexCount
       if (fx.syringeTrails.vertexCount) combatRecord.counts.syringeTrailVertices = fx.syringeTrails.vertexCount
     }
@@ -264,6 +273,9 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       ))}
       <primitive object={fx.tracers.mesh} />
       <primitive object={fx.syringeTrails.mesh} />
+      {syringePack?.meshes.map(mesh => (
+        <primitive key={mesh.name} object={mesh} />
+      ))}
     </group>
   )
 })

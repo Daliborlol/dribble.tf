@@ -14,12 +14,16 @@ import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useInstance } from '@zus/store'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import { PROJ } from '@highlander/extras/enums'
 import type { ViewResolver } from '@highlander/combat/combatData'
 import { pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
 import { extrasRecord, pointList, recordingEnabled, resetRecord, roundVec } from '@highlander/combat/frameRecord'
 import { landedPoseAt } from '@highlander/combat/landing'
 import { directionAt, positionAt, projectilesDrawnAt, projectilesLandedAt, projectileTeamAt, quatForwardX } from '@highlander/combat/projectileData'
 import { createProjectileParts, disposeProjectileParts, partColor, partsForKind } from '@highlander/combat/projectileMeshes'
+import type { ProjectilePart } from '@highlander/combat/projectileMeshes'
+import { packSetMeshes, usePackProjectileSets } from '@highlander/combat/packProjectiles'
+import type { PackProjectileSet } from '@highlander/combat/packProjectiles'
 import { getProjectileSource } from '@highlander/combat/projectileSource'
 import { frameTime } from '@highlander/combat/time'
 import { TRAIL_HEAD_ALPHA, TRAIL_MIN_PIXELS, TRAIL_SAMPLES, trailPoints, trailStyle } from '@highlander/combat/trails'
@@ -27,6 +31,15 @@ import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
 
 const ONE = new THREE.Vector3(1, 1, 1)
+
+/** Kinds this layer draws from pack models when the pack has them (syringes are CombatFxLayer's). */
+const PACK_KINDS = [PROJ.CANNONBALL, PROJ.FLARE, PROJ.ARROW, PROJ.REPAIR_BOLT, PROJ.HEALING_BOLT, PROJ.JARATE, PROJ.MILK, PROJ.CLEAVER, PROJ.STUN_BALL, PROJ.ORNAMENT]
+
+/** The pack model when it is loaded (plus the parts kept with it, such as the flare glow), else the placeholder parts. */
+function pushProjectile(set: PackProjectileSet | null | undefined, kindParts: ProjectilePart[], matrix: THREE.Matrix4, kind: number, team: number) {
+  const pack = !!set && set.push(matrix, team)
+  for (const part of kindParts) if (!pack || part.def.keepWithPack) part.instances.push(matrix, partColor(part, kind, team))
+}
 
 export const ProjectilesExtraLayer = React.memo((_props: { renderTick: number }) => {
   const extras = useExtras()
@@ -44,6 +57,8 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
   )
   const ribbons = useMemo(() => new RibbonBatch(ribbonMaterial, 2048, 'hl-projectile-trails'), [ribbonMaterial])
   const size = useThree(state => state.size)
+  const packSets = usePackProjectileSets(PACK_KINDS, 96)
+  const packMeshes = useMemo(() => packSetMeshes(packSets), [packSets])
 
   useEffect(
     () => () => {
@@ -84,6 +99,7 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
     camera.getWorldPosition(s.camera)
     ribbons.begin(s.camera, pixelScaleOf(camera, size.height))
     for (const part of parts) part.instances.begin()
+    for (const set of packSets) set?.begin()
 
     for (const j of projectilesDrawnAt(x, tick, s.alive)) {
       if (source.servedByBase[j]) continue // Projectiles.tsx draws it
@@ -93,7 +109,7 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
       s.matrix.compose(s.pos, s.quat, ONE)
       const kind = pj.kind[j]
       const team = projectileTeamAt(x, j, tick)
-      for (const part of partsForKind(byKind, kind)) part.instances.push(s.matrix, partColor(part, kind, team))
+      pushProjectile(packSets[kind], partsForKind(byKind, kind), s.matrix, kind, team)
 
       const count = trailPoints(x, j, tickF, TRAIL_SAMPLES, s.points)
       const style = trailStyle(x, j, tick, s.style)
@@ -116,14 +132,16 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
       s.matrix.compose(s.pos, s.quat, ONE)
       const kind = pj.kind[j]
       const team = projectileTeamAt(x, j, tick)
-      for (const part of partsForKind(byKind, kind)) part.instances.push(s.matrix, partColor(part, kind, team))
+      pushProjectile(packSets[kind], partsForKind(byKind, kind), s.matrix, kind, team)
       if (record) extrasRecord.landed.set(j, roundVec(s.pos.x, s.pos.y, s.pos.z))
     }
 
     for (const part of parts) part.instances.end()
+    for (const set of packSets) set?.end()
     ribbons.end()
     if (record) {
       for (const part of parts) if (part.instances.count) extrasRecord.counts[part.def.name] = part.instances.count
+      for (const set of packSets) if (set?.count) extrasRecord.counts[`pack:${set.role}`] = set.count
     }
   })
 
@@ -131,6 +149,9 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
     <group name="hl-projectiles">
       {parts.map(part => (
         <primitive key={part.def.name} object={part.instances.mesh} />
+      ))}
+      {packMeshes.map(mesh => (
+        <primitive key={mesh.name} object={mesh} />
       ))}
       <primitive object={ribbons.mesh} />
     </group>

@@ -23,6 +23,8 @@ interface PartDef {
   opacity?: number
   softness?: number
   capacity?: number
+  /** drawn also while a pack model replaces the kind's placeholder body (glows) */
+  keepWithPack?: boolean
 }
 
 const sphere = (r: number, w = 12, h = 8) => () => new THREE.SphereGeometry(r, w, h)
@@ -102,7 +104,7 @@ const PARTS: PartDef[] = [
   { name: 'cannonball', kinds: [PROJ.CANNONBALL], geometry: sphere(4), material: 'lambert', color: DARK_METAL },
   // 7 flare: orange body plus an additive glow
   { name: 'flare', kinds: [PROJ.FLARE], geometry: () => cylinderX(1, 6, -3, 8), material: 'basic', color: '#ff8c1a' },
-  { name: 'flare-glow', kinds: [PROJ.FLARE], geometry: sphere(6, 16, 12), material: 'glow', color: '#ff8c1a', opacity: 0.85, softness: 1.4 },
+  { name: 'flare-glow', kinds: [PROJ.FLARE], geometry: sphere(6, 16, 12), material: 'glow', color: '#ff8c1a', opacity: 0.85, softness: 1.4, keepWithPack: true },
   // 8 arrow: shaft, metal head, team fletching
   { name: 'arrow-shaft', kinds: [PROJ.ARROW], geometry: () => cylinderX(0.5, 30, -15, 6), material: 'lambert', color: '#c8b48a' },
   { name: 'arrow-head', kinds: [PROJ.ARROW], geometry: () => coneX(1.2, 3, 15, 8), material: 'lambert', color: METAL },

@@ -41,10 +41,20 @@ const isTexture = (value: unknown): value is Texture =>
 function disposeMaterial(material: Material, seen: Set<unknown>) {
   if (seen.has(material)) return
   seen.add(material)
-  for (const value of Object.values(material)) {
+  const disposeTexture = (value: unknown) => {
     if (isTexture(value) && !seen.has(value)) {
       seen.add(value)
       value.dispose()
+    }
+  }
+  for (const value of Object.values(material)) disposeTexture(value)
+  // ShaderMaterial and onBeforeCompile materials keep textures in their uniforms.
+  const uniforms = (material as any).uniforms as Record<string, { value?: unknown }> | undefined
+  if (uniforms && typeof uniforms === 'object') {
+    for (const uniform of Object.values(uniforms)) {
+      const value = uniform?.value
+      if (Array.isArray(value)) value.forEach(disposeTexture)
+      else disposeTexture(value)
     }
   }
   material.dispose()
@@ -117,21 +127,26 @@ export async function loadPackModel(url: string): Promise<PackModel> {
 }
 
 /**
- * Compiles the programs `object` needs before it joins the drawn scene (contract 4.3). `scene` supplies the
- * lights; it defaults to the object. Never rejects: a compile failure leaves the first draw to compile.
+ * Compiles the programs `object` needs before it joins the drawn scene (contract 4.3). `scene` must be the
+ * scene the object will be drawn in (the r3f scene from useThree): its lights, fog and environment are part of
+ * the program key, so compiling against any other scene can leave the first draw to compile again. Never
+ * rejects: a compile failure leaves the first draw to compile.
  */
 export async function warmUpObject(
   renderer: WebGLRenderer,
   object: Object3D,
   camera: Camera,
-  scene?: Scene | null
+  scene: Scene
 ): Promise<void> {
   try {
-    const target = (scene ?? null) as Scene | null
+    if (!scene || !(scene as any).isScene) {
+      console.warn('[assets] warmUpObject needs the drawn scene; skipping the warm-up')
+      return
+    }
     if (typeof (renderer as any).compileAsync === 'function') {
-      await (renderer as any).compileAsync(object, camera, target)
+      await (renderer as any).compileAsync(object, camera, scene)
     } else {
-      renderer.compile(object, camera, target)
+      renderer.compile(object, camera, scene)
     }
   } catch (error) {
     console.warn('[assets] shader warm-up failed', error)

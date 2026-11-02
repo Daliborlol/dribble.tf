@@ -51,6 +51,15 @@ function assetPackPlugin(): Plugin {
       return notFound(res)
     }
     if (!stat.isFile()) return notFound(res)
+    // A symlink inside the pack must not lead out of it: compare real paths (contract 3.3).
+    try {
+      const realRoot = fs.realpathSync(root)
+      const real = fs.realpathSync(file)
+      if (!real.startsWith(realRoot + path.sep)) return notFound(res)
+      file = real
+    } catch {
+      return notFound(res)
+    }
     res.statusCode = 200
     res.setHeader(
       'Content-Type',

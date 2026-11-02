@@ -7,7 +7,6 @@ import { failedAssetItems, listAssetItems, loadingAssetItems, subscribeAssetItem
 import {
   getAssetPackState,
   isAssetPackResolutionStarted,
-  resolveAssetPack,
   subscribeAssetPack,
 } from './pack'
 
@@ -31,12 +30,12 @@ function status() {
 type IdleResult = { idle: boolean; status: string; pending: string[] }
 
 /**
- * Resolves once the pack is settled and no item loads, or at the timeout with idle false; never rejects. It
- * starts the pack resolution when nothing has (so a harness waiting on it never stalls); with no pack URL that
- * requests nothing.
+ * Resolves once the pack is settled and no item loads, or at the timeout with idle false; never rejects. It only
+ * waits and never starts the pack resolution itself: the app starts it after the stored settings have loaded
+ * (AssetSettingsSection on mount), so a stored assets.enabled=false is always honoured. With no pack URL the
+ * state is already settled.
  */
 function waitIdle(timeoutMs = 30000): Promise<IdleResult> {
-  void resolveAssetPack()
   return new Promise<IdleResult>(resolve => {
     let done = false
     const result = (idle: boolean): IdleResult => ({

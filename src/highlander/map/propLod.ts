@@ -138,7 +138,8 @@ export class PropLodController {
     const groups = new Map<string, { near?: THREE.Object3D; far?: THREE.Object3D; info?: any }>()
     root.traverse(node => {
       const info = node.userData?.dribble
-      if (info?.kind !== 'staticProps' || !info.lod) return
+      // staticPropsBatch: the runtime bake of propBatch.ts, laid out as a merged batch.
+      if ((info?.kind !== 'staticProps' && info?.kind !== 'staticPropsBatch') || !info.lod) return
       // GLTFLoader may put the extras on a group and on its meshes; the outermost node counts.
       if (node.parent?.userData?.dribble?.kind === 'staticProps') return
       const entry = groups.get(info.lod.pair) ?? {}
@@ -163,6 +164,8 @@ export class PropLodController {
           written: false,
         })
       } else {
+        // Nodes whose meshes the runtime bake (propBatch.ts) took have nothing left to switch.
+        if (!meshesUnder(near).length && !(far && meshesUnder(far).length)) return
         this.pairs.push({
           kind: 'instanced',
           rows,

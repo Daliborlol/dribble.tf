@@ -46,6 +46,7 @@ import { loadPackItem, releaseAssetItem, skipAssetItem, getAssetItem } from '@pa
 import { loadPackGltf, warmUpObject } from '@pack/loaders'
 import { acquirePackTexture, releasePackTexture } from '@pack/textures'
 import { PropLodController } from '@highlander/map/propLod'
+import { applyArrayMaterials, bakeRuntimeProps, type ArrayMaterials, type PropBatchResult } from '@highlander/map/propBatch'
 import { registerHlProbe } from '@highlander/debug'
 import { useHlSetting } from '@highlander/extras/hooks'
 import {
@@ -72,7 +73,9 @@ interface LoadedProps {
   url: string
   root: THREE.Group
   textures: Map<string, THREE.Texture | null> | null
-  prepared: { mode: MapRenderMode; textured: boolean; materials: BspMaterials } | null
+  prepared: { mode: MapRenderMode; textured: boolean; materials: BspMaterials; arrays: ArrayMaterials } | null
+  /** The runtime bake of a pack file (propBatch.ts), or null. */
+  batch: PropBatchResult | null
 }
 
 type PropsState = 'off' | 'loading' | 'ready' | 'error'
@@ -89,6 +92,7 @@ interface PropsCurrent {
   /** Pack textures: keys held and bound (M3-props2). */
   textures: { keys: number; loaded: number } | null
   lod: PropLodController | null
+  batch: Omit<PropBatchResult, 'dispose'> | null
 }
 
 const emptyCurrent = (): PropsCurrent => ({
@@ -101,6 +105,7 @@ const emptyCurrent = (): PropsCurrent => ({
   brightness: null,
   textures: null,
   lod: null,
+  batch: null,
 })
 
 /** What each copy shows right now, for the probes (one World, so one entry per source). */
@@ -169,10 +174,16 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
       held.forEach(releasePackTexture)
       held = []
     }
+    // Pack files written for the runtime bake are merged once, before the bounds and materials (propBatch.ts).
+    let batch: PropBatchResult | null = null
+    const bake = (root: THREE.Group, textures: Map<string, THREE.Texture | null> | null) => {
+      const result = itemKey ? bakeRuntimeProps(root, textures, gl.capabilities.isWebGL2) : null
+      freeze(root)
+      return result
+    }
     loadPropsFile(source, url, itemKey)
       .then(async root => {
         if (request !== requestRef.current) throw new Superseded(root)
-        freeze(root)
         let textures: Map<string, THREE.Texture | null> | null = null
         let prepared: LoadedProps['prepared'] = null
         const keys = packTextures ? packTextureKeys(root) : []
@@ -181,6 +192,7 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
           const list = await Promise.all(keys.map(key => acquirePackTexture(key, gl)))
           if (request !== requestRef.current) throw new Superseded(root)
           textures = new Map(keys.map((key, i) => [key, list[i]]))
+          batch = bake(root, textures)
           // Materials and programs before the props are shown (asset contract 4.3); the effect below adopts them.
           const { materialMode: m, useTextures: t } = modeRef.current
           const materials = applyBspMaterials(root, {
@@ -190,19 +202,24 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
             brightness: brightnessRef.current,
             ...(t ? { textures } : {}),
           })
-          prepared = { mode: m, textured: t, materials }
+          const arrays = applyArrayMaterials(root, t, brightnessRef.current)
+          prepared = { mode: m, textured: t, materials, arrays }
           await warmUpObject(gl, root, camera, scene)
           if (request !== requestRef.current) {
             materials.dispose()
-            throw new Superseded(root)
+            arrays.dispose()
+            throw new Superseded(root, batch)
           }
+        } else {
+          batch = bake(root, null)
         }
         held = []
-        setLoaded({ url, root, textures, prepared })
+        setLoaded({ url, root, textures, prepared, batch })
       })
       .catch(error => {
         if (error instanceof Superseded) {
           disposeProps(error.root)
+          error.batch?.dispose()
           releaseHeld()
           if (itemKey) releaseAssetItem(itemKey)
           return
@@ -230,9 +247,14 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
       : null
     const lod = new PropLodController(loaded.root)
     current.lod = lod.active ? lod : null
+    if (loaded.batch) {
+      const { dispose: _dispose, ...batchStats } = loaded.batch
+      current.batch = batchStats
+    } else current.batch = null
     return () => {
       lod.dispose()
       disposeProps(loaded.root)
+      loaded.batch?.dispose()
       keys.forEach(releasePackTexture)
       // A pack file whose copy is gone goes back to idle; the next mount loads it again.
       if (itemKey) releaseAssetItem(itemKey)
@@ -241,6 +263,7 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
         current.state = 'off'
         current.textures = null
         current.lod = null
+        current.batch = null
       }
     }
   }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,8 +272,10 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     if (!loaded) return
     const prepared = loaded.prepared
     let materials: BspMaterials
+    let arrays: ArrayMaterials
     if (prepared && prepared.mode === materialMode && prepared.textured === useTextures) {
       materials = prepared.materials
+      arrays = prepared.arrays
     } else {
       materials = applyBspMaterials(loaded.root, {
         mode: materialMode,
@@ -259,16 +284,21 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
         brightness: brightnessRef.current,
         ...(useTextures && loaded.textures ? { textures: loaded.textures } : {}),
       })
+      arrays = applyArrayMaterials(loaded.root, materialMode === 'textured' && useTextures && !!loaded.textures, brightnessRef.current)
     }
     // Adopted or not, the prepared set is this effect's to free from now on.
     loaded.prepared = null
-    if (prepared && prepared.materials !== materials) prepared.materials.dispose()
+    if (prepared && prepared.materials !== materials) {
+      prepared.materials.dispose()
+      prepared.arrays.dispose()
+    }
     materialsRef.current = materials
     setInstanceLight(loaded.root, materialMode !== 'wireframe')
     current.materialMode = materialMode
     return () => {
       if (materialsRef.current === materials) materialsRef.current = null
       materials.dispose()
+      arrays.dispose()
     }
   }, [loaded, materialMode, useTextures]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -327,7 +357,10 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
 
 /** A load whose result is no longer wanted (another file or an unmount came first). */
 class Superseded extends Error {
-  constructor(readonly root: THREE.Object3D) {
+  constructor(
+    readonly root: THREE.Object3D,
+    readonly batch: PropBatchResult | null = null
+  ) {
     super('superseded')
   }
 }
@@ -567,6 +600,7 @@ function summarizeProps(current: PropsCurrent) {
     // Pack files only (M3-props2): textures held, far-LOD rows and the triangles drawn now.
     ...(current.textures ? { textures: current.textures } : {}),
     ...(current.lod ? { lod: current.lod.stats(), drawnTriangles: Math.round(drawnTriangles) } : {}),
+    ...(current.batch ? { batch: current.batch } : {}),
   }
 }
 

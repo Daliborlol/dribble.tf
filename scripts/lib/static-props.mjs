@@ -906,6 +906,47 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) 
 // ─── main ────────────────────────────────────────────────────────────────────
 
 /**
+ * Runtime-bake files (pol-props): meshopt's reorder moved the vertices of every primitive; `_ROWV` says where each
+ * came from. Each instance's block of the row-light carrier is put into the same order, then `_ROWV` goes, so the
+ * runtime reads carrier vertex `offset + instance x stride + vertex` directly.
+ */
+function rowLightOrder(doc) {
+  const sceneRoot = doc.getRoot()
+  const carrierNode = sceneRoot.listNodes().find(node => node.getExtras()?.dribble?.kind === 'staticPropsRowLight')
+  const carrier = carrierNode?.getMesh()?.listPrimitives()[0]?.getAttribute('COLOR_0')
+  const data = carrier?.getArray()
+  if (!(data instanceof Uint8Array)) throw new Error('row-light carrier lost its bytes')
+  const source = data.slice()
+  for (const node of sceneRoot.listNodes()) {
+    const info = node.getExtras()?.dribble?.rowLight
+    if (!info) continue
+    const prims = node.getMesh().listPrimitives()
+    const stride = info.prims.reduce((a, b) => a + b, 0)
+    const rows = node.getExtras().dribble.instances
+    let primStart = 0
+    prims.forEach((prim, p) => {
+      const rowv = prim.getAttribute('_ROWV')
+      const order = rowv?.getArray()
+      if (!order || order.length !== info.prims[p]) throw new Error(`${node.getName()}: _ROWV does not match its primitive`)
+      let base = Infinity
+      for (const v of order) base = Math.min(base, v)
+      const seen = new Uint8Array(order.length)
+      for (const v of order) {
+        if (v - base >= order.length || seen[v - base]) throw new Error(`${node.getName()}: _ROWV is not a permutation`)
+        seen[v - base] = 1
+      }
+      for (let i = 0; i < rows; i++) {
+        const block = info.offset + i * stride + primStart
+        for (let v = 0; v < order.length; v++) data.set(source.subarray((block + order[v] - base) * 4, (block + order[v] - base) * 4 + 4), (block + v) * 4)
+      }
+      prim.setAttribute('_ROWV', null)
+      if (rowv.listParents().every(parent => parent === sceneRoot)) rowv.dispose()
+      primStart += info.prims[p]
+    })
+  }
+}
+
+/**
  * Converts the PAK static props of one map into `outPath` (props.glb).
  *
  * @param {object} o
@@ -922,6 +963,8 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) 
  * @param {number[]|null} [o.sunDirection] light_environment direction (Source, the way light travels)
  * @param {boolean} [o.meshopt]    meshopt + quantization (default true), else quantization only
  * @param {number} [o.bakeVertexBudget] vertices the merged exact-VHV batch may hold (BAKE_VERTEX_BUDGET)
+ * @param {boolean} [o.runtimeBake] pack output with LODs: baked instances as single-instance nodes that the runtime
+ *   merges (default true); false writes the merged batch as before
  * @param {(msg: string) => void} [o.log]
  * @returns {Promise<object>} conversion.json `props` counts plus `stats`
  */
@@ -1461,6 +1504,18 @@ export async function convertStaticProps(o) {
   }
   vhvStats.bakeVerticesLeft = bakeBudget
 
+  // 5b. Runtime bake (pack output with LODs, pol-props): the baked instances are not merged into a batch with
+  //     their geometry moved into place. Each (model, skin) puts them on one instanced node (and its far partner)
+  //     that shares the model's geometry; its COLOR_0 is their mean shading, a fallback as good as a shared
+  //     cluster's. Their exact colours go, row after row, into the COLOR_0 of one POINTS primitive, the row-light
+  //     carrier, which stores them in one large stream instead of one small one per instance. `_ROWV` keeps each
+  //     vertex's index before meshopt reorders it. The runtime (src/highlander/map/propBatch.ts) moves every
+  //     instance into place, puts the exact colours back and merges the props per material or texture array.
+  const runtimeBake = lodMode && o.runtimeBake !== false
+  const rowLight = [] // Float32Array chunks of RGB values, in carrier order
+  let rowLightVertices = 0
+  let runtimeBaked = 0
+
   // 6. Build the document.
   const doc = new Document()
   // Pack output: quantize skips TEXCOORD_0 outside [0, 1] and _PROP on purpose, so its warnings are noise.
@@ -1576,6 +1631,8 @@ export async function convertStaticProps(o) {
     if (arrays.uvs) primitive.setAttribute('TEXCOORD_0', accessor(arrays.uvs, 'VEC2'))
     // Merged batch with LODs: the batch row of every vertex + 2 (out of the [-1, 1] range quantize touches).
     if (arrays.props) primitive.setAttribute('_PROP', accessor(arrays.props, 'SCALAR'))
+    // Runtime bake: the vertex index before meshopt's reorder, for the row-light carrier.
+    if (arrays.rowv) primitive.setAttribute('_ROWV', accessor(arrays.rowv, 'SCALAR'))
     mesh.addPrimitive(primitive)
     if (far) {
       stats.farPrimitives++
@@ -1630,6 +1687,86 @@ export async function convertStaticProps(o) {
     return partArrays(farPart, shading, k, transform)
   }
 
+  // Runtime bake (5b): the baked instances of a group on one node pair, their exact light in the carrier. The light
+  // is stored as the VHV bytes it came from (linear = (2b / 255)^2.2 x exposure + floor), so the runtime gets the
+  // same colour, albedo x light, that the merged batch held. `_ROWV` numbers the vertices uniquely across the file
+  // (so no two primitives share it) and is removed again once the carrier follows meshopt's order (rowLightOrder).
+  let rowvBase = 0
+  const rowIndexArray = n => {
+    const out = Uint32Array.from({ length: n }, (_, i) => rowvBase + i)
+    rowvBase += n
+    return out
+  }
+  const toVhvByte = x => Math.max(0, Math.min(255, Math.round((255 / 2) * Math.pow(Math.max(0, (x - floor) / exposure), 1 / 2.2))))
+  // RGBA bytes of one part for one instance: `light(v)` gives the linear RGB of vertex v as [r, g, b].
+  const pushRowLight = (part, n, light) => {
+    const total = part.info.doubleSided ? n * 2 : n
+    const bytes = new Uint8Array(total * 4)
+    for (let v = 0; v < n; v++) {
+      const rgb = light(v)
+      for (const slot of part.info.doubleSided ? [v, v + n] : [v]) {
+        for (let c = 0; c < 3; c++) bytes[slot * 4 + c] = toVhvByte(rgb[c])
+      }
+    }
+    rowLight.push(bytes)
+    rowLightVertices += total
+  }
+  const emitExactRows = (group, baseName, litParts, farLit) => {
+    const { model, skin, clusters, lodDistance } = group
+    const exact = clusters.flatMap(cluster => cluster.members.filter(entry => entry.baked))
+    if (!exact.length) return
+    // The nodes' own COLOR_0 is flat (albedo / k, instance colour = own mean x k): the look of a failed runtime bake.
+    const ones = part => new Float32Array(part.prim.vertexCount * 3).fill(1)
+    const k = maxColor(litParts, litParts.map(ones))
+    const albedo = parts => parts.map(part => part.info.albedo.map(v => round(v, 6)))
+    const name = `${baseName}_exact`
+    const describeRows = describe(exact)
+    const lod = farLit.length ? { lod: { level: 0, pair: name, distance: lodDistance } } : {}
+    const mesh = doc.createMesh(name)
+    const nearCounts = litParts.map(part => {
+      const arrays = partArrays(part, ones(part), k)
+      arrays.rowv = rowIndexArray(arrays.positions.length / 3)
+      addPrimitive(mesh, arrays, part.info.kind, exact.length, part.info)
+      return arrays.positions.length / 3
+    })
+    const nearOffset = rowLightVertices
+    for (const entry of exact) {
+      for (const part of litParts) {
+        const L = entry.prop.light[model.primitives.indexOf(part.prim)]
+        pushRowLight(part, part.prim.vertexCount, v => [L[v * 3], L[v * 3 + 1], L[v * 3 + 2]])
+      }
+    }
+    emitNode(name, mesh, exact, k, { model: model.modelPath, skin, ...lod, ...describeRows, rowLight: { offset: nearOffset, prims: nearCounts, albedo: albedo(litParts) } })
+    if (!farLit.length) return
+    const farMesh = doc.createMesh(`${name}_far`)
+    const farCounts = farLit.map(part => {
+      const arrays = partArrays(part, ones(part), k)
+      arrays.rowv = rowIndexArray(arrays.positions.length / 3)
+      addPrimitive(farMesh, arrays, part.info.kind, exact.length, part.info, true)
+      return arrays.positions.length / 3
+    })
+    const farOffset = rowLightVertices
+    for (const entry of exact) {
+      for (const part of farLit) {
+        // Far vertex v takes the light of its nearest LOD 0 vertex (the far LOD's map), else the instance mean.
+        const map = model.far.map[part.f]
+        pushRowLight(part, part.prim.vertexCount, v => {
+          const L = entry.prop.light[map[v * 2]]
+          const w = map[v * 2 + 1] * 3
+          return L ? [L[w], L[w + 1], L[w + 2]] : entry.prop.mean
+        })
+      }
+    }
+    emitNode(`${name}_far`, farMesh, exact, k, {
+      model: model.modelPath,
+      skin,
+      lod: { level: 1, pair: name, distance: lodDistance, vtxLod: model.far.lod },
+      ...describeRows,
+      rowLight: { offset: farOffset, prims: farCounts, albedo: albedo(farLit) },
+    })
+    runtimeBaked += exact.length
+  }
+
   const bakedByMaterial = new Map() // material key -> { kind, info, items: { part, shading, entry, row, far }[] }
   const bakedEntries = []
   const pushBaked = (part, shading, entry, row, far) => {
@@ -1664,7 +1801,7 @@ export async function convertStaticProps(o) {
       }
       for (const entry of cluster.members) {
         rendered.set(entry.prop.id, entry.prop.dynamic)
-        if (!entry.baked || !litParts.length) continue
+        if (!entry.baked || !litParts.length || runtimeBake) continue
         // Exact VHV: shading = the instance's own light / its mean, vertices moved into place.
         const row = bakedEntries.length
         bakedEntries.push({ ...entry, lodDistance: farLit.length ? round(lodDistance * entry.prop.scale, 1) : 0 })
@@ -1680,6 +1817,7 @@ export async function convertStaticProps(o) {
         for (const part of farLit) pushBaked(part, mapToFar(model.far.map[part.f], byPrim), entry, row, true)
       }
     })
+    if (runtimeBake && litParts.length) emitExactRows(group, baseName, litParts, farLit)
     if (unlitParts.length) {
       const all = clusters.flatMap(cluster => cluster.members).map(entry => ({ ...entry, light: [1, 1, 1], lighting: 'unlit' }))
       const ones = unlitParts.map(part => new Float32Array(part.prim.vertexCount * 3).fill(1))
@@ -1757,6 +1895,29 @@ export async function convertStaticProps(o) {
     })
     stats.bakedInstances = bakedEntries.length
   }
+  if (runtimeBake) stats.bakedInstances = runtimeBaked
+  if (rowLightVertices) {
+    // The row-light carrier: one POINTS primitive whose COLOR_0 (RGBA bytes) holds the exact light of every
+    // runtime-bake row, in the order the nodes' `rowLight.offset` give. Its positions are zero (one vertex at 1 gives
+    // quantize a box); a loader that does not bake draws it as points at the props origin.
+    const bytes = new Uint8Array(rowLightVertices * 4)
+    let at = 0
+    for (const chunk of rowLight) {
+      bytes.set(chunk, at)
+      at += chunk.length
+    }
+    const positions = new Float32Array(rowLightVertices * 3)
+    positions.set([1, 1, 1], 0)
+    const carrier = doc.createPrimitive()
+      .setMode(0)
+      .setAttribute('POSITION', accessor(positions, 'VEC3'))
+      .setAttribute('COLOR_0', accessor(bytes, 'VEC4').setNormalized(true))
+    root.addChild(
+      doc.createNode('static_props_rowlight')
+        .setMesh(doc.createMesh('static_props_rowlight').addPrimitive(carrier))
+        .setExtras({ dribble: { kind: 'staticPropsRowLight', vertices: rowLightVertices, encoding: 'vhv' } })
+    )
+  }
   counts.pak = [...rendered.values()].filter(dynamic => !dynamic).length
   counts.dynamic = [...rendered.values()].filter(Boolean).length
 
@@ -1773,7 +1934,7 @@ export async function convertStaticProps(o) {
         },
   })
 
-  if (packMode) root.setExtras({ dribble: { ...root.getExtras().dribble, textured, lod: lodMode } })
+  if (packMode) root.setExtras({ dribble: { ...root.getExtras().dribble, textured, lod: lodMode, ...(runtimeBake ? { bake: 'runtime' } : {}) } })
 
   fs.mkdirSync(path.dirname(o.outPath), { recursive: true })
   const any = counts.pak + counts.dynamic > 0
@@ -1782,6 +1943,7 @@ export async function convertStaticProps(o) {
     const quantizeOptions = { quantizationVolume: 'mesh', quantizePosition: 16, quantizeNormal: 8, quantizeColor: 12 }
     if (o.meshopt !== false) await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'high', ...quantizeOptions }))
     else await doc.transform(quantize(quantizeOptions))
+    if (rowLightVertices) rowLightOrder(doc)
     // Written in the work dir first and renamed into place, so a failure never leaves half a file.
     const staged = path.join(o.workDir, 'props.glb')
     await io.write(staged, doc)

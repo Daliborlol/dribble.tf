@@ -98,7 +98,8 @@ check(() => {
   assert.equal(v.params.$bumpmap, 'e/bump')
 })
 
-// Patch materials: include from the same source, replace (existing keys only), then insert.
+// Patch materials: include from the same source, insert (add or overwrite), then replace (existing
+// keys only), nested blocks merged, on the raw tree before conditions (bsp-to-glb's order).
 const files = {
   'materials/models/base/thing.vmt': `"VertexLitGeneric" { "$basetexture" "models/base/thing" "$phong" "1" ">=dx90" { "$selfillum" "1" } }`,
   'materials/maps/pl_x/models/base/thing_wvt_patch.vmt': `"patch" {
@@ -107,6 +108,11 @@ const files = {
     "insert" { "$envmap" "maps/pl_x/c0_0_0" "$phong" "2" }
   }`,
   'materials/maps/pl_x/double_patch.vmt': `patch { include "materials\\maps\\pl_x\\models\\base\\thing_wvt_patch.vmt" insert { "$alphatest" 1 } }`,
+  'materials/models/base/proxied.vmt': `"VertexLitGeneric" { "$basetexture" "models/base/proxied" "$color2" "[1 1 1]" ">=dx90" { "$color2" "[2 2 2]" }
+    "Proxies" { "Sine" { "resultVar" "$color2" "sinemin" "0" } "AnimatedTexture" { "animatedtexturevar" "$basetexture" } } }`,
+  'materials/maps/pl_x/proxied_patch.vmt': `"patch" { "include" "materials/models/base/proxied.vmt"
+    "insert" { "$color2" "[3 3 3]" "Proxies" { "Sine" { "sinemax" "1" } "Toggle" { "x" "1" } } }
+    "replace" { "Proxies" { "Sine" { "sinemin" "0.5" "notthere" "1" } "Missing" { "y" "1" } } } }`,
   'materials/models/props/crate.vmt': `"VertexLitGeneric" { "$basetexture" "models/props/crate" "$alphatest" "1" "$alphatestreference" ".3" }`,
   'materials/models/other/crate.vmt': `"VertexLitGeneric" { "$basetexture" "models/other/crate" "$translucent" "1" }`,
   'materials/notex.vmt': `"UnlitGeneric" { "$color" "[1 1 1]" }`,
@@ -118,14 +124,24 @@ check(() => {
   const m = readMaterialFile(reader, 'materials/maps/pl_x/models/base/thing_wvt_patch.vmt')
   assert.equal(m.shader, 'vertexlitgeneric')
   assert.equal(m.params.$basetexture, 'models/base/thing')
-  assert.equal(m.params.$phong, '2')
+  assert.equal(m.params.$phong, '0') // insert, then replace: replace wins
   assert.equal(m.params.$notthere, undefined)
   assert.equal(m.params.$selfillum, '1')
   assert.equal(m.params.$envmap, 'maps/pl_x/c0_0_0')
   assert.equal(m.patch.resolved, true)
   const d = readMaterialFile(reader, 'materials/maps/pl_x/double_patch.vmt')
   assert.equal(d.params.$alphatest, '1')
-  assert.equal(d.params.$phong, '2')
+  assert.equal(d.params.$phong, '0')
+  assert.equal(d.patch.include, 'materials/maps/pl_x/models/base/thing_wvt_patch.vmt')
+  // Nested blocks merge; replace adds no key; a >=dx90 override of a patched key still wins,
+  // because the patch changes the raw tree before conditions are evaluated.
+  const p = readMaterialFile(reader, 'materials/maps/pl_x/proxied_patch.vmt')
+  assert.equal(p.params.$color2, '[2 2 2]')
+  assert.deepEqual(p.params.proxies, {
+    sine: { resultvar: '$color2', sinemin: '0.5', sinemax: '1' },
+    animatedtexture: { animatedtexturevar: '$basetexture' },
+    toggle: { x: '1' },
+  })
 })
 
 // resolveMaterial: search dirs first, then the bare name; the first source wins.

@@ -60,7 +60,7 @@ export async function run(ctx) {
     ctx.addItem(key, { kind: 'model', file, bytes: result.bytes, sha256: result.sha256, inputKey, triangles: result.stats.after.triangles })
     built++
   }
-  for (const [key, item] of Object.entries(ctx.manifest.items)) if (item.kind === 'model' && !wanted.has(key)) ctx.removeItem(key)
+  for (const [key, item] of Object.entries(ctx.manifest.items)) if (item.stage === ctx.stage && !wanted.has(key)) ctx.removeItem(key)
   if (set.fixtureFail) throw new Error('fixtureFail: planted failure after the outputs were staged')
   ctx.log(`${built} built, ${skipped} unchanged${failed.length ? `, ${failed.length} failed` : ''}`)
   for (const f of failed) ctx.log(`failed ${f.model}: ${f.error}`)

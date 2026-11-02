@@ -209,10 +209,13 @@ export async function postProcessModel(o) {
     animation.dispose()
   }
   if (o.dropTextures !== false) for (const texture of root.listTextures()) texture.dispose()
-  let emptyWeights = 0
+  // Default morph weights: an empty array is dropped on write; an all-zero one equals the glTF
+  // default (absent means every weight is 0), so it is dropped too. Non-zero weights stay.
+  let emptyWeights = 0, zeroWeights = 0
   for (const mesh of root.listMeshes()) {
-    if (mesh.getWeights().length === 0) emptyWeights++
-    mesh.setWeights([])
+    const weights = mesh.getWeights()
+    if (weights.length === 0) emptyWeights++
+    else if (weights.every(w => w === 0)) { zeroWeights++; mesh.setWeights([]) }
   }
   // keepLeaves keeps attachment and bone leaf nodes; keepExtras keeps nodes that only carry extras.
   await doc.transform(prune({ keepLeaves: true, keepExtras: true, keepAttributes: true, keepIndices: true }))
@@ -231,7 +234,7 @@ export async function postProcessModel(o) {
   return {
     bytes: glb.length,
     sha256: sha256(glb),
-    stats: { before, after: countDoc(doc), lodsRemoved, clipsKept, clipsRemoved, emptyWeightsRemoved: emptyWeights },
+    stats: { before, after: countDoc(doc), lodsRemoved, clipsKept, clipsRemoved, emptyWeights, zeroWeightsRemoved: zeroWeights },
   }
 }
 

@@ -22,8 +22,9 @@
 // - `[$X360]`-style conditions after a key/value pair are evaluated for Windows PC ($WIN32,
 //   $WINDOWS true; $X360, $PS3, $GAMECONSOLE, $OSX, $LINUX, $POSIX false). Unquoted bracket
 //   tokens that are not conditions (`[.25 .5 1]`) are values.
-// - `patch` materials read `include` from the same source and apply `replace` (existing keys only)
-//   then `insert` (add or overwrite). A patch of a patch is followed up to 8 levels.
+// - `patch` materials read `include` from the same source and apply `insert` (add or overwrite) and
+//   then `replace` (existing keys only) to the raw tree, merging nested blocks, before conditions are
+//   evaluated, as bsp-to-glb does. A patch of a patch is followed up to 8 levels.
 // - Alpha is opacity only with `$alphatest` (cutoff `$alphatestreference`, default 0.5) or
 //   `$translucent`; otherwise the base alpha is a phong, tint or blend mask and is ignored.
 // - Without `$basetexture` a material draws NEUTRAL (#8a8a8a), as scripts/lib/static-props.mjs does.
@@ -231,8 +232,16 @@ function evaluate(entries, shader, stats, depth = 0) {
  * repeatedBaseTexture }.
  */
 export function parseVmt(text) {
+  return evaluateTree(parseVmtTree(text))
+}
+
+/** The raw KeyValues tree of VMT text, before conditions: { shader, entries }. */
+export function parseVmtTree(text) {
   if (Buffer.isBuffer(text)) text = text.toString('latin1')
-  const tree = parseTree(tokenize(text))
+  return parseTree(tokenize(text))
+}
+
+function evaluateTree(tree) {
   const stats = { blocks: [], fallbacks: [], prefixed: [], platform: 0, unknown: new Set(), repeatedBaseTexture: 0 }
   const shader = tree.shader.toLowerCase()
   const params = evaluate(tree.entries, shader, stats)
@@ -261,27 +270,74 @@ function readFrom(readers, file) {
   return null
 }
 
-/** Reads one VMT file (no search paths) and resolves patches. Null when missing. */
-export function readMaterialFile(source, file, depth = 0) {
-  const readers = asReaders(source)
+/**
+ * Applies patch entries to a raw entry list the way bsp-to-glb's `apply_patch_entries` does: a key
+ * (case-insensitive) that exists gets the new value, and a nested block merges recursively into the
+ * existing block; a missing key is appended unless `replaceOnly`. Every occurrence of an existing key
+ * is updated, so the last-occurrence rule cannot bring back an old value.
+ */
+function applyPatchEntries(dest, src, replaceOnly, depth = 1) {
+  if (depth > 32) throw new Error('VMT patch nesting exceeds 32 levels')
+  for (const s of src) {
+    const lower = s.key.toLowerCase()
+    const matches = dest.filter(d => d.key.toLowerCase() === lower)
+    if (matches.length) {
+      for (const d of matches) {
+        if (s.children) {
+          if (!d.children) { d.children = []; delete d.value }
+          applyPatchEntries(d.children, s.children, replaceOnly, depth + 1)
+        } else {
+          d.value = s.value
+          delete d.children
+        }
+        d.cond = s.cond ?? null
+      }
+    } else if (!replaceOnly) {
+      dest.push(structuredClone(s))
+    }
+  }
+}
+
+const lastEntry = (entries, key) => entries.filter(e => e.key.toLowerCase() === key).pop()
+
+/**
+ * Reads one VMT as a raw tree with its patch chain applied: the include is resolved first (itself
+ * patched), then this patch's `insert` (add or overwrite) and then `replace` (existing keys only),
+ * nested blocks merged recursively, all on the raw tree before conditions are evaluated. This is
+ * bsp-to-glb's order (src/materials.rs, resolve_vmt) and Source's. For a patch of a patch the outer
+ * patch applies last and wins, as in Source; bsp-to-glb accumulates the chain outer first.
+ */
+function readRawMaterial(readers, file, depth, visited) {
   const data = readFrom(readers, file)
   if (!data) return null
-  const vmt = parseVmt(data)
-  if (vmt.shader !== 'patch') return { file, shader: vmt.shader, params: vmt.params, conditions: vmt.conditions }
-  const include = typeof vmt.params.include === 'string' ? vmt.params.include : null
-  const base = include && depth < 8 ? readMaterialFile(readers, materialPath(include), depth + 1) : null
-  const params = structuredClone(base?.params ?? {})
-  const replace = vmt.params.replace
-  if (replace && typeof replace === 'object') for (const [k, v] of Object.entries(replace)) if (k in params) params[k] = v
-  const insert = vmt.params.insert
-  if (insert && typeof insert === 'object') Object.assign(params, insert)
-  return {
-    file,
-    shader: base?.shader ?? 'patch',
-    params,
-    conditions: vmt.conditions,
-    patch: { include: include ? materialPath(include) : null, resolved: Boolean(base) },
+  const tree = parseVmtTree(data)
+  if (tree.shader.toLowerCase() !== 'patch') return { tree, patch: null }
+  const includeEntry = lastEntry(tree.entries, 'include')
+  const include = includeEntry && typeof includeEntry.value === 'string' && includeEntry.value.trim() ? materialPath(includeEntry.value) : null
+  let base = null
+  if (include && depth < 8 && !visited.has(include)) {
+    visited.add(include)
+    base = readRawMaterial(readers, include, depth + 1, visited)
   }
+  const entries = structuredClone(base?.tree.entries ?? [])
+  const insert = lastEntry(tree.entries, 'insert')
+  if (insert?.children) applyPatchEntries(entries, insert.children, false)
+  const replace = lastEntry(tree.entries, 'replace')
+  if (replace?.children) applyPatchEntries(entries, replace.children, true)
+  return {
+    tree: { shader: base?.tree.shader ?? 'patch', entries },
+    patch: { include, resolved: Boolean(base) },
+  }
+}
+
+/** Reads one VMT file (no search paths) and resolves patches. Null when missing. */
+export function readMaterialFile(source, file) {
+  const raw = readRawMaterial(asReaders(source), file, 0, new Set([file]))
+  if (!raw) return null
+  const vmt = evaluateTree(raw.tree)
+  const out = { file, shader: vmt.shader, params: vmt.params, conditions: vmt.conditions }
+  if (raw.patch) out.patch = raw.patch
+  return out
 }
 
 /**

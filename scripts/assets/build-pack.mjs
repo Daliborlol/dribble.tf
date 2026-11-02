@@ -20,7 +20,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { openVpkSet, locateTf2Vpks, canonicalJson, sha256, sortKeysDeep } from './lib/vpk.mjs'
-import { createManifest, readManifest, writeManifest, verifyManifestFiles, isPackPath, ITEM_KINDS } from './lib/manifest.mjs'
+import { createManifest, readManifest, writeManifest, validateManifest, verifyManifestFiles, isPackPath, ITEM_KINDS } from './lib/manifest.mjs'
 import { writeFileAtomic, moveFileAtomic, sha256File, walkFiles, outDirProblem, gitCommit } from './lib/fsutil.mjs'
 import { GENERATOR_VERSION } from './version.mjs'
 
@@ -198,7 +198,10 @@ export async function main(argv) {
   let finishing = false
   const onSignal = signal => {
     console.error(`[assets] ${signal} during ${current}; ${finishing ? 'files were being moved into place, so the previous manifest may list replaced files; rerun the build' : 'manifest.json and the files it lists are unchanged'}`)
-    if (!o.keepTmp && !finishing) fs.rmSync(buildTmp, { recursive: true, force: true })
+    if (!o.keepTmp && !finishing) {
+      fs.rmSync(buildTmp, { recursive: true, force: true })
+      try { if (fs.readdirSync(tmpRoot).length === 0) fs.rmdirSync(tmpRoot) } catch { /* not ours or gone */ }
+    }
     release()
     process.exit(130)
   }
@@ -215,16 +218,45 @@ export async function main(argv) {
     log(`VPKs ${builtFrom.vpks.map(v => v.file).join(', ')}; fingerprint ${builtFrom.fingerprint.slice(0, 16)}`)
 
     const prev = readManifest(out)
-    let carry = null
-    if (o.force) log('--force: rebuilding everything')
-    else if (prev.absent) log('no previous manifest')
+    const prevOk = prev.manifest && !prev.errors.length ? prev.manifest : null
+    if (prev.absent) log('no previous manifest')
     else if (prev.errors.length) log(`previous manifest ignored: ${prev.errors[0]}`)
-    else if (prev.manifest.builtFrom.fingerprint !== builtFrom.fingerprint) log('previous manifest was built from other VPKs; rebuilding everything')
-    else if (prev.manifest.generator.version !== GENERATOR_VERSION) log(`previous manifest has generator ${prev.manifest.generator.version}; rebuilding everything`)
-    else carry = prev.manifest
-
-    const manifest = createManifest({ generatorVersion: GENERATOR_VERSION, commit: gitCommit(CHECKOUT), builtFrom, options: carry?.options ?? {} })
-    if (carry) { manifest.maps = structuredClone(carry.maps); manifest.items = structuredClone(carry.items) }
+    const sameVpks = Boolean(prevOk && prevOk.builtFrom.fingerprint === builtFrom.fingerprint)
+    const sameGenerator = Boolean(prevOk && prevOk.generator.version === GENERATOR_VERSION)
+    // Stages that run keep their previous entries only for an incremental build. Entries owned by a
+    // stage that does not run (and map entries of folders this run does not select) are carried
+    // while the VPKs are the same, so `--force --stages maps` keeps the model items.
+    const incremental = sameVpks && sameGenerator && !o.force
+    const ownerRuns = owner => owner !== null && stages.includes(owner)
+    const keepEntry = (owner, { folder } = {}) => {
+      if (!sameVpks) return false
+      if (!ownerRuns(owner)) return true
+      if (owner === 'maps' && folder !== undefined && !maps.includes(folder)) return true
+      return incremental
+    }
+    if (prevOk && !sameVpks) log('previous manifest was built from other VPKs; rebuilding everything')
+    else if (prevOk && !sameGenerator) log(`previous manifest has generator ${prevOk.generator.version}; rebuilding the stages that run`)
+    else if (prevOk && o.force) log(`--force: rebuilding ${stages.length ? stages.join(', ') : 'nothing (no stages)'}`)
+    const manifest = createManifest({ generatorVersion: GENERATOR_VERSION, commit: gitCommit(CHECKOUT), builtFrom, options: {} })
+    if (prevOk) {
+      const notRun = new Set()
+      for (const [k, v] of Object.entries(prevOk.options ?? {})) {
+        if (keepEntry(k)) manifest.options[k] = structuredClone(v)
+        else if (!ownerRuns(k)) notRun.add(k)
+      }
+      for (const [folder, entry] of Object.entries(prevOk.maps ?? {})) {
+        if (keepEntry('maps', { folder })) manifest.maps[folder] = structuredClone(entry)
+        else if (!ownerRuns('maps')) notRun.add('maps')
+      }
+      for (const [key, item] of Object.entries(prevOk.items ?? {})) {
+        const owner = item.stage ?? null
+        if (keepEntry(owner)) manifest.items[key] = structuredClone(item)
+        else if (!ownerRuns(owner)) notRun.add(owner ?? 'unknown')
+      }
+      if (notRun.size) log(`warning: dropped the previous entries of ${[...notRun].sort().join(', ')} (built from other VPKs); rebuild with --stages ${[...notRun].filter(n => STAGE_ORDER.includes(n)).sort().join(',') || 'all'}`)
+      const keptStale = sameVpks && !sameGenerator ? STAGE_ORDER.filter(st => !stages.includes(st) && (st in manifest.options || st === 'maps' && Object.keys(manifest.maps).length || Object.values(manifest.items).some(i => i.stage === st))) : []
+      if (keptStale.length) log(`warning: kept the entries of ${keptStale.join(', ')} built by generator ${prevOk.generator.version}; rebuild with --stages ${keptStale.join(',')}`)
+    }
 
     const staged = new Map() // pack path -> staged absolute path
     const report = { generatorVersion: GENERATOR_VERSION, stages: {}, ms: 0 }
@@ -241,6 +273,7 @@ export async function main(argv) {
       const file = path.join(o['stage-dir'] ? path.resolve(o['stage-dir']) : HERE, stage, 'stage.mjs')
       if (!fs.existsSync(file)) { log(`stage ${stage}: ${file} not present, skipped`); report.stages[stage] = { skipped: 'not present' }; continue }
       current = `stage ${stage}`
+      log(`stage ${stage} running`)
       const stageTmp = path.join(buildTmp, stage)
       fs.mkdirSync(stageTmp, { recursive: true })
       const ts = performance.now()
@@ -255,9 +288,9 @@ export async function main(argv) {
         checkout: CHECKOUT,
         generatorVersion: GENERATOR_VERSION,
         fingerprint: builtFrom.fingerprint,
-        options: { stages, maps, bspDir: path.resolve(o['bsp-dir'] ?? DEFAULT_BSP_DIR), force: o.force, set: structuredClone(o.set), bspToGlb: o['bsp-to-glb'] ?? null },
+        options: { stages, maps, bspDir: path.resolve(o['bsp-dir'] ?? DEFAULT_BSP_DIR), force: !incremental, set: structuredClone(o.set), bspToGlb: o['bsp-to-glb'] ?? null },
         manifest,
-        previous: prev.manifest && !prev.errors.length ? prev.manifest : null,
+        previous: prevOk,
         log: stageLog,
         /** Input key of an item: VPK fingerprint, generator version and whatever else changes its output. */
         inputKey: parts => sha256(canonicalJson({ fingerprint: builtFrom.fingerprint, generator: GENERATOR_VERSION, stage, parts: sortKeysDeep(parts) })),
@@ -269,7 +302,8 @@ export async function main(argv) {
         removeMap: folder => { delete manifest.maps[folder] },
         addItem: (key, item) => {
           if (!ITEM_KINDS.includes(item.kind)) throw new Error(`item ${key}: kind ${item.kind}`)
-          manifest.items[key] = structuredClone(item)
+          // `stage` records the owner, so a run of other stages carries the item (see keepEntry).
+          manifest.items[key] = { ...structuredClone(item), stage }
         },
         removeItem: key => { delete manifest.items[key] },
         publicMapInfo: folder => publicMapInfo(folder),
@@ -281,34 +315,49 @@ export async function main(argv) {
       log(`stage ${stage} done in ${((performance.now() - ts) / 1000).toFixed(1)} s`)
     }
 
-    // Move staged files into place, then fill sizes and hashes from the final files.
+    // Everything that can fail runs before the first rename: sizes and hashes come from the staged
+    // file when one is staged (it replaces the pack file), else from the pack file; then the manifest
+    // is validated and every listed file is checked against that overlay. Only then are files moved
+    // and the manifest written, so a failure up to here leaves the pack as it was.
     current = 'finishing'
     // A path reserved with stagePath() but never written (a skipped item) is dropped; a listed file
-    // that is missing fails verifyManifestFiles below.
+    // that is missing fails the check below.
     for (const rel of [...staged.keys()]) if (!fs.existsSync(staged.get(rel))) staged.delete(rel)
-    finishing = true
-    for (const rel of [...staged.keys()].sort()) moveFileAtomic(staged.get(rel), path.join(out, rel))
-    finishing = false
+    const finalPath = rel => staged.get(rel) ?? path.join(out, rel)
+    const hashes = new Map()
+    const hashOf = rel => { if (!hashes.has(rel)) hashes.set(rel, sha256File(finalPath(rel))); return hashes.get(rel) }
     for (const item of Object.values(manifest.items)) {
-      const abs = path.join(out, item.file)
-      if (fs.existsSync(abs)) {
+      if (!isPackPath(item.file)) continue // validateManifest reports it
+      const abs = finalPath(item.file)
+      if (staged.has(item.file)) {
+        item.bytes = fs.statSync(abs).size
+        item.sha256 = hashOf(item.file)
+      } else if (fs.existsSync(abs)) {
         item.bytes ??= fs.statSync(abs).size
-        item.sha256 ??= sha256File(abs)
+        item.sha256 ??= hashOf(item.file)
       }
     }
     for (const entry of Object.values(manifest.maps)) {
       entry.sizes ??= {}
       for (const [k, f] of Object.entries(entry.files ?? {})) {
-        const abs = path.join(out, f)
-        if (fs.existsSync(abs)) entry.sizes[k] ??= fs.statSync(abs).size
+        if (!isPackPath(f)) continue
+        const abs = finalPath(f)
+        if (staged.has(f)) entry.sizes[k] = fs.statSync(abs).size
+        else if (fs.existsSync(abs)) entry.sizes[k] ??= fs.statSync(abs).size
       }
     }
-    const problems = verifyManifestFiles(out, manifest)
+    const invalid = validateManifest(manifest)
+    if (invalid.length) throw new Error(`the new manifest is invalid:\n  ${invalid.join('\n  ')}`)
+    const problems = verifyManifestFiles(out, manifest, { resolve: finalPath })
     if (problems.length) throw new Error(`the new manifest does not match the pack:\n  ${problems.join('\n  ')}`)
 
     report.ms = Math.round(performance.now() - t0)
+    current = 'moving files into place'
+    finishing = true
+    for (const rel of [...staged.keys()].sort()) moveFileAtomic(staged.get(rel), path.join(out, rel))
     writeFileAtomic(path.join(out, 'reports', 'build', 'last-build.json'), `${JSON.stringify(report, null, 2)}\n`)
     writeManifest(out, manifest)
+    finishing = false
     const unlisted = walkFiles(out, (rel, isDir) => rel.startsWith('.') || rel === 'reports' || (isDir && rel.split('/').some(s => s.startsWith('.'))))
       .filter(rel => rel !== 'manifest.json' && !Object.values(manifest.items).some(i => i.file === rel) && !Object.values(manifest.maps).some(m => Object.values(m.files ?? {}).includes(rel)))
     if (unlisted.length && o.prune) {
@@ -324,7 +373,7 @@ export async function main(argv) {
     return 0
   } catch (error) {
     console.error(`[assets] build failed during ${current}: ${error.stack ?? error.message}`)
-    console.error(`[assets] ${finishing ? 'files were being moved into place; rerun the build' : 'manifest.json and the files it lists are unchanged'}`)
+    console.error(`[assets] ${finishing ? 'files were being moved into place, so the previous manifest may list replaced files; rerun the build' : 'manifest.json and the files it lists are unchanged'}`)
     return 1
   } finally {
     vpk?.close()

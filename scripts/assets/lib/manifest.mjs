@@ -145,12 +145,15 @@ export function listedFiles(m) {
 
 /**
  * Checks that every listed file exists under `dir` with the recorded size (and sha256 for items).
+ * `resolve(rel)` maps a pack path to the file to check instead (the builder passes the overlay of
+ * staged files over the pack, before anything is moved).
  * @returns {string[]} problems
  */
-export function verifyManifestFiles(dir, m, { hash = true } = {}) {
+export function verifyManifestFiles(dir, m, { hash = true, resolve = null } = {}) {
   const problems = []
   for (const f of listedFiles(m)) {
-    const abs = path.join(dir, f.path)
+    if (!isPackPath(f.path)) { problems.push(`${f.from}: ${JSON.stringify(f.path)} is not a pack path`); continue }
+    const abs = resolve ? resolve(f.path) : path.join(dir, f.path)
     let st
     try { st = fs.statSync(abs) } catch { problems.push(`${f.from}: ${f.path} is missing`); continue }
     if (!st.isFile()) { problems.push(`${f.from}: ${f.path} is not a file`); continue }

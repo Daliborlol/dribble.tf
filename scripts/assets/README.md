@@ -40,15 +40,24 @@ Run big builds under the shared lock (`flock <lock> ...`, called directly) and c
 
 ### What a build guarantees
 
-- Stages write into a staging folder under the scratch dir. Only after every stage succeeded are the files moved
-  into place, each by an atomic rename (`.<name>.partial` and a rename when the scratch dir is on another
-  filesystem). `reports/build/last-build.json` comes next and `manifest.json` last. A failed or interrupted build
-  prints the step it was in and leaves the previous `manifest.json` and the files it lists as they were.
+- Stages write into a staging folder under the scratch dir. After every stage succeeded, the builder fills sizes and
+  hashes (from the staged file when one is staged, else from the pack file), validates the new manifest and checks
+  every listed file against that overlay of staged and existing files. Only then are the files moved into place,
+  each by an atomic rename (`.<name>.partial` and a rename when the scratch dir is on another filesystem).
+  `reports/build/last-build.json` comes next and `manifest.json` last. A failed or interrupted build prints the step
+  it was in; up to the first rename it leaves the previous `manifest.json` and the files it lists as they were. Only
+  a failure of a rename or of the manifest write itself can leave replaced files under the old manifest, and the
+  message then says so.
 - One build at a time per pack: `<out>/.build.lock` holds the builder's pid.
-- Incremental: the previous manifest's `maps` and `items` carry over when its VPK fingerprint and generator
-  version equal the current ones (`--force` drops them). A stage then rebuilds only items whose input key changed
+- Incremental: each manifest section has an owner. `maps` and `options.maps` belong to the maps stage, an item to
+  the stage that added it (the builder records it as the item's `stage` field) and `options.<stage>` to that stage.
+  The previous entries of a stage that runs carry over when the VPK fingerprint and the generator version equal the
+  current ones and `--force` is not given; the stage then rebuilds only items whose input key changed
   (`ctx.inputKey(parts)`: the VPK fingerprint, `GENERATOR_VERSION`, the stage and whatever else changes its output).
-- Before `manifest.json` is written, every listed file is checked against its recorded size and sha256.
+  The entries of stages that do not run, and the map entries of folders that `--maps` does not select, carry over
+  whenever the VPK fingerprint is the same, so `--force --stages maps` keeps the model items. After a generator
+  bump they are kept with a warning naming the stages to rebuild; built from other VPKs they are dropped, again
+  with a warning.
 
 ## Layout and manifest
 
@@ -79,18 +88,19 @@ A stage is `scripts/assets/<stage>/stage.mjs` exporting `async run(ctx)`. It may
 |---|---|
 | `vpk` | the VPK set: `has(path)`, `read(path)` (CRC checked), `readHead(path, n)`, `stat(path)`, `list(prefix)`, `fingerprint()` |
 | `out`, `tmp`, `checkout` | pack dir, this stage's scratch dir, the repository checkout |
-| `options` | `{ stages, maps, bspDir, force, set, bspToGlb }` |
+| `options` | `{ stages, maps, bspDir, force, set, bspToGlb }`; `force` is true when this stage must rebuild everything (`--force`, other VPKs or another generator version) |
 | `manifest`, `previous` | the manifest being built (carry-over included) and the previous valid manifest or null |
 | `stagePath(rel)`, `writeFile(rel, data)` | where to write pack file `rel`; it is moved into place at the end |
-| `setMap(folder, entry)`, `removeMap(folder)` | manifest `maps` entries; `sizes` are filled from the files when missing |
-| `addItem(key, item)`, `removeItem(key)` | manifest `items`; `bytes` and `sha256` are filled when missing |
+| `setMap(folder, entry)`, `removeMap(folder)` | manifest `maps` entries; `sizes` are taken from the staged file, else filled from the pack file when missing |
+| `addItem(key, item)`, `removeItem(key)` | manifest `items`, with `stage` set to this stage; `bytes` and `sha256` are taken from the staged file, else filled from the pack file when missing |
 | `setOptions(obj)` | this stage's entry of manifest `options` (only what changes output) |
 | `inputKey(parts)`, `hasPackFile(rel)` | incremental builds |
 | `publicMapInfo(folder)` | `mapName`, `props` and the whole public `conversion.json` of a map folder |
 | `log`, `generatorVersion`, `fingerprint` | |
 
-Put timings in the stage's return value or in `reports/`, not in the manifest: `check-determinism.mjs` compares the
-manifest byte for byte.
+Put timings in the stage's return value or in `reports/<stage>/`, not in the manifest: `check-determinism.mjs`
+compares the manifest byte for byte. Contract 2.3 still lists `ms` among the map `stats`, which would break that;
+the orchestrator was asked to amend it so map timings go to `reports/<stage>/`.
 
 ## Libraries
 
@@ -103,7 +113,10 @@ manifest byte for byte.
   `<shader>_hdr_dx9` fallback blocks, and skips `<dx90`, `360?`, `ps3?`, `GPU<n?`, `lowfill?`, `_dx8` and older
   fallback blocks and blocks named after another shader. A key in an applying block overrides the same key outside
   it. Unquoted `[.25 .5 1]` vectors are values; `[$X360]` after a pair is a platform condition. `patch` materials
-  apply `replace` (existing keys only) and then `insert`. `vmtAlpha(params)` gives `test` only with `$alphatest`
+  apply `insert` (add or overwrite) and then `replace` (existing keys only) to the raw tree of the include, nested
+  blocks merged recursively, before conditions are evaluated: bsp-to-glb's order (`src/materials.rs`) and
+  Source's. Contract 2.6 still says "replace then insert"; the orchestrator was asked to amend it. In a patch of a
+  patch the outer patch applies last and wins, as in Source (bsp-to-glb accumulates the chain outer first). `vmtAlpha(params)` gives `test` only with `$alphatest`
   (cutoff `$alphatestreference`, default 0.5), `blend` only with `$translucent`, else `opaque`.
   `vmtBaseTexture(params)` gives the `.vtf` path, and a material without one draws `NEUTRAL` (`#8a8a8a`).
 - `lib/vtf.mjs`: VTF 7.0 to 7.5 headers (format, flags, frames, faces, depth, mips, low-res thumbnail, resources),
@@ -111,10 +124,12 @@ manifest byte for byte.
   of the high-res mip chain that the phase-2 DDS rewrap will slice.
 - `lib/model-export.mjs`: `exportStudioModel` reads a model and its `.vvd`, `.dx90.vtx` (else `.dx80`, `.sw`),
   `.ani` and optionally `.phy` from the VPKs into a work dir and runs `bsp-to-glb --studio-*`. `postProcessModel`
-  keeps LOD 0, removes clips that `keepClip` (boolean, RegExp, list of names or function) rejects, removes empty
-  `mesh.weights`, drops textures, prunes with leaves and extras kept (bones and attachment nodes stay), copies the
+  keeps LOD 0, removes clips that `keepClip` (boolean, RegExp, list of names or function) rejects, drops default
+  `mesh.weights` (empty or all zero; non-zero weights stay), drops textures, prunes with leaves and extras kept (bones and attachment nodes stay), copies the
   studio facts (attachments, sequences, skins, bodygroups, include models) into `extras.dribble.studio` and runs
   plain `meshopt` (level `high`, as `static-props.mjs`). It never runs the full `optimize`.
+  For phase 3: meshopt's quantization gives each mesh of a skinned model its own skin, so `models/player/heavy.mdl`
+  has 1 skin before the post stage and 7 after it. A runtime that binds one skeleton per skin pays for that.
 - `lib/manifest.mjs`, `lib/fsutil.mjs` (atomic writes, sha256, the out-dir rules), `version.mjs`
   (`GENERATOR_VERSION`; bump it when output changes).
 
@@ -130,7 +145,7 @@ manifest byte for byte.
 | `node scripts/assets/tools/test-vmt.mjs` | the VMT rules on hand-written materials, patches included |
 | `node scripts/assets/tools/vtf-survey.mjs --tf2 <dir>` | every VTF header, and the computed mip-chain size against the file size |
 | `node scripts/assets/tools/export-model.mjs --tf2 <dir> --model <mdl> --work <dir> --out <glb>` | one model through the export and the post stage |
-| `node scripts/assets/tools/test-build.mjs --tf2 <dir> --base <dir outside git and /tmp>` | the builder end to end: refusals, empty builds, fixture builds twice, incremental rebuild, planted failure, `--force` |
+| `node scripts/assets/tools/test-build.mjs --tf2 <dir> --base <dir outside git and /tmp>` | the builder end to end: refusals, empty builds, fixture builds twice, incremental rebuild, planted failure, `--force`, failures in the last step (unwritten listed file, absolute path in stats) with replaced files staged, `--force` of one stage, a rewritten carried map file, SIGINT |
 
 `tools/fixture-stages/` holds a `models` stage that exports real models through `lib/model-export.mjs` and a `maps`
 stage that writes placeholder GLBs with real manifest map entries. They load only through `--stage-dir` and exist

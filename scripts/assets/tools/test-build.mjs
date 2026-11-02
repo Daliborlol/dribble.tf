@@ -12,10 +12,15 @@
 //   4. a rebuild of pack A skips every model (incremental) and leaves its manifest byte-identical
 //   5. a planted stage failure exits 1 and leaves manifest.json and every listed file unchanged
 //   6. --force rebuilds every model and still gives the same bytes
+//   7. failures in the builder's last step (a listed file never written, an absolute path in map
+//      stats), while staged files with other bytes replace listed ones: exit 1, nothing changed
+//   8. --force --stages maps keeps the model items and gives the same bytes
+//   9. a stage that rewrites a carried map file without setMap gets the new size in the manifest
+//  10. SIGINT during a stage exits 130, keeps the manifest and leaves no <out>/.tmp
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { readManifest, verifyManifestFiles } from '../lib/manifest.mjs'
@@ -115,6 +120,59 @@ const r6 = build('fixture build A --force', [...vpkArgs, ...fixture, '--out', a,
 assert.equal(r6.status, 0)
 assert.match(r6.stdout, /6 built, 0 unchanged/)
 assert.deepEqual(snapshot(a), before)
+
+// 7. failures after staging, before anything moves
+const variant = ['--set', 'fixtureMapVariant=2']
+for (const [name, extra] of [['a listed file never written', ['--set', 'fixtureMapUnwritten=true']], ['an absolute path in map stats', ['--set', 'fixtureMapBadStats=true']]]) {
+  const r = build(`fixture build A, maps stage: ${name}`, [...vpkArgs, ...fixture, '--out', a, '--stages', 'maps', ...variant, ...extra])
+  assert.equal(r.status, 1, r.stdout + r.stderr)
+  assert.match(r.stderr, /build failed during finishing/)
+  assert.match(r.stderr, /manifest\.json and the files it lists are unchanged/)
+  assert.deepEqual(snapshot(a), before, name)
+  assert.deepEqual(verifyManifestFiles(a, readManifest(a).manifest), [], name)
+  assert.equal(fs.existsSync(path.join(a, '.tmp')), false, `${name}: .tmp left`)
+}
+
+// 8. --force of one stage keeps the entries of the others
+const r8 = build('fixture build A --force --stages maps', [...vpkArgs, ...fixture, '--out', a, '--force', '--stages', 'maps'])
+assert.equal(r8.status, 0, r8.stderr)
+assert.doesNotMatch(r8.stdout, /not listed in the manifest/)
+assert.equal(Object.keys(readManifest(a).manifest.items).length, 6)
+assert.deepEqual(snapshot(a), before)
+
+// 9. a carried map entry whose file the stage rewrites without setMap
+const r9 = build('fixture build A, maps stage rewrites without setMap', [...vpkArgs, ...fixture, '--out', a, '--stages', 'maps', ...variant, '--set', 'fixtureMapNoSetMap=true'])
+assert.equal(r9.status, 0, r9.stderr)
+const m9 = readManifest(a)
+assert.deepEqual(m9.errors, [])
+assert.deepEqual(verifyManifestFiles(a, m9.manifest), [])
+const sizes9 = Object.values(m9.manifest.maps).map(e => e.sizes.propsStock)
+const sizesBefore = Object.values(readManifest(b).manifest.maps).map(e => e.sizes.propsStock)
+assert.notDeepEqual(sizes9, sizesBefore, 'sizes follow the rewritten files')
+assert.equal(Object.keys(m9.manifest.items).length, 6)
+
+// 10. SIGINT during the models stage
+{
+  const manifestBefore = sha256File(path.join(a, 'manifest.json'))
+  const child = spawn(process.execPath, [path.join(ASSETS, 'build-pack.mjs'), ...vpkArgs, ...fixture, '--out', a, '--force', '--stages', 'models'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let text = ''
+  const status = await new Promise(resolve => {
+    let sent = false
+    const onData = d => {
+      text += d
+      if (!sent && /stage models running/.test(text)) { sent = true; setTimeout(() => child.kill('SIGINT'), 300) }
+    }
+    child.stdout.on('data', onData)
+    child.stderr.on('data', onData)
+    child.on('exit', code => resolve(code))
+  })
+  results.push({ name: 'SIGINT during the models stage', status, tail: text.trim().split('\n').slice(-2) })
+  console.log(`${String(status).padStart(3)}           SIGINT during the models stage`)
+  assert.equal(status, 130, text)
+  assert.equal(sha256File(path.join(a, 'manifest.json')), manifestBefore)
+  assert.equal(fs.existsSync(path.join(a, '.tmp')), false, '.tmp left after SIGINT')
+  assert.equal(fs.existsSync(path.join(a, '.build.lock')), false, 'lock left after SIGINT')
+}
 
 if (opt('out')) fs.writeFileSync(opt('out'), `${JSON.stringify(results, null, 2)}\n`)
 if (!argv.includes('--keep')) fs.rmSync(absBase, { recursive: true, force: true })

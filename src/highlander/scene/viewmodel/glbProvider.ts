@@ -14,6 +14,10 @@
 // - Bone merge (13.3): every frame the weapon's `mergeBones` copy the transform of the arms bone of the same name.
 // - The muzzle is the weapon's `muzzle` attachment, else its root bone; ViewmodelLayer turns it into
 //   vmShared.live.muzzleWorld, where F3's own-muzzle tracers start.
+// - Extras (P-viewmodel): a minigun's `barrel` bone turns by the placeholder's tick-driven spin angle; the arms' rocket
+//   mesh (the soldier's reload rocket, one bodygroup with the arms, so no bodygroup switch hides it) draws only while a
+//   primary weapon is out; the spy's watch hand is viewmodel 1, the pack's `viewmodel:watch` model named by
+//   `vm1.model`, playing `vm1.seq` with vm1's own since and rate while vm1 is drawn.
 //
 // No number from a Valve model is in this file: positions, bones and sequences all come from the pack at runtime.
 
@@ -27,7 +31,7 @@ import { acquirePackModel, packTeamSkin, releasePackModel, type PackModelHandle,
 import { getAssetPackState } from '@pack/pack'
 
 import { computePose, MELEE_KINDS } from './animate'
-import { VM_GLOW_ORDER } from './kit'
+import { prepareViewmodelObject, VM_GLOW_ORDER } from './kit'
 import { registerViewmodelProvider, type ViewmodelInput, type ViewmodelInstance, type ViewmodelProvider } from './provider'
 import { flashTexture } from './textures'
 import { resolveKind } from './weapons'
@@ -41,6 +45,10 @@ export interface ArmsItem extends PackModelItem {
   sequences: VmSequence[]
   sequenceIndex?: Record<string, number>
   weapons?: Record<string, string>
+}
+export interface WatchItem extends PackModelItem {
+  role: 'viewmodel:watch'
+  sequences: VmSequence[]
 }
 interface WeaponItem extends PackModelItem {
   role: 'viewmodel:weapon'
@@ -115,6 +123,14 @@ export function glbViewmodelKeys(classId: number, weaponDef: number): VmKeys | n
   return { arms, weapon }
 }
 
+/** The pack key of a watch viewmodel (vm1.model), or null when the pack is off or lists no watch under it. */
+export function watchKeyOf(model: string | null | undefined): string | null {
+  if (!model || !packViewmodelsOn()) return null
+  const key = model.toLowerCase().replace(/\\/g, '/')
+  const item = itemOf<{ kind?: string; role?: string }>(key)
+  return item?.kind === 'model' && item.role === 'viewmodel:watch' ? key : null
+}
+
 // ─── model references ──────────────────────────────────────────────────────────
 
 interface Held { refs: number; handle: PackModelHandle | null; done: boolean; promise: Promise<PackModelHandle | null> }
@@ -174,6 +190,18 @@ export function requestViewmodelModels(keys: VmKeys, gl: WebGLRenderer, scene: S
     alive = false
     unhold(keys.arms)
     unhold(keys.weapon)
+  }
+}
+
+/** Loads watch models (the subject's vm1 models) ahead of the cloak; same contract as requestViewmodelModels. */
+export function requestWatchModels(keys: string[], gl: WebGLRenderer, scene: Scene, camera: Camera, onSettled: () => void): () => void {
+  let alive = true
+  Promise.all(keys.map(k => hold(k, gl, scene, camera))).then(() => {
+    if (alive) onSettled()
+  })
+  return () => {
+    alive = false
+    for (const k of keys) unhold(k)
   }
 }
 
@@ -264,10 +292,14 @@ export function chooseSequence(input: ViewmodelInput, armsKey: string, arms: Arm
   }
   const info = seq >= 0 ? arms.sequences[seq] : undefined
   if (!info?.clip) return { seq, name: info?.name ?? '', clip: null, time: 0, source, since }
+  return { seq, name: info.name, clip: info.clip, time: sequenceTime(info, input.tickF, since, interval, rate), source, since }
+}
+
+/** Seconds into a sequence at tickF: looping sequences wrap, the others hold their last frame. */
+function sequenceTime(info: VmSequence, tickF: number, since: number, interval: number, rate: number): number {
   const duration = Math.max(1, info.frames - 1) / (info.fps || 30)
-  let time = Math.max(0, (input.tickF - since) * interval * rate)
-  time = info.loop ? time % duration : Math.min(time, duration)
-  return { seq, name: info.name, clip: info.clip, time, source, since }
+  const time = Math.max(0, (tickF - since) * interval * rate)
+  return info.loop ? time % duration : Math.min(time, duration)
 }
 
 // ─── instance ──────────────────────────────────────────────────────────────────
@@ -276,6 +308,12 @@ export interface GlbInstance extends ViewmodelInstance {
   keys: VmKeys
   lastChoice: SeqChoice | null
   mergedBones: number
+  /** The drawn watch hand (vm1): its key and sequence name, or null. */
+  watch: { key: string; seq: number; name: string; time: number } | null
+  /** Minigun barrel angle in degrees, null without a barrel bone. */
+  barrelSpin: number | null
+  /** The arms' rocket mesh is drawn (null when the arms have none). */
+  rocketVisible: boolean | null
 }
 
 function lowerNameMap(root: THREE.Object3D): Map<string, THREE.Object3D> {
@@ -339,6 +377,55 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
 
 const _parentInv = new THREE.Matrix4()
 const _local = new THREE.Matrix4()
+const _spin = new THREE.Quaternion()
+const BARREL_AXIS = new THREE.Vector3(0, 0, 1) // the barrel bone's local axis along the barrels
+const DEG = Math.PI / 180
+/** The soldier arms' reload rocket (its material), drawn only with a primary weapon out. */
+const ROCKET_MATERIAL = /(^|\/)w_rocket01$/i
+
+function setLoopedClip(mixer: THREE.AnimationMixer, clip: THREE.AnimationClip, current: THREE.AnimationAction | null) {
+  current?.stop()
+  const action = mixer.clipAction(clip)
+  action.setLoop(THREE.LoopRepeat, Infinity)
+  action.play()
+  return action
+}
+
+interface WatchSub {
+  key: string
+  handle: PackModelHandle
+  root: THREE.Object3D
+  info: WatchItem
+  materials: THREE.Material[]
+  mixer: THREE.AnimationMixer
+  clips: Map<string, THREE.AnimationClip>
+  action: THREE.AnimationAction | null
+  actionClip: string | null
+}
+
+/** A watch hand for `key` when its model is loaded, holding its own reference; null otherwise. */
+function createWatch(key: string, team: number, parent: THREE.Object3D): WatchSub | null {
+  const handle = holdLoaded(key)
+  if (!handle) return null
+  const info = handle.info as WatchItem
+  const root = handle.instantiate(packTeamSkin(info, team))
+  root.name = 'vmWatch'
+  const materials = ownMaterials(root)
+  prepareViewmodelObject(root)
+  parent.add(root)
+  const mixer = new THREE.AnimationMixer(root)
+  return { key, handle, root, info, materials, mixer, clips: new Map(handle.clips.map(c => [c.name, c])), action: null, actionClip: null }
+}
+
+function disposeWatch(w: WatchSub) {
+  w.action?.stop()
+  w.mixer.stopAllAction()
+  w.mixer.uncacheRoot(w.root)
+  for (const m of w.materials) m.dispose()
+  w.root.removeFromParent()
+  w.handle.release(w.root)
+  unhold(w.key)
+}
 
 function createGlb(input: ViewmodelInput): ViewmodelInstance {
   const keys = glbViewmodelKeys(input.classId, input.weaponDef)
@@ -408,21 +495,37 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
   const kind = resolveKind(input.kind, input.weaponClass)
   const melee = MELEE_KINDS.has(kind)
 
+  // Minigun barrels: the weapon's own `barrel` bone (not a merge bone), turned about its axis from its rest
+  const barrel = kind === 'minigun' ? weaponNodes.get('barrel') ?? null : null
+  const barrelRest = barrel ? barrel.quaternion.clone() : null
+  // The arms' rocket mesh: only with a primary weapon out (melee and secondary clips leave its bone at the default)
+  const rockets: THREE.Object3D[] = []
+  arms.traverse(node => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    const ms = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    if (ms.some(m => ROCKET_MATERIAL.test(m.name))) rockets.push(mesh)
+  })
+  const rocketVisible = rockets.length ? itemInfo(input.weaponDef)?.slot === 'primary' : null
+  for (const r of rockets) r.visible = !!rocketVisible
+
+  let watch: WatchSub | null = null
+
   const instance: GlbInstance = {
     object,
     muzzle,
     keys,
     lastChoice: null,
     mergedBones: pairs.length,
+    watch: null,
+    barrelSpin: barrel ? 0 : null,
+    rocketVisible,
     update(next: ViewmodelInput) {
       const choice = chooseSequence(next, keys.arms, armsInfo)
       instance.lastChoice = choice
       const clip = choice.clip ? clipsByName.get(choice.clip) ?? null : null
       if (clip && actionClip !== clip.name) {
-        action?.stop()
-        action = mixer.clipAction(clip)
-        action.setLoop(THREE.LoopRepeat, Infinity)
-        action.play()
+        action = setLoopedClip(mixer, clip, action)
         actionClip = clip.name
       }
       if (action) mixer.setTime(Math.min(choice.time, Math.max(0, (clip?.duration ?? 0) - 1e-4)))
@@ -445,17 +548,45 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
       const pose = computePose(next, kind, { kick: [1, 1], melee, reloads: true })
       flash.visible = pose.muzzleFlash && !melee
       if (flash.visible) flashMaterial.rotation = (Math.floor(next.tickF) * 0.7) % (Math.PI * 2)
+      if (barrel && barrelRest) {
+        barrel.quaternion.copy(barrelRest).multiply(_spin.setFromAxisAngle(BARREL_AXIS, pose.spin * DEG))
+        instance.barrelSpin = Math.round(pose.spin * 100) / 100
+      }
+
+      // Watch hand (viewmodel 1): the pack model vm1 names, while vm1 is drawn
+      const vm1 = next.vm1
+      const watchKey = vm1 && !vm1.nodraw ? watchKeyOf(vm1.model) : null
+      if (watch && watchKey && watch.key !== watchKey) {
+        disposeWatch(watch)
+        watch = null
+      }
+      if (!watch && watchKey) watch = createWatch(watchKey, team, eye)
+      const wInfo = watch && watchKey && vm1 ? watch.info.sequences[vm1.seq] : undefined
+      const wClip = wInfo?.clip ? watch!.clips.get(wInfo.clip) ?? null : null
+      if (watch) watch.root.visible = !!wClip
+      if (watch && wClip && wInfo && vm1) {
+        if (watch.actionClip !== wClip.name) {
+          watch.action = setLoopedClip(watch.mixer, wClip, watch.action)
+          watch.actionClip = wClip.name
+        }
+        const rate = Number.isFinite(vm1.rate) && vm1.rate > 0 ? vm1.rate : 1
+        const time = sequenceTime(wInfo, next.tickF, vm1.since, next.interval || 0.015, rate)
+        watch.mixer.setTime(Math.min(time, Math.max(0, wClip.duration - 1e-4)))
+        instance.watch = { key: watch.key, seq: vm1.seq, name: wInfo.name, time: Math.round(time * 1000) / 1000 }
+      } else instance.watch = null
 
       // Cloak fade: the spy's own viewmodel fades with his invisibility
       // (only from a visible cloak: tiny invisibility values must not start blending the viewmodel)
       const invis = next.invis ?? 0
       const opacity = invis > 0.02 ? 1 - 0.85 * invis : 1
-      for (const m of materials) {
+      for (const m of watch ? [...materials, ...watch.materials] : materials) {
         m.opacity = opacity
         if (m.userData.vmOpaque) m.blending = opacity < 1 ? THREE.NormalBlending : THREE.NoBlending
       }
     },
     dispose() {
+      if (watch) disposeWatch(watch)
+      watch = null
       action?.stop()
       mixer.stopAllAction()
       mixer.uncacheRoot(arms)

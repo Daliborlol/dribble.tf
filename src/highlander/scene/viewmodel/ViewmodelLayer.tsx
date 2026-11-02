@@ -34,7 +34,7 @@ import { computePose, MELEE_KINDS } from './animate'
 import { resolveKind } from './weapons'
 import { vmShared, type VmLive } from './shared'
 import './placeholderProvider'
-import { chooseSequence, GLB_PROVIDER_ID, glbModelsReady, glbViewmodelKeys, heldViewmodelModels, packPoseExcluded, requestViewmodelModels, type GlbInstance } from './glbProvider'
+import { chooseSequence, GLB_PROVIDER_ID, glbModelsReady, glbViewmodelKeys, heldViewmodelModels, packPoseExcluded, requestViewmodelModels, requestWatchModels, watchKeyOf, type GlbInstance } from './glbProvider'
 
 /** Instances kept per layer (spy quick-switch: three weapons plus the disguise kit). */
 const INSTANCE_CACHE_SIZE = 6
@@ -95,6 +95,25 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glbArms, glbWeapon, gl, scene])
   const glb = glbModelsReady(glbKeys)
+
+  // Watch hands (vm1): every watch model the subject's vm1 track names, loaded with the pair so the first cloak
+  // already finds its model
+  const watchList = useMemo(() => {
+    if (!glbArms || !extras || !subject || subject.p < 0) return ''
+    const t = extras.players.vm1
+    const keys = new Set<string>()
+    const lo = t.offsets[subject.p] ?? 0, hi = t.offsets[subject.p + 1] ?? 0
+    for (let i = lo; i < hi; i++) {
+      const key = watchKeyOf(extras.strings.models[t.model[i]])
+      if (key) keys.add(key)
+    }
+    return Array.from(keys).sort().join('|')
+  }, [glbArms, extras, subject?.p, packOn])
+  useEffect(() => {
+    if (!watchList) return
+    return requestWatchModels(watchList.split('|'), gl, scene, defaultCamera, () => setPackVersion(v => v + 1))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchList, gl, scene])
 
   const key = weapon && state?.team ? `${state.classId}:${weapon.def}:${state.team}:${weapon.cls}:${glb ? 'g' : 'p'}` : ''
 
@@ -294,6 +313,9 @@ function packRows(input: ReturnType<typeof buildViewmodelInput>, live: VmLive | 
       vm0: input.vm0 ? { model: input.vm0.model, seq: input.vm0.seq, since: input.vm0.since, rate: input.vm0.rate, nodraw: input.vm0.nodraw } : null,
       sequence: choice ? { seq: choice.seq, name: choice.name, clip: choice.clip, time: Math.round(choice.time * 1000) / 1000, source: choice.source, since: choice.since } : null,
       mergedBones: glbLive?.mergedBones ?? null,
+      watch: glbLive?.watch ?? null,
+      barrelSpin: glbLive?.barrelSpin ?? null,
+      rocketVisible: glbLive?.rocketVisible ?? null,
       held: heldViewmodelModels(),
     },
   }

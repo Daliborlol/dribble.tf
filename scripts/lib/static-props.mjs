@@ -44,6 +44,17 @@
  *
  * Materials carry extras.dribble = { kind, lightmap: false } like world.glb, so the runtime applies the
  * same shared bsp-to-glb material rules (src/highlander/map/bspMaterials.ts).
+ *
+ * Stock props (asset contract 9 "M3-props", task M3-props). With `stockSource` (the A0-pack VPK set of
+ * scripts/assets/lib/vpk.mjs) a model, material or texture missing from the PAK is read from the user's
+ * own VPKs; the PAK wins. `stockOnly` then writes the stock instances alone (props-stock.glb of the local
+ * asset pack, never public/): every prop_static whose model is not in the PAK, plus unnamed, unparented,
+ * non-animated prop_dynamic entities with stock models (the PAK rule). Their light is the same VRAD
+ * per-vertex lighting from the PAK's sp[_hdr]_<prop>.vhv, so they look exactly like the PAK props. In
+ * stock mode VMTs follow asset contract 2.6 through scripts/assets/lib/vmt.mjs (last key wins, DX9
+ * conditionals, patches, alpha-test reference 0.5), and models whose winding agreement is below
+ * WINDING_MIN_AGREEMENT are left out and listed in stats.excludedModels. Without `stockSource` nothing of
+ * this runs and props.glb is byte-identical to the M2 output.
  */
 
 import fs from 'node:fs'
@@ -54,6 +65,8 @@ import { NodeIO, Document, Logger } from '@gltf-transform/core'
 import { ALL_EXTENSIONS, EXTMeshGPUInstancing, KHRMaterialsUnlit } from '@gltf-transform/extensions'
 import { meshopt, quantize, prune } from '@gltf-transform/functions'
 import { MeshoptEncoder } from 'meshoptimizer'
+
+import * as vmtRules from '../assets/lib/vmt.mjs'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -134,6 +147,31 @@ export function indexPak(pakDir) {
     index.set(normalizePath(path.relative(pakDir, file)), file)
   }
   return index
+}
+
+/**
+ * The PAK index with the VPKs behind it (stock mode): get(key) returns the PAK file, else the VPK file
+ * extracted once under `dir`; has(key) is true for either. Keys are lower case archive paths.
+ */
+function stockFiles(pakIndex, source, dir) {
+  const extracted = new Map()
+  const get = key => {
+    const inPak = pakIndex.get(key)
+    if (inPak) return inPak
+    if (extracted.has(key)) return extracted.get(key)
+    let file
+    if (!key.split('/').some(seg => seg === '..' || seg === '') && source.has(key)) {
+      const data = source.read(key)
+      if (data) {
+        file = path.join(dir, key)
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, data)
+      }
+    }
+    extracted.set(key, file)
+    return file
+  }
+  return { get, has: key => pakIndex.has(key) || source.has(key) }
 }
 
 // ─── binary formats ──────────────────────────────────────────────────────────
@@ -289,6 +327,7 @@ const parseVmtColor = value => {
   return parts.slice(0, 3).map(v => (braces ? v / 255 : v))
 }
 const truthy = value => value !== undefined && value !== '0' && String(value).toLowerCase() !== 'false'
+const truthyM2 = truthy
 
 // ─── geometry helpers ────────────────────────────────────────────────────────
 
@@ -508,12 +547,25 @@ function neutralMaterialInfo(name) {
   return { name: String(name).toLowerCase(), vmt: null, shader: null, source: 'neutral', albedo, kind: 'opaque', alpha: 1, unlit: false, skip: null, doubleSided: false }
 }
 
-function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
+function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) {
   const vmtCache = new Map()
   const textureCache = new Map()
   let decodeOrdinal = 0
+  // Stock mode reads VMTs with the asset contract 2.6 rules (scripts/assets/lib/vmt.mjs), PAK first.
+  const truthy = stock ? vmtRules.vmtTruthy : truthyM2
+  const defaultAlphaRef = stock ? vmtRules.DEFAULT_ALPHA_TEST_REFERENCE : DEFAULT_ALPHA_REF
+  const vmtReaders = stock
+    ? [{ read: key => (stock.pakIndex.get(key) ? fs.readFileSync(stock.pakIndex.get(key)) : null) }, stock.source]
+    : null
 
   const readVmt = (key, depth = 0) => {
+    if (stock) {
+      if (vmtCache.has(key)) return vmtCache.get(key)
+      const m = vmtRules.readMaterialFile(vmtReaders, key)
+      const result = m ? { shader: String(m.shader ?? '').toLowerCase(), params: m.params, file: key } : null
+      vmtCache.set(key, result)
+      return result
+    }
     if (vmtCache.has(key)) return vmtCache.get(key)
     let result = null
     const file = pak.get(key)
@@ -555,9 +607,11 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
   const textureColor = key => {
     if (textureCache.has(key)) return textureCache.get(key)
     let color = null
-    const file = pak.get(key)
+    // Stock mode reads a VPK texture's header only; the file is extracted when it must be decoded.
+    const header = stock && !stock.pakIndex.has(key) && stock.source.has(key) ? stock.source.readHead(key, 64) : null
+    const file = header ? key : pak.get(key)
     if (file) {
-      color = vtfReflectivity(fs.readFileSync(file))
+      color = vtfReflectivity(header ?? fs.readFileSync(file))
       if (!color && vtfToPng) {
         const png = decodeTexture(key)
         if (png) color = { png }
@@ -661,7 +715,7 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn }) {
       // the PAK: dense cutouts draw opaque, blends use the mean alpha.
       const alphaTest = truthy(p.$alphatest)
       if (alphaTest || truthy(p.$translucent)) {
-        const ref = Number(p.$alphatestreference) > 0 ? Number(p.$alphatestreference) : DEFAULT_ALPHA_REF
+        const ref = Number(p.$alphatestreference) > 0 ? Number(p.$alphatestreference) : defaultAlphaRef
         const stats = await alphaStats(texture, ref)
         if (stats) {
           info.coverage = round(stats.coverage, 3)
@@ -721,7 +775,11 @@ export async function convertStaticProps(o) {
     log(`  props: ${message}`)
   }
   fs.mkdirSync(o.workDir, { recursive: true })
-  const pak = indexPak(o.pakDir)
+  const pakIndex = indexPak(o.pakDir)
+  const stockMode = Boolean(o.stockSource)
+  // In stock mode a file missing from the PAK comes from the VPKs, extracted once into the work dir
+  // (bsp-to-glb and vtf-to-png read files on disk). Without a stock source `pak` is the PAK index itself.
+  const pak = stockMode ? stockFiles(pakIndex, o.stockSource, path.join(o.workDir, 'stock')) : pakIndex
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS)
   await MeshoptEncoder.ready
   io.registerDependencies({ 'meshopt.encoder': MeshoptEncoder })
@@ -735,12 +793,33 @@ export async function convertStaticProps(o) {
   // 1. Split the static prop lump into PAK and stock instances.
   const statics = o.props.staticProps ?? []
   const counts = { pak: 0, dynamic: 0, stock: 0, stockSolid: 0, skybox: 0, unconvertible: 0, dynamicSkipped: {} }
+  if (stockMode) Object.assign(counts, { pakModel: 0, missing: 0, skyboxStatic: 0 })
   const byModel = new Map()
   const addInstance = (files, prop) => {
     if (!byModel.has(files.key)) byModel.set(files.key, { modelPath: prop.modelPath, files, instances: [] })
     byModel.get(files.key).instances.push(prop)
   }
   for (const prop of statics) {
+    if (stockMode) {
+      // Stock mode: PAK models belong to props.glb; `pak` here also resolves VPK files.
+      const inPak = modelFiles(pakIndex, prop.modelPath)
+      if (inPak) {
+        counts.pakModel++
+        continue
+      }
+      const files = modelFiles(pak, prop.modelPath)
+      if (!files) {
+        counts.missing++
+        continue
+      }
+      if (inSkybox(prop.sourceOrigin)) {
+        counts.skybox++
+        counts.skyboxStatic++
+        continue
+      }
+      addInstance(files, { ...prop, id: `sp:${prop.staticPropIndex}`, order: prop.staticPropIndex, dynamic: false, scale: 1, stock: true })
+      continue
+    }
     const files = modelFiles(pak, prop.modelPath)
     if (!files) {
       counts.stock++
@@ -763,6 +842,7 @@ export async function convertStaticProps(o) {
   }
   for (const entity of o.props.dynamicProps ?? []) {
     if (!/^prop_dynamic(_override)?$/i.test(entity.classname ?? '')) continue
+    if (stockMode && modelFiles(pakIndex, entity.modelPath)) continue // a PAK model: props.glb's
     const files = modelFiles(pak, entity.modelPath)
     if (!files) continue
     const kv = {}
@@ -839,6 +919,18 @@ export async function convertStaticProps(o) {
   //     drawn triangles (each model times its instances): a systematic inversion drives it towards 0,
   //     while a few models authored with inverted normals (eruption's war-room table and lamp, whose
   //     faces point outwards by ray parity) only lower it slightly and are reported per model.
+  // Stock mode: a model below WINDING_MIN_AGREEMENT (inside-out or two-sided cards authored with
+  // flipped normals) is left out and listed; the pass-level gate below still applies to the rest.
+  const excludedModels = []
+  if (stockMode) {
+    for (let i = models.length - 1; i >= 0; i--) {
+      const model = models[i]
+      if (!model.winding.counted || model.winding.agree / model.winding.counted >= WINDING_MIN_AGREEMENT) continue
+      excludedModels.push({ model: model.modelPath, agree: round(model.winding.agree / model.winding.counted, 3), triangles: model.winding.counted, instances: model.instances.length, staticInstances: model.instances.filter(prop => !prop.dynamic).length })
+      models.splice(i, 1)
+    }
+    excludedModels.sort((a, b) => a.model.localeCompare(b.model))
+  }
   const winding = { agree: 0, counted: 0, drawnAgree: 0, drawnCounted: 0 }
   for (const model of models) {
     winding.agree += model.winding.agree
@@ -940,7 +1032,7 @@ export async function convertStaticProps(o) {
     const n = Math.hypot(d[0], d[1], d[2])
     return n > 0 ? [-d[0] / n, -d[1] / n, -d[2] / n] : null // light_environment direction is the way light travels
   })()
-  const resolveMaterial = createMaterialResolver({ pak, vtfToPng: o.vtfToPng, workDir: o.workDir, warn })
+  const resolveMaterial = createMaterialResolver({ pak, vtfToPng: o.vtfToPng, workDir: o.workDir, warn, stock: stockMode ? { pakIndex, source: o.stockSource } : null })
   const materialStats = new Map()
   const stats = { models: 0, clusters: 0, patternSplits: 0, bakeDemand: null, nodes: 0, instancedNodes: 0, bakedInstances: 0, primitives: 0, vertices: 0, triangles: 0, renderedTriangles: 0, skippedPrimitives: 0, materials: { pak: 0, neutral: 0 }, worstSharedError: 0 }
   const materialFor = async (model, skin, prim) => {
@@ -1149,12 +1241,28 @@ export async function convertStaticProps(o) {
   //    lighting in one merged batch, the largest errors on the largest models first, while the vertex
   //    budget lasts.
   let bakeBudget = bakeBudgetTotal
+  // Stock mode: a cluster with one lit instance would be its own node and draw call. Its vertices are
+  // stored once either way, so it joins the merged exact-VHV batch without using the bake budget
+  // (vigil: about 360 fewer draw calls).
+  let singletonsBaked = 0
+  if (stockMode) {
+    for (const group of groups) {
+      if (vertexCost(group) === 0) continue
+      for (const cluster of group.clusters) {
+        const [entry] = cluster.members
+        if (cluster.members.length !== 1 || !entry.prop.light) continue
+        entry.baked = true
+        vhvStats.baked++
+        singletonsBaked++
+      }
+    }
+  }
   const candidates = []
   for (const group of groups) {
     const cost = vertexCost(group)
     for (const cluster of group.clusters) {
       for (const entry of cluster.members) {
-        if (entry.error > BAKE_ERROR && cost > 0) candidates.push({ entry, cost, priority: entry.error * entry.radius })
+        if (entry.error > BAKE_ERROR && cost > 0 && !entry.baked) candidates.push({ entry, cost, priority: entry.error * entry.radius })
       }
     }
   }
@@ -1387,14 +1495,16 @@ export async function convertStaticProps(o) {
   counts.dynamic = [...rendered.values()].filter(Boolean).length
 
   root.setExtras({
-    dribble: {
-      kind: 'staticPropsRoot',
-      schema: 1,
-      pak: counts.pak,
-      dynamic: counts.dynamic,
-      models: stats.models,
-      lighting: { set: vhvStats.set, exposure, floor },
-    },
+    dribble: stockMode
+      ? { kind: 'staticPropsRoot', schema: 1, source: 'stock', stock: counts.pak, dynamic: counts.dynamic, models: stats.models, lighting: { set: vhvStats.set, exposure, floor } }
+      : {
+          kind: 'staticPropsRoot',
+          schema: 1,
+          pak: counts.pak,
+          dynamic: counts.dynamic,
+          models: stats.models,
+          lighting: { set: vhvStats.set, exposure, floor },
+        },
   })
 
   fs.mkdirSync(path.dirname(o.outPath), { recursive: true })
@@ -1415,6 +1525,47 @@ export async function convertStaticProps(o) {
   }
 
   const neutralMaterials = [...materialStats.values()].filter(info => !info.skip && info.source !== 'pak').map(info => info.name)
+  if (stockMode) {
+    // counts.pak counted the rendered static instances, which are all stock here.
+    return {
+      props: { stock: counts.pak, ...(counts.dynamic ? { dynamic: counts.dynamic } : {}) },
+      file: any ? path.basename(o.outPath) : null,
+      stats: {
+        ms: Math.round(performance.now() - started),
+        bytes: any ? fs.statSync(o.outPath).size : 0,
+        instances: counts.pak + counts.dynamic,
+        staticInstances: counts.pak,
+        dynamicInstances: counts.dynamic,
+        pakInstances: counts.pakModel,
+        missing: counts.missing,
+        skybox: counts.skybox,
+        skyboxStatic: counts.skyboxStatic,
+        dynamicSkipped: counts.dynamicSkipped,
+        unconvertible: counts.unconvertible,
+        excludedModels,
+        models: stats.models,
+        clusters: stats.clusters,
+        patternSplits: stats.patternSplits,
+        bakeDemand: stats.bakeDemand,
+        nodes: stats.nodes,
+        instancedNodes: stats.instancedNodes,
+        bakedInstances: stats.bakedInstances,
+        singletonsBaked,
+        primitives: stats.primitives,
+        vertices: stats.vertices,
+        triangles: stats.triangles,
+        renderedTriangles: stats.renderedTriangles,
+        skippedPrimitives: stats.skippedPrimitives,
+        winding: { agree: round(windingShare, 4), drawnTriangles: winding.drawnCounted, modelAgree: round(winding.counted ? winding.agree / winding.counted : 1, 4), modelTriangles: winding.counted, ...(windingLow.length ? { low: windingLow } : {}) },
+        lighting: { ...vhvStats, exposure, floor, worstSharedError: round(stats.worstSharedError, 3) },
+        materials: {
+          ...stats.materials,
+          neutralNames: neutralMaterials,
+        },
+        warnings,
+      },
+    }
+  }
   return {
     props: { pak: counts.pak, stock: counts.stock, stockSolid: counts.stockSolid, ...(counts.dynamic ? { dynamic: counts.dynamic } : {}) },
     file: any ? path.basename(o.outPath) : null,

@@ -29,7 +29,8 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
-import { StaticProps } from '@highlander/map/StaticProps'
+import { StaticProps, useStockProps } from '@highlander/map/StaticProps'
+import { isAssetPackSettled, resolveAssetPack } from '@pack/pack'
 
 const INVISIBLE_TOOL_MATERIALS = new Set([
   'toolsnodraw',
@@ -181,6 +182,11 @@ export const World = (props: WorldProps) => {
 
     let pipeline: MapPipeline | undefined
     const load = async () => {
+      // Asset contract 3.5: the pack resolves before conversion.json; a settled pack adds no await.
+      if (!isAssetPackSettled()) {
+        await resolveAssetPack()
+        if (isStale()) return
+      }
       const conversion = await fetchMapConversion(map)
       if (isStale()) return
       pipeline = conversion?.pipeline === 'bsp-to-glb' ? 'bsp-to-glb' : 'textured'
@@ -469,6 +475,11 @@ export const World = (props: WorldProps) => {
   // never pairs the new map name with the previous map's file list.
   const propsFile = loadedMap?.pipeline === 'bsp-to-glb' ? loadedMap.conversion?.files?.props : undefined
   const propsUrl = loadedMap && propsFile ? getMapFileUrl(loadedMap.folder, propsFile) : undefined
+  // Stock props of a local asset pack (asset contract 9 "M3-props"), beside props.glb.
+  const stockProps = useStockProps(
+    loadedMap?.pipeline === 'bsp-to-glb' ? loadedMap.folder : undefined,
+    loadedMap?.conversion ?? null
+  )
 
   return (
     // Account for valve maps using different axis system
@@ -476,6 +487,15 @@ export const World = (props: WorldProps) => {
       {mapModel ? <primitive object={mapModel} /> : null}
       {mapOverlay ? <primitive object={mapOverlay} /> : null}
       {propsUrl ? <StaticProps url={propsUrl} mode={mode ?? 'textured'} /> : null}
+      {stockProps ? (
+        <StaticProps
+          key={stockProps.key}
+          source="stock"
+          url={stockProps.url}
+          itemKey={stockProps.key}
+          mode={mode ?? 'textured'}
+        />
+      ) : null}
     </group>
   )
 }

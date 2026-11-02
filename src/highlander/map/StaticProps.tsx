@@ -13,6 +13,15 @@
 // wireframe mode drops the instance light so the shared wireframe material is not tinted.
 // Setting map.staticProps shows or hides them; the file loads the first time they are shown.
 // Probe: window.__dribble.hl.probe('map.props')
+//
+// Stock props (asset contract 9 "M3-props"): a local asset pack may list maps/<folder>/props-stock.glb,
+// the stock prop_static models of the map converted from the user's own VPKs by the same code path
+// (scripts/assets/maps/stage.mjs). World mounts a second StaticProps with source 'stock' for it while
+// useStockProps() returns it: the pack is ready, assets.enabled and assets.stockProps are on, and the
+// pack's map entry matches the public conversion.json (contract 3.5). Both copies follow the same material
+// rules, map.brightness, the render mode and map.staticProps. The stock file loads through the pack item
+// registry (loadPackItem, one warning and the fallback, which is nothing, on failure) and the dynamic
+// GLTFLoader of src/assetpack, so a page without a pack runs none of that code.
 
 import React, { useEffect, useRef, useState } from 'react'
 
@@ -21,6 +30,12 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
 import { useInstance } from '@zus/store'
+import type { MapConversion } from '@utils/mapAssets'
+import { publicMapIdentity } from '@utils/mapAssets'
+import { useAssetSetting } from '@pack/hooks'
+import { assetPackFile, useAssetPack } from '@pack/pack'
+import { loadPackItem, releaseAssetItem, skipAssetItem, getAssetItem } from '@pack/items'
+import { loadPackGltf } from '@pack/loaders'
 import { registerHlProbe } from '@highlander/debug'
 import { useHlSetting } from '@highlander/extras/hooks'
 import {
@@ -30,16 +45,21 @@ import {
   isSharedMapMaterial,
 } from '@highlander/map/bspMaterials'
 
+export type StaticPropsSource = 'pak' | 'stock'
+
 export interface StaticPropsProps {
-  /** props.glb of the map folder (conversion.json files.props), undefined when the map has none. */
+  /** props.glb of the map folder (conversion.json files.props), or the pack's props-stock.glb; undefined when none. */
   url: string | undefined
   mode: MapRenderMode
+  /** 'pak' (default): public props.glb. 'stock': the asset pack's props-stock.glb, loaded as pack item `itemKey`. */
+  source?: StaticPropsSource
+  /** Pack item key of a stock file (its pack path, maps/<folder>/props-stock.glb). */
+  itemKey?: string
 }
 
 type PropsState = 'off' | 'loading' | 'ready' | 'error'
 
-/** What the component shows right now, for the probe (one World, so one entry). */
-const current: {
+interface PropsCurrent {
   url: string | undefined
   state: PropsState
   error: string | null
@@ -48,9 +68,41 @@ const current: {
   /** The material rules actually applied: untextured shows the props with their textured material. */
   materialMode: MapRenderMode | null
   brightness: number | null
-} = { url: undefined, state: 'off', error: null, root: null, mode: null, materialMode: null, brightness: null }
+}
 
-export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
+const emptyCurrent = (): PropsCurrent => ({
+  url: undefined,
+  state: 'off',
+  error: null,
+  root: null,
+  mode: null,
+  materialMode: null,
+  brightness: null,
+})
+
+/** What each copy shows right now, for the probes (one World, so one entry per source). */
+const currents: Record<StaticPropsSource, PropsCurrent> = { pak: emptyCurrent(), stock: emptyCurrent() }
+
+/** Loads one props file: public props.glb directly, a stock file through the pack item registry. */
+function loadPropsFile(source: StaticPropsSource, url: string, itemKey: string | undefined): Promise<THREE.Group> {
+  if (source === 'stock') {
+    if (!itemKey) return Promise.reject(new Error('stock props need a pack item key'))
+    return loadPackItem(itemKey, loadPackGltf).then(gltf => {
+      // null: failed before or now (the registry warned once), or skipped. Nothing draws.
+      if (!gltf) throw new PackItemUnavailable(getAssetItem(itemKey)?.error ?? 'unavailable')
+      return gltf.scene
+    })
+  }
+  return new GLTFLoader()
+    .setMeshoptDecoder(MeshoptDecoder)
+    .loadAsync(url)
+    .then(gltf => gltf.scene)
+}
+
+class PackItemUnavailable extends Error {}
+
+export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: StaticPropsProps) => {
+  const current = currents[source]
   const enabled = useHlSetting<boolean>('map.staticProps') ?? true
   const brightness = useHlSetting<number>('map.brightness') ?? 1
   const [loaded, setLoaded] = useState<{ url: string; root: THREE.Group } | null>(null)
@@ -77,22 +129,23 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
     const request = ++requestRef.current
     current.state = 'loading'
     current.error = null
-    new GLTFLoader()
-      .setMeshoptDecoder(MeshoptDecoder)
-      .loadAsync(url)
-      .then(gltf => {
+    loadPropsFile(source, url, itemKey)
+      .then(root => {
         if (request !== requestRef.current) {
-          disposeProps(gltf.scene)
+          disposeProps(root)
+          if (source === 'stock' && itemKey) releaseAssetItem(itemKey)
           return
         }
-        freeze(gltf.scene)
-        setLoaded({ url, root: gltf.scene })
+        freeze(root)
+        setLoaded({ url, root })
       })
       .catch(error => {
         if (request !== requestRef.current) return
         current.state = 'error'
         current.error = error instanceof Error ? error.message : String(error)
-        console.warn(`Static props unavailable: ${url}`, error)
+        // A pack item already logged its one warning (asset contract 3.6).
+        if (!(error instanceof PackItemUnavailable) && source !== 'stock')
+          console.warn(`Static props unavailable: ${url}`, error)
       })
     return () => {
       if (requestRef.current === request) requestRef.current += 1
@@ -106,12 +159,14 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
     current.state = 'ready'
     return () => {
       disposeProps(loaded.root)
+      // A stock file whose copy is gone goes back to idle; the next mount loads it again.
+      if (source === 'stock' && itemKey) releaseAssetItem(itemKey)
       if (current.root === loaded.root) {
         current.root = null
         current.state = 'off'
       }
     }
-  }, [loaded])
+  }, [loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The world.glb material rules. Baked light needs no scene lights: untextured keeps the unlit
   // textured material, wireframe uses the shared wireframe material without the instance light.
@@ -131,10 +186,10 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
       if (materialsRef.current === materials) materialsRef.current = null
       materials.dispose()
     }
-  }, [loaded, materialMode])
+  }, [loaded, materialMode]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     current.mode = mode
-  }, [mode])
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // map.brightness: the vertex colours already hold the baked light, so the colour scales them.
   useEffect(() => {
@@ -144,7 +199,7 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
       if (material instanceof THREE.MeshBasicMaterial) material.color.setScalar(brightness)
     })
     current.brightness = brightness
-  }, [loaded, materialMode, brightness])
+  }, [loaded, materialMode, brightness]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hidden props must also stop catching the world raycasts (RTS centre, stickers), which check each
   // hit object's own `visible` flag, so the meshes are toggled with the root.
@@ -166,7 +221,7 @@ export const StaticProps = React.memo(({ url, mode }: StaticPropsProps) => {
       current.materialMode = null
       current.brightness = null
     },
-    []
+    [] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   return loaded && loaded.url === url ? <primitive object={loaded.root} /> : null
@@ -254,22 +309,21 @@ function keepRow<T extends { lighting: string }>(rows: Map<string, T>, id: strin
  * Instances of the loaded props.glb whose node name or model path contains `filter` (all without one):
  * static prop index, Source origin and scene position (Source - parsedDemo.world.boundaryMin).
  */
-registerHlProbe('map.propInstances', (filter?: string) => {
+type PropInstanceRow = {
+  node: string
+  model: string
+  staticProp: number
+  entity: number
+  source: number[]
+  scene: number[]
+  lighting: string
+}
+
+function propInstanceRows(root: THREE.Object3D | null, filter?: string): PropInstanceRow[] {
   const origin = useInstance.getState().parsedDemo?.world?.boundaryMin ?? { x: 0, y: 0, z: 0 }
   const needle = filter ? String(filter).toLowerCase() : null
-  const rows = new Map<
-    string,
-    {
-      node: string
-      model: string
-      staticProp: number
-      entity: number
-      source: number[]
-      scene: number[]
-      lighting: string
-    }
-  >()
-  current.root?.traverse(node => {
+  const rows = new Map<string, PropInstanceRow>()
+  root?.traverse(node => {
     const info = node.userData?.dribble
     if (info?.kind !== 'staticProps') return
     ;(info.origins ?? []).forEach((source: number[], i: number) => {
@@ -286,12 +340,33 @@ registerHlProbe('map.propInstances', (filter?: string) => {
       })
     })
   })
-  return [...rows.values()].sort(
-    (a, b) => a.staticProp - b.staticProp || a.entity - b.entity || a.node.localeCompare(b.node)
-  )
+  return [...rows.values()]
+}
+
+type InstanceOrder = { staticProp: number; entity: number; node: string }
+const byInstance = (a: InstanceOrder, b: InstanceOrder) =>
+  a.staticProp - b.staticProp || a.entity - b.entity || a.node.localeCompare(b.node)
+
+/**
+ * Instances of the loaded props.glb whose node name or model path contains `filter` (all without one):
+ * static prop index, Source origin and scene position (Source - parsedDemo.world.boundaryMin). While stock
+ * props are drawn their rows join, marked source: 'stock' with the Source origin as `origin`; PAK rows keep
+ * today's shape.
+ */
+registerHlProbe('map.propInstances', (filter?: string) => {
+  const pak = propInstanceRows(currents.pak.root, filter)
+  if (!currents.stock.root) return pak.sort(byInstance)
+  // `source` of a PAK row is its Source origin; a stock row is marked source: 'stock' (asset contract 9)
+  // and carries its Source origin as `origin`.
+  const stock = propInstanceRows(currents.stock.root, filter).map(({ source, ...row }) => ({
+    ...row,
+    origin: source,
+    source: 'stock' as const,
+  }))
+  return [...pak, ...stock].sort(byInstance)
 })
 
-registerHlProbe('map.props', () => {
+function summarizeProps(current: PropsCurrent) {
   const root = current.root
   let nodes = 0
   let instancedMeshes = 0
@@ -343,6 +418,7 @@ registerHlProbe('map.props', () => {
     lighting[kind] = (lighting[kind] ?? 0) + 1
   })
   return {
+    rootInfo,
     url: current.url ?? null,
     state: current.state,
     error: current.error,
@@ -364,4 +440,74 @@ registerHlProbe('map.props', () => {
     colorScale: [...colorScale],
     models,
   }
+}
+
+/**
+ * The loaded props.glb (today's fields, unchanged without a pack). While stock props are drawn, `stock`
+ * holds the same summary of props-stock.glb, its model rows marked source: 'stock'.
+ */
+registerHlProbe('map.props', () => {
+  const { rootInfo: _pakRoot, ...pak } = summarizeProps(currents.pak)
+  if (!currents.stock.root) return pak
+  const { rootInfo, pak: _none, models, ...stock } = summarizeProps(currents.stock)
+  return {
+    ...pak,
+    stock: {
+      ...stock,
+      source: 'stock' as const,
+      stock: rootInfo?.stock ?? null,
+      models: models.map(model => ({ ...model, source: 'stock' as const })),
+    },
+  }
 })
+
+// ─── stock props from the asset pack (asset contract 3.5 and 9 "M3-props") ─────────────────────────
+
+/** Folders whose pack entry did not match the public files this page (one warning each). */
+const staleFolders = new Set<string>()
+
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>
+    return `{${Object.keys(object)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonical(object[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+/**
+ * The pack's props-stock.glb for a loaded bsp-to-glb map folder, or null: no pack, pack not ready,
+ * assets.enabled (or ?assets=off) or assets.stockProps off, no entry or file for the folder, or an entry
+ * built from another BSP (mapName or publicProps differ from the public conversion.json). A stale entry
+ * logs one warning per page and its files are marked skipped, so they are never requested.
+ */
+export function useStockProps(
+  folder: string | undefined,
+  conversion: MapConversion | null
+): { url: string; key: string } | null {
+  const pack = useAssetPack()
+  const enabled = useAssetSetting('enabled')
+  const stockProps = useAssetSetting('stockProps')
+  const entry = folder && pack.status === 'ready' ? pack.manifest?.maps?.[folder] : undefined
+  const identity = entry ? publicMapIdentity(conversion) : null
+  const stale =
+    !!entry &&
+    (!identity ||
+      entry.mapName !== identity.mapName ||
+      canonical(entry.publicProps ?? null) !== canonical(identity.props))
+
+  useEffect(() => {
+    if (!stale || !folder || !entry || staleFolders.has(folder)) return
+    staleFolders.add(folder)
+    console.warn(`[assets] maps/${folder} was built from another BSP; using public files`)
+    for (const file of Object.values(entry.files ?? {})) skipAssetItem(file, 'stale map entry')
+  }, [stale, folder, entry])
+
+  if (!folder || !entry || stale || !enabled || !stockProps) return null
+  const file = entry.files?.propsStock
+  const url = file ? assetPackFile(file) : null
+  return file && url ? { url, key: file } : null
+}

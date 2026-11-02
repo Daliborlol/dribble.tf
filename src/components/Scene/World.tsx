@@ -203,8 +203,10 @@ export const World = (props: WorldProps) => {
       if (isStale()) return
       pipeline = conversion?.pipeline === 'bsp-to-glb' ? 'bsp-to-glb' : 'textured'
 
-      // Textured world from the asset pack (contract 12.5); any failure falls back to the public files.
-      const packFiles = pipeline === 'bsp-to-glb' ? packWorldFiles(folder, conversion, mode) : null
+      // Textured world from the asset pack (contract 12.5); any failure falls back to the public files. A folder
+      // whose public files are an older textured GLB (koth_product_final) loads a pack world as well when its
+      // entry lists one: the pack world is a bsp-to-glb world from the same BSP (as/product).
+      const packFiles = packWorldFiles(folder, conversion, mode)
       if (packFiles) {
         const packed = await loadPackWorld(packFiles, folder, conversion, {
           gl,
@@ -521,9 +523,10 @@ export const World = (props: WorldProps) => {
     loadedMap?.conversion ?? null
   )
 
-  // Textured PAK props of the pack (M3-props2) replace props.glb while assets.mapTextures is on.
+  // Textured PAK props of the pack (M3-props2) replace props.glb while assets.mapTextures is on. A pack world
+  // over an older textured folder (no public props.glb) draws them too.
   const pakProps = usePackPakProps(
-    loadedMap?.pipeline === 'bsp-to-glb' && propsUrl ? loadedMap.folder : undefined,
+    loadedMap?.pipeline === 'bsp-to-glb' && (propsUrl || loadedMap.pack) ? loadedMap.folder : undefined,
     loadedMap?.conversion ?? null
   )
   // A props-pak.glb that failed or was skipped falls back to public props.glb (per-item fallback, asset contract 3.6).

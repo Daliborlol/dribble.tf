@@ -27,7 +27,10 @@ import { GENERATOR_VERSION } from './version.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CHECKOUT = path.resolve(HERE, '..', '..')
 export const STAGE_ORDER = ['maps', 'models', 'viewmodels']
-export const EXCLUDED_MAPS = ['koth_product_final'] // contract 1.1 D5
+// Folders whose public files keep an older textured GLB (no bsp-to-glb conversion.json) but whose pack entry
+// carries a bsp-to-glb world, lightmap and props from the same BSP (as/product; replaces contract 1.1 D5's
+// exclusion). Without a pack, or with an entry the runtime rejects, they load their public GLB as before.
+export const PACK_WORLD_ONLY_MAPS = ['koth_product_final']
 const MARKER = '.dribble-asset-pack'
 const LOCK = '.build.lock'
 const DEFAULT_OUT = path.join(os.homedir(), 'tf2-pack')
@@ -41,8 +44,8 @@ const USAGE = `usage: build-pack.mjs --tf2 <tf dir | dir with tf/ and hl2/> [--h
   --out       pack directory (default ${DEFAULT_OUT}); refused inside a git work tree or under /tmp
   --stages    stages to run, in the fixed order ${STAGE_ORDER.join(', ')} (default all present ones)
   --only      the same as --stages
-  --maps      map folders for the maps stage (default all: the bsp-to-glb folders under public/models/maps);
-              koth_product_final is refused
+  --maps      map folders for the maps stage (default all: the bsp-to-glb folders under public/models/maps
+              plus ${PACK_WORLD_ONLY_MAPS.join(', ')})
   --bsp-dir   folder with the map BSPs (default the Steam install)
   --tmp       scratch dir (default <out>/.tmp); never /tmp
   --force     rebuild every item, ignoring the previous manifest
@@ -85,6 +88,16 @@ function parseArgs(argv) {
   return o
 }
 
+/**
+ * The map folders of the maps stage: the bsp-to-glb folders of this checkout (public/models/maps/<f>/conversion.json
+ * pipeline bsp-to-glb) plus the PACK_WORLD_ONLY_MAPS folders that have a public conversion.json, sorted.
+ */
+export function packMapFolders(checkout = CHECKOUT) {
+  const root = path.join(checkout, 'public', 'models', 'maps')
+  const extra = PACK_WORLD_ONLY_MAPS.filter(name => fs.existsSync(path.join(root, name, 'conversion.json')))
+  return [...new Set([...bspToGlbFolders(checkout), ...extra])].sort()
+}
+
 /** The bsp-to-glb map folders of this checkout: public/models/maps/<f>/conversion.json pipeline bsp-to-glb. */
 export function bspToGlbFolders(checkout = CHECKOUT) {
   const root = path.join(checkout, 'public', 'models', 'maps')
@@ -99,11 +112,14 @@ export function bspToGlbFolders(checkout = CHECKOUT) {
   return out
 }
 
-/** `mapName` and the `props` object of a folder's public conversion.json (what manifest map entries copy). */
+/** `mapName` and the `props` object of a folder's public conversion.json (what manifest map entries copy), and `worldOnly`. */
 export function publicMapInfo(folder, checkout = CHECKOUT) {
   const file = path.join(checkout, 'public', 'models', 'maps', folder, 'conversion.json')
   const c = JSON.parse(fs.readFileSync(file, 'utf8'))
-  return { mapName: c.mapName ?? null, props: c.props ?? null, pipeline: c.pipeline ?? null, conversion: c }
+  const pipeline = c.pipeline ?? null
+  // worldOnly: a PACK_WORLD_ONLY_MAPS folder whose public files are an older textured GLB.
+  const worldOnly = PACK_WORLD_ONLY_MAPS.includes(folder) && pipeline !== 'bsp-to-glb'
+  return { mapName: c.mapName ?? null, props: c.props ?? null, pipeline, conversion: c, worldOnly }
 }
 
 function resolveStages(o) {
@@ -116,12 +132,11 @@ function resolveStages(o) {
 }
 
 function resolveMaps(o) {
-  const all = bspToGlbFolders()
+  const all = packMapFolders()
   if (o.maps === undefined || o.maps === 'all') return all
   const names = o.maps.split(',').map(s => s.trim()).filter(Boolean)
   for (const n of names) {
-    if (EXCLUDED_MAPS.includes(n)) throw new UsageError(`${n} is excluded from map packs (contract 1.1 D5): it keeps its upstream textured_compressed.glb`)
-    if (!all.includes(n)) throw new UsageError(`--maps ${n}: not a bsp-to-glb folder under public/models/maps (folders: ${all.join(', ')})`)
+    if (!all.includes(n)) throw new UsageError(`--maps ${n}: not a map folder of the maps stage (folders: ${all.join(', ')})`)
   }
   return [...new Set(names)].sort()
 }

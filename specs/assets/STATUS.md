@@ -1,6 +1,6 @@
 # TF2 asset phase: status
 
-State on 2026-11-02, after wave 1. `assets` sits on `highlander` `a06e4c7` and holds the asset contract (`contract.md`, v1.3; section 11 records the accepted deviations), the four foundation tasks, M3-props and these docs. `highlander` has not moved. Nothing is pushed, and every commit is unsigned because gpg signing fails here (`specs/highlander/STATUS.md` has the commands to re-sign). `AGENTS.md` "Asset pack" has the operational notes: build command, serving, settings, probes and budgets.
+State on 2026-11-02, after wave 2. `assets` sits on `highlander` `a06e4c7` and holds the asset contract (`contract.md`, v2.0; section 11 records the accepted deviations, section 12 the wave-2 rules), the four foundation tasks, M3-props, the six wave-2 tasks and these docs. The wave-1 text below is kept as it was; "Wave 2" says what changed since. `highlander` has not moved. Nothing is pushed, and every commit is unsigned because gpg signing fails here (`specs/highlander/STATUS.md` has the commands to re-sign). `AGENTS.md` "Asset pack" has the operational notes: build command, serving, settings, probes and budgets.
 
 ## Overview
 
@@ -168,7 +168,33 @@ Not done:
 - Experiment packs that can go: `/home/dalibor/tf2-pack-review`, and also `/home/dalibor/tf2-pack-runtime` and `/home/dalibor/tf2-pack-a0-harness` (fake bytes and a test symlink, no Valve data) once nobody needs them for re-runs.
 - Patch 0003 is not in the main bsp-to-glb checkout. That is a user decision before phase 3.
 
-## Next phases (contract section 10; each gets its own contract version first)
+## Wave 2
+
+With a pack, the ten bsp-to-glb maps now draw textured world geometry and textured stock and PAK props, and Highlander draws TF2 models for buildings, most extras projectiles, kits, ammo, drops, lockers and the cart. Viewmodels are still placeholders. Without a pack nothing changed: after every merge the no-pack 1438891 baseline against REF `a06e4c7` exited 0, with the largest pixel change 0.64 % from the heal beam. The pack at `/home/dalibor/tf2-pack` is now about 705 MB: 10 maps and 2455 items (2403 textures, 52 models), built from `4ddb7a8` in 302 s.
+
+| task | branch and tip | merged in | state |
+|---|---|---|---|
+| W-pack models stage and loader | `as/w-pack` `7d91a91` | `6f1959a`, follow-up `367a434` | done |
+| M3-world textured maps | `as/m3-world` `e6917b5` | `b266aba` | done |
+| W-buildings | `as/w-buildings` `3a6e20f` | `9c8fa49` | done |
+| W-projectiles | `as/w-projectiles` `27f2f18` | `dc6e420` | done |
+| W-items (map items and cart) | `as/w-items` `cead117` | `e220883` | done |
+| M3-props2 textured props and far LODs | `as/m3-props2` `7172ac5` | `4ddb7a8` | done, two budgets over |
+| DOCS2 | `as/docs2` | this merge | done |
+
+- **W-pack**: the `models` stage exports 52 world models with attachments, sequences, pose ranges, skins and bodygroups; `@pack/models` holds reference-counted entries with one compiled template per skin. The integrator's follow-up requires the sRGB S3TC extension for DDS. Gaps: skin templates are built for every skin, not lazily; `useRetainPackModels` in W-buildings works around a release-during-compile race in `models.ts`, which is still unfixed.
+- **M3-world**: VMT and VTF resolution through upstream bsp-to-glb mounts (no new patch), DDS sidecars with a WebP fallback, the WorldVertexTransition blend and the `Textured maps` setting. 37 to 77 MB of texture GPU memory per map. Gaps: two texture-export modules remain (`scripts/assets/lib/texture-export.mjs` and `scripts/assets/models/texture-export.mjs`); the duplicate `<key>@webp` manifest items are not recorded in contract 12.3; chunk-grid-1 draw calls were measured on vigil and tetsudo only; no runtime check compares `bspSha256`; D21 N2 and N3 were not rerun on the merged tip.
+- **W-buildings**: sentries, dispensers, teleporters, sappers and blueprints from the pack with team skins, tick-derived build, upgrade and aim poses, and `sentryMuzzleAt` from the muzzle attachment. Gaps: pack sentries look very dark; no GPU-memory reload check after the merge.
+- **W-projectiles**: flares, arrows, bolts, jars, cleavers, stun balls, ornaments, cannonballs and syringes as instanced pack meshes. Gaps: gas, energy rings and balls, fireballs and orbs keep placeholders; instanced variants are not warmed up; the integration run on 1434434 did not confirm pack projectiles (W-projectiles' own runs did).
+- **W-items**: kits, plates, ammo, drops and lockers per model as `InstancedMesh`es, the cart from its prop's model; probe `mapdyn.pack`. Gaps: `instantiate()` runs inside `useMemo` during render; a kit spot's model comes from its first instance; lockers have no team skin.
+- **M3-props2**: textured `props-stock.glb` and new `props-pak.glb` with UVs, skins, the alpha rule and a far LOD per model; `propLod.ts` switches LODs and applies sprp fades in POV and spectator views. Gaps: close RTS on divulgence draws 924 calls against 600, and `props-stock.glb` is 13 to 20 MB against 12 MB; nobody checked the instance-colour fix in the browser by switching from wireframe back to textured.
+- **DOCS2**: `AGENTS.md` "Asset pack" gains textured maps, textured props and LODs, models, buildings, map items and the cart, the wave-2 settings and probes (70, or 73 with a ready pack); stale lines in "Known visual limits", "Known Highlander limits" and the Highlander overview are updated.
+
+Experiment packs that can go once their reviews are closed: `/home/dalibor/tf2-pack-as-world`, `/home/dalibor/tf2-pack-as-props2`, and the wave-1 ones listed under "Open follow-ups".
+
+**Next: phase 4, viewmodels.** A `ViewmodelProvider` at priority 10 that reads pack viewmodels (the `viewmodels` stage and the reserved `assets.viewmodels` setting). The instance cache must take the model's ready state into its key, and old demos without local tables keep the placeholder. Still unscheduled: M3-blend texture scroll, M3-overlays and `map.skybox3d`, third-person weapon models, KTX2 hosting, light styles, other maps.
+
+## Next phases as planned after wave 1 (contract section 10; phases 2 and 3 are done, see "Wave 2")
 
 - **Phase 2, textured maps.**
   - M3-world: VMT and VTF resolution in bsp-to-glb, every VTF through one Node path to DDS sidecars (DXT rewrapped, mips kept) with a WebP fallback, and `bspSha256` in the public and pack `conversion.json`.

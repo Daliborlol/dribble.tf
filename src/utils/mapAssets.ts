@@ -107,3 +107,18 @@ export function getMapModelUrl(map: string, conv: MapConversion | null): string 
   if (conv?.pipeline === 'bsp-to-glb') return getMapFileUrl(map, conv.files?.model ?? 'world.glb')
   return getMapFileUrl(map, 'textured_compressed.glb')
 }
+
+/**
+ * mapName and props of a public conversion.json, which an asset pack map entry must match before its files are
+ * used (asset contract 3.5). Null without a conversion.
+ */
+export function publicMapIdentity(
+  conv: MapConversion | null
+): { mapName: string | null; props: Record<string, unknown> | null } | null {
+  if (!conv) return null
+  const raw = conv as MapConversion & { mapName?: unknown }
+  return {
+    mapName: typeof raw.mapName === 'string' ? raw.mapName : null,
+    props: conv.props && typeof conv.props === 'object' ? (conv.props as unknown as Record<string, unknown>) : null,
+  }
+}

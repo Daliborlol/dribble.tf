@@ -37,6 +37,15 @@
  *
  *   --props false skips the static-prop pass (no props.glb, no props fields in conversion.json).
  *
+ *   Textured worlds (asset contract 10 and 12.5, used by the asset pack's maps stage, never for public/):
+ *   --material-mount-plan <mounts.json> lets bsp-to-glb resolve VMTs and VTFs from the game VPKs (no texture
+ *   is decoded there), and --texture-uvs true keeps each material's texture UVs: one primitive per (kind,
+ *   lightmap, texture), TEXCOORD_1 = texture UV on lit primitives (TEXCOORD_0 stays the lightmap UV) and
+ *   TEXCOORD_0 on unlit ones, WorldVertexTransition blends as _BLEND (0..1), and material extras
+ *   dribble.texture = { key, uv, alpha, cutoff, flatAlpha, blend? }. Vertex colours stay the flat albedo, so
+ *   a texture that fails to load draws as before. textures.json lists every key with its VTF lookup.
+ *   --texture-pak-prefix (default pak/<map>/) prefixes keys of textures that come from the BSP PAK.
+ *
  *   PAK skies: when public/models/skybox/<skyname>/ already exists with different pixels (another map
  *   ships or uses the same sky name), it is left alone and this map's faces go to <skyname>_<map>/;
  *   point MAP_SKYBOX_MAP at that folder. --overwrite-sky true replaces the shared folder instead.
@@ -87,6 +96,9 @@ const keepTemp = bool('keep-temp', 'false')
 const onlyMeta = bool('only-meta', 'false')
 const overwriteSky = bool('overwrite-sky', 'false')
 const withProps = bool('props', 'true')
+const materialMountPlan = flag('material-mount-plan') ? path.resolve(flag('material-mount-plan')) : null
+const textureUvs = bool('texture-uvs', 'false')
+const texturePakPrefix = flag('texture-pak-prefix', `pak/${mapName.toLowerCase()}/`)
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
 // Every output is written into stageDir first and moved into outDir (and the skybox folder) only after
 // the last step that can fail, conversion.json last (see commitOutputs). A failure therefore leaves the
@@ -255,6 +267,7 @@ const exportRun = run(
     '--visibility-out', rawVisibilityPath,
     '--material-manifest', path.join(tempDir, 'materials.json'),
     '--props-out', path.join(tempDir, 'props.json'), // static prop lump for the props pass (M2)
+    ...(materialMountPlan ? ['--material-mount-plan', materialMountPlan] : []),
   ],
   'render export'
 )
@@ -269,6 +282,47 @@ await MeshoptEncoder.ready
 io.registerDependencies({ 'meshopt.encoder': MeshoptEncoder })
 const raw = await io.read(rawGlbPath)
 const rawRoot = raw.getRoot()
+
+// ─── texture keys (--texture-uvs) ────────────────────────────────────────────
+
+const textureKeys = new Map() // key -> { lookup, source, alpha, cutoff, materials: Set }
+const materialManifest = textureUvs ? JSON.parse(fs.readFileSync(path.join(tempDir, 'materials.json'), 'utf8')).materials : []
+const textureKeyOf = texture => {
+  const prov = texture?.provenance
+  if (!prov || (prov.kind !== 'pak' && prov.kind !== 'external') || typeof prov.path !== 'string') return null
+  const lookup = prov.path.toLowerCase()
+  const name = lookup.replace(/^materials\//, '').replace(/\.vtf$/, '')
+  return { key: prov.kind === 'pak' ? `${texturePakPrefix}${name}` : name, lookup, source: prov.kind === 'pak' ? 'pak' : 'vpk' }
+}
+const textureInfoCache = new Map()
+/** The texture record of a raw material (null: no texture, water, tool or unresolved). */
+const textureInfoFor = (material, kind) => {
+  if (!textureUvs || kind === 'water' || kind === 'visualizer') return null
+  const index = material.getExtras()?.sourceMaterialManifestIndex
+  if (textureInfoCache.has(index)) return textureInfoCache.get(index)
+  const entry = materialManifest[index]
+  const inputs = entry?.metadata?.shader?.inputs ?? {}
+  const features = entry?.metadata?.features ?? {}
+  const role = r => textureKeyOf((entry?.textures ?? []).find(t => t.role === r))
+  const base = role('baseTexture')
+  let info = null
+  if (base) {
+    const alpha = features.alphaTest ? 'test' : features.translucent ? 'blend' : 'opaque'
+    const cutoffValue = Number(Object.entries(inputs).find(([k]) => k.toLowerCase() === '$alphatestreference')?.[1])
+    const cutoff = alpha === 'test' ? (Number.isFinite(cutoffValue) && cutoffValue > 0 ? cutoffValue : 0.5) : 0
+    const family = entry?.metadata?.shader?.family
+    const base2 = family === 'worldVertexTransition' ? role('baseTexture2') : null
+    for (const t of [base, base2]) {
+      if (!t) continue
+      const known = textureKeys.get(t.key) ?? { lookup: t.lookup, source: t.source, alpha, cutoff, materials: new Set() }
+      known.materials.add(material.getName())
+      textureKeys.set(t.key, known)
+    }
+    info = { key: base.key, key2: base2?.key ?? null, alpha, cutoff }
+  }
+  textureInfoCache.set(index, info)
+  return info
+}
 
 // Brush entities that never render (or only ship tool faces); their data goes to map-meta.
 const HIDDEN_BRUSH_CLASSES = /^trigger_|^func_(areaportal|areaportalwindow|occluder|precipitation|dustmotes|dustcloud|smokevolume|nobuild|regenerate|respawnroom|capturezone|ladder|clip_vphysics|viscluster|nogrenades|nav_\w+|flagdetectionzone|upgradestation|suggested_build|passtime\w*|croc|powerupvolume|bomb_target|vehicleclip|fish_pool|proprrespawnzone|tfbot_hint)$|^dispenser_touch_trigger$/i
@@ -326,10 +380,10 @@ const getGroup = (name, init) => {
   if (!groups.has(name)) groups.set(name, { name, buckets: new Map(), faces: [], ...init })
   return groups.get(name)
 }
-const getBucket = (group, kind, lit) => {
-  const key = `${kind}:${lit ? 'lit' : 'unlit'}`
+const getBucket = (group, kind, lit, tex = null, flatAlpha = 1) => {
+  const key = `${kind}:${lit ? 'lit' : 'unlit'}${tex ? `:${tex.key}:${tex.key2 ?? ''}:${flatAlpha}` : ''}`
   if (!group.buckets.has(key)) {
-    group.buckets.set(key, { kind, lit, positions: [], normals: [], uvs: [], colors: [], indices: [], vertexCount: 0 })
+    group.buckets.set(key, { kind, lit, tex, flatAlpha, positions: [], normals: [], uvs: [], tuvs: [], blend: [], colors: [], indices: [], vertexCount: 0 })
   }
   return group.buckets.get(key)
 }
@@ -381,6 +435,9 @@ for (const node of rawRoot.listNodes()) {
     const pos = prim.getAttribute('POSITION').getArray()
     const nrm = prim.getAttribute('NORMAL').getArray()
     const uv1 = lit ? prim.getAttribute('TEXCOORD_1').getArray() : null
+    const tex = visualizer ? null : textureInfoFor(material, kind)
+    const uv0 = tex ? prim.getAttribute('TEXCOORD_0')?.getArray() ?? null : null
+    const dispAlpha = tex?.key2 ? prim.getAttribute('_DISPLACEMENT_ALPHA')?.getArray() ?? null : null
     const counts = pe.bspFaceVertexCounts
     const faceIndices = pe.bspFaceIndices
     const starts = []
@@ -432,7 +489,7 @@ for (const node of rawRoot.listNodes()) {
         group = getGroup(node.getName(), { kind: 'brushEntity', node, extras })
       }
       const bake = toSkybox && !isWorld
-      const bucket = getBucket(group, kind, lit)
+      const bucket = getBucket(group, kind, lit, uv0 ? tex : null, alpha)
       const base = bucket.vertexCount
       for (let v = v0; v < v0 + vn; v++) {
         if (bake) {
@@ -443,6 +500,8 @@ for (const node of rawRoot.listNodes()) {
           bucket.normals.push(nrm[v * 3], nrm[v * 3 + 1], nrm[v * 3 + 2])
         }
         if (lit) bucket.uvs.push(uv1[v * 2], uv1[v * 2 + 1])
+        if (bucket.tex) bucket.tuvs.push(uv0[v * 2], uv0[v * 2 + 1])
+        if (bucket.tex?.key2) bucket.blend.push(dispAlpha ? Math.min(1, Math.max(0, dispAlpha[v] / 255)) : 0)
         bucket.colors.push(albedo[0], albedo[1], albedo[2], alpha)
       }
       bucket.vertexCount += vn
@@ -461,14 +520,17 @@ const buffer = doc.createBuffer()
 const unlitExt = doc.createExtension(KHRMaterialsUnlit)
 const scene = doc.createScene('map')
 const materialCache = new Map()
-const getMaterial = (kind, lit) => {
-  const key = `${kind}:${lit}`
+const getMaterial = (kind, lit, tex = null, flatAlpha = 1) => {
+  const key = `${kind}:${lit}${tex ? `:${tex.key}:${tex.key2 ?? ''}:${flatAlpha}` : ''}`
   if (materialCache.has(key)) return materialCache.get(key)
-  const material = doc.createMaterial(`dribble_${kind}${lit ? '_lit' : ''}`)
+  const texture = tex
+    ? { key: tex.key, uv: lit ? 1 : 0, alpha: tex.alpha, cutoff: tex.cutoff, flatAlpha, ...(tex.key2 ? { blend: { key: tex.key2, attribute: '_blend' } } : {}) }
+    : null
+  const material = doc.createMaterial(`dribble_${kind}${lit ? '_lit' : ''}${tex ? `:${tex.key}${tex.key2 ? `+${tex.key2}` : ''}` : ''}`)
     .setBaseColorFactor([1, 1, 1, 1])
     .setMetallicFactor(0)
     .setRoughnessFactor(1)
-    .setExtras({ dribble: { kind, lightmap: lit } })
+    .setExtras({ dribble: { kind, lightmap: lit, ...(texture ? { texture } : {}) } })
   if (kind !== 'opaque' && kind !== 'unlit') material.setAlphaMode('BLEND')
   if (kind === 'visualizer') material.setDoubleSided(true).setExtras({ dribble: { kind, lightmap: false, hiddenByDefault: true } })
   if (kind === 'water') material.setDoubleSided(true)
@@ -506,9 +568,11 @@ const buildMesh = (name, group) => {
       .setAttribute('NORMAL', accessor(Float32Array.from(bucket.normals), 'VEC3'))
       .setAttribute('COLOR_0', accessor(colors, translucent ? 'VEC4' : 'VEC3'))
       .setIndices(accessor(Uint32Array.from(bucket.indices), 'SCALAR'))
-      .setMaterial(getMaterial(bucket.kind, bucket.lit))
-    // Lightmap UVs become TEXCOORD_0 (no texture UVs are kept); lightMap.channel = 0 at runtime.
+      .setMaterial(getMaterial(bucket.kind, bucket.lit, bucket.tex, bucket.flatAlpha))
+    // Lightmap UVs become TEXCOORD_0; lightMap.channel = 0 at runtime. Texture UVs (--texture-uvs) follow.
     if (bucket.lit) prim.setAttribute('TEXCOORD_0', accessor(Float32Array.from(bucket.uvs), 'VEC2'))
+    if (bucket.tex) prim.setAttribute(bucket.lit ? 'TEXCOORD_1' : 'TEXCOORD_0', accessor(Float32Array.from(bucket.tuvs), 'VEC2'))
+    if (bucket.tex?.key2) prim.setAttribute('_BLEND', accessor(Float32Array.from(bucket.blend), 'SCALAR'))
     mesh.addPrimitive(prim)
   }
   return mesh.listPrimitives().length ? mesh : null
@@ -1047,11 +1111,16 @@ const conversion = {
   materials: Object.fromEntries([...materialStats].sort((a, b) => b[1].triangles - a[1].triangles).map(([name, s]) => [name, { kind: s.kind, triangles: s.triangles, albedo: s.albedo.map(v => +v.toFixed(4)) }])),
   success: true,
 }
+if (textureUvs) {
+  conversion.textures = { count: textureKeys.size, file: 'textures.json' }
+  const list = Object.fromEntries([...textureKeys].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, t]) => [key, { lookup: t.lookup, source: t.source, alpha: t.alpha, cutoff: t.cutoff, materials: [...t.materials].sort() }]))
+  fs.writeFileSync(path.join(stageDir, 'textures.json'), JSON.stringify(list, null, 1))
+}
 fs.writeFileSync(path.join(stageDir, 'conversion.json'), JSON.stringify(conversion, null, 1))
 
 // Every step succeeded: move the package into place, conversion.json last.
 commitOutputs(
-  ['world.glb', ...(lightmapInfo ? [lightmapInfo.file] : []), 'visibility.json', ...(propsResult?.file ? [propsResult.file] : []), 'map-meta.json', 'conversion.json'],
+  ['world.glb', ...(textureUvs ? ['textures.json'] : []), ...(lightmapInfo ? [lightmapInfo.file] : []), 'visibility.json', ...(propsResult?.file ? [propsResult.file] : []), 'map-meta.json', 'conversion.json'],
   withProps && !propsResult?.file ? ['props.glb'] : []
 )
 

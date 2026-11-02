@@ -74,7 +74,8 @@ function isListed(manifest: AssetPackManifest, path: string): boolean {
   for (const entry of Object.values(manifest.maps ?? {})) {
     for (const file of Object.values(entry?.files ?? {})) if (file === path) return true
   }
-  for (const item of Object.values(manifest.items ?? {})) if (item?.file === path) return true
+  for (const item of Object.values(manifest.items ?? {}))
+    if (item?.file === path || (item as { webp?: unknown } | undefined)?.webp === path) return true
   return false
 }
 

@@ -21,7 +21,7 @@ import { mdlPoseParams } from './mdl.mjs'
 import { exportVtf } from './texture-export.mjs'
 
 const TEXTURE_EXPORT_VERSION = 1
-const MODEL_EXPORT_VERSION = 2 // 2: rest pose from the default sequence
+const MODEL_EXPORT_VERSION = 3 // 2: rest pose from the default sequence; 3: triangle winding reversed
 const round = v => Math.round(v * 1e5) / 1e5
 
 /** A `read(path)` source over a folder of extracted PAK files. */

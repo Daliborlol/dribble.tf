@@ -1241,19 +1241,23 @@ export async function convertStaticProps(o) {
   //    lighting in one merged batch, the largest errors on the largest models first, while the vertex
   //    budget lasts.
   let bakeBudget = bakeBudgetTotal
-  // Stock mode: a cluster with one lit instance would be its own node and draw call. Its vertices are
-  // stored once either way, so it joins the merged exact-VHV batch without using the bake budget
-  // (vigil: about 360 fewer draw calls).
+  // Stock mode: a cluster of one or two lit instances would be its own node and draw call. A single
+  // instance's vertices are stored once either way, and a pair costs one extra copy, so both join the
+  // merged exact-VHV batch without using the bake budget (vigil: about 480 fewer draw calls, downfall:
+  // about 160; files grow by 0.1 to 1.3 MB).
   let singletonsBaked = 0
+  let pairsBaked = 0
   if (stockMode) {
     for (const group of groups) {
       if (vertexCost(group) === 0) continue
       for (const cluster of group.clusters) {
-        const [entry] = cluster.members
-        if (cluster.members.length !== 1 || !entry.prop.light) continue
-        entry.baked = true
-        vhvStats.baked++
-        singletonsBaked++
+        if (cluster.members.length > 2 || !cluster.members.every(entry => entry.prop.light)) continue
+        for (const entry of cluster.members) {
+          entry.baked = true
+          vhvStats.baked++
+        }
+        if (cluster.members.length === 1) singletonsBaked++
+        else pairsBaked++
       }
     }
   }
@@ -1551,6 +1555,7 @@ export async function convertStaticProps(o) {
         instancedNodes: stats.instancedNodes,
         bakedInstances: stats.bakedInstances,
         singletonsBaked,
+        pairsBaked,
         primitives: stats.primitives,
         vertices: stats.vertices,
         triangles: stats.triangles,

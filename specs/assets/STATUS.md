@@ -162,7 +162,7 @@ Not done:
 
 ## Open follow-ups
 
-- Contract 2.6 still says VMT patches apply "replace then insert". The code applies insert (add or overwrite), then replace (existing keys only), with nested blocks merged on the raw tree before conditions, as Source and bsp-to-glb do. The orchestrator should amend 2.6. `scripts/assets/README.md` also still says contract 2.3 lists `ms` and that an amendment was requested; 11.3 item 7 has settled that, and A0-pack owns that line.
+- Contract 2.6 now states the patch order the code uses (insert, then replace; fixed in contract v2.0). `scripts/assets/README.md` also still says contract 2.3 lists `ms` and that an amendment was requested; 11.3 item 7 has settled that, and A0-pack owns that line.
 - The orchestrator should confirm contract 11.3, which the integrator wrote.
 - The three A0-pack minors listed above.
 - Experiment packs that can go: `/home/dalibor/tf2-pack-review`, and also `/home/dalibor/tf2-pack-runtime` and `/home/dalibor/tf2-pack-a0-harness` (fake bytes and a test symlink, no Valve data) once nobody needs them for re-runs.

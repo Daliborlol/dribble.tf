@@ -1,6 +1,6 @@
 # Asset-phase contract
 
-Version 1.3, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
+Version 2.0, 2026-11-02 (section 12 adds wave 2). Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
 every asset-phase task after C0. It extends `specs/highlander/contract.md`. Where the two disagree on game assets,
 this file wins; everything else in the Highlander contract and in `AGENTS.md` still holds (build, tsc, harness, lock,
 `/tmp` quota, GPU disposal, D12 determinism, the memory rule of Highlander contract 12.3, the settings reducer).
@@ -175,8 +175,10 @@ directories and reports the result.
 - Keys are case-insensitive. Inside one block the last occurrence of a key wins.
 - Conditional blocks follow the PC DirectX 9 path: `>=dx90`, `>dx90_20b`, `srgb?` and `GPU>=` apply, `<dx90`,
   `360?` and `ps3?` do not. A key in an applying block overrides the same key outside it.
-- `patch` shaders take `include` and apply `replace` then `insert`. bsp-to-glb already resolves PAK patches; the Node
-  reader must handle VPK ones the same way.
+- `patch` shaders take `include`, then apply `insert` (add or overwrite) and then `replace` (keys that exist only).
+  Nested blocks merge on the raw tree before conditions are evaluated. In a patch of a patch the outer patch applies
+  last and wins. This is Source's order, which bsp-to-glb and `scripts/assets/lib/vmt.mjs` both follow (v2.0 fixed
+  the earlier "replace then insert" wording).
 - No `$basetexture`: the material draws NEUTRAL (`#8a8a8a`), as `static-props.mjs` does today.
 - Alpha is opacity only with `$alphatest` (cutoff `$alphatestreference`, default 0.5) or `$translucent`. Otherwise
   base alpha is a phong, tint or blend mask and is ignored (the survey found 8,653 `$phong` and 3,996
@@ -753,3 +755,138 @@ Recorded by the integrator when `as/m3-props` (`30a6f80`) was merged; the implem
 9. Textures grow by 2 per map reload with and without the pack, outside M3-props' files (pre-existing).
 10. A forced `scene.map` switch to a map other than the demo's own loads empty world and props roots, already on
     `a06e4c7`. It matters only to probes and test plans; measure on the demo's own map.
+
+---
+
+## 12. Wave 2 (v2.0)
+
+Wave 2 starts phase 2 (M3-world, M3-props2) and phase 3 (W-pack, W-buildings, W-projectiles, W-items). It replaces
+the phase 2 and 3 outlines of section 10 where they differ: M3-blend folds into M3-world as an option, M3-proptex
+and M3-lod become M3-props2, and W-mapitems and W-cart become W-items. Sections 1 to 8 still bind. Viewmodels,
+overlays and the 3D skybox stay later.
+
+### 12.1 Order and tracks
+
+- Map track: M3-world, then M3-props2 (both edit World, `bspMaterials.ts` and the maps stage, so never at once).
+- Model track: W-pack, then W-buildings, W-projectiles and W-items in parallel. The two tracks run in parallel.
+- Integrators merge one branch at a time into `assets`. A task based on an older `assets` rebases before merge.
+- bsp-to-glb patches: M3-world ships `0004-*.patch`, M3-props2 `0005-*.patch` and W-pack `0006-*.patch` when they
+  need one. Each patch applies with `git am` on top of every lower number that exists, from a worktree branched off
+  `as/exporter`; the integrator rebases a patch whose lower neighbour merged after it was cut.
+
+### 12.2 File ownership
+
+A task edits only its rows. Rows name new files where a shared one would otherwise be touched.
+
+| task | owns |
+|---|---|
+| M3-world | patch 0004; `scripts/convert-bsp.mjs`; `scripts/assets/maps/**`; new `scripts/assets/lib/texture-export.mjs` (VTF to DDS/WebP, 2.5); `src/components/Scene/World.tsx`; `src/highlander/map/bspMaterials.ts`; `src/assetpack/{types.ts, pack.ts, probes.ts, AssetSettingsSection.tsx}`; new `src/assetpack/textures.ts` (12.3) |
+| M3-props2 | after M3-world: patch 0005; `scripts/lib/static-props.mjs`; `scripts/assets/maps/**`; `src/highlander/map/StaticProps.tsx`; `src/highlander/map/probes.ts` |
+| W-pack | patch 0006; `scripts/assets/lib/model-export.mjs`; new `scripts/assets/models/**`; `src/assetpack/loaders.ts`; new `src/assetpack/models.ts` (12.4) |
+| W-buildings | `src/highlander/buildings/**`; `src/highlander/scene/layers/BuildingsLayer.tsx` |
+| W-projectiles | `src/highlander/combat/**`; `src/highlander/scene/layers/ProjectilesExtraLayer.tsx` |
+| W-items | `src/highlander/mapdyn/**`; `src/highlander/objectives/**` (only `probes.ts` and new cart files); `src/highlander/scene/layers/{MapDynamicsLayer.tsx, ObjectivesLayer.tsx}` (in `ObjectivesLayer.tsx` only `CartObject` and its helpers) |
+
+- Nobody in wave 2 edits `src/assetpack/{items.ts, hooks.ts, settings.ts, config.ts, index.ts}`, the store,
+  `SettingsPanel.tsx`, `main.tsx`, `HighlanderScene.tsx` or `scripts/assets/build-pack.mjs`. Import from the module
+  paths (`@pack/textures`, `@pack/models`), not from `@pack/index`. A task that needs one of these files stops and asks.
+- `AssetSettingsSection.tsx` has one owner, M3-world. It adds the `assets.mapTextures` row (shown when a manifest
+  map entry has `files.world`) and the `assets.models` row (shown when the manifest has a `kind: 'model'` item).
+- Hooks across tracks: W-pack calls `bindPackTextures` from `@pack/textures`. If M3-world is not on `assets` when
+  W-pack starts, W-pack writes `src/assetpack/modelTextures.ts` with exactly the 12.3 exports and imports from it;
+  the integrator who merges the second of the two turns `modelTextures.ts` into `export * from './textures'` (or
+  deletes it and fixes the import). The same applies to `scripts/assets/lib/texture-export.mjs`: W-pack then ships
+  `scripts/assets/models/texture-export.mjs` with the same exports, and the integrator dedupes.
+- The feature tasks touch no pack code. They read `@pack/models` and keep every placeholder as the fallback per item.
+
+### 12.3 Texture binding API (`src/assetpack/textures.ts`, M3-world)
+
+Manifest texture item, key = the VMT texture name lower case without extension (`models/buildables/sentry1`):
+`{ kind: 'texture', file: 'textures/<key>.dds' | null, webp: 'textures/<key>.webp' | null, bytes, sha256,
+stage, srgb, oneBitAlpha, alpha: 'opaque' | 'test' | 'blend', alphaCutoff, width, height, mips, frames? }`. At least
+one of `file` and `webp` is set. A key listed by two stages is written by the first stage in `STAGE_ORDER`; a later
+stage reuses that item when its input key matches and never writes the file again.
+
+GLB materials carry `extras.dribble.texture = { key, uv, skins? }` (three exposes it as `material.userData`);
+`skins[i]` is the key for skin `i` when it differs from `key`. Exports:
+
+```ts
+export type PackTextureFormat = 'dds' | 'webp' | null
+export function packTextureFormat(renderer: WebGLRenderer): PackTextureFormat   // 3.6 extension checks, cached per renderer
+export function acquirePackTexture(key: string, renderer: WebGLRenderer): Promise<Texture | null>
+export function releasePackTexture(key: string): void
+export interface PackTextureBinding { bound: number; failed: number; release(): void }
+export function bindPackTextures(root: Object3D, renderer: WebGLRenderer, opts?: { skin?: number }): Promise<PackTextureBinding>
+```
+
+- `acquirePackTexture` is reference-counted per key and disposes the texture at zero. It never rejects: `null`
+  means absent, unsupported or failed (3.6 warning once). DDS goes through `DDSLoader` by dynamic import, with the
+  DXT1 override of 4.6; a DDS without mips gets `LinearFilter`. Loads go through `loadPackItem`, so items show in
+  `assets.items`.
+- `bindPackTextures` walks the meshes, sets `map`, `colorSpace`, `channel` and the alpha rule of 2.6
+  (`alphaTest = alphaCutoff` for `test`, `transparent` with `depthWrite = false` for `blend`), sets `needsUpdate`
+  and resolves once every texture loaded or failed. A failed one keeps that material's flat albedo. The caller then
+  runs `warmUpObject` (4.3) and only then shows the object. `release()` releases every key it acquired.
+- Materials stay owned by their object; textures are shared and owned by this module.
+
+### 12.4 Model API (`src/assetpack/models.ts`, W-pack)
+
+Manifest model item, key = the model string lower case with `/` (`models/buildables/sentry1.mdl`), also for BSP PAK
+models (tetsudo `models/props_tow/tow_cart.mdl`, with `source: 'pak:<folder>'`). Fields:
+`{ kind: 'model', file: 'models/<path>.glb', bytes, sha256, stage: 'models', source: 'vpk' | 'pak:<folder>',
+textures: string[], skins: number, attachments: { [name]: { bone, pos: [x,y,z], quat: [x,y,z,w] } },
+sequences: [{ name, frames, fps, clip }], poseParams: { [name]: { min, max } }, bodygroups?, bounds: [min, max] }`.
+Numbers in the manifest are pack data, never committed (D19). Units are Source units, +X forward, as the GLB.
+
+```ts
+export interface PackModelHandle {
+  key: string; info: PackModelItem; clips: AnimationClip[]
+  instantiate(skin?: number): Object3D   // shared geometry; materials shared per (model, skin); own bones when skinned
+  release(copy: Object3D): void
+}
+export function packModelListed(key: string): boolean            // sync: pack ready, assets.enabled and assets.models on, item listed and not failed
+export function acquirePackModel(key: string, renderer: WebGLRenderer, scene: Scene, camera: Camera): Promise<PackModelHandle | null>
+export function releasePackModel(key: string): void
+export function usePackModel(key: string | null): PackModelHandle | null   // acquire on mount, release on unmount; null until loaded, bound and compiled
+export function attachmentMatrix(copy: Object3D, name: string, out: Matrix4): boolean   // world matrix of an attachment, false when missing
+```
+
+- One cache entry per key, reference-counted; at zero it disposes geometry, materials and its texture binding.
+- `usePackModel` returns `null` while loading, on failure, when the item is absent and whenever `packModelListed`
+  is false, so a feature draws `handle ? pack : placeholder` and falls back per item (5 cases 4 and 5).
+  Turning `assets.models` off switches every copy back to its placeholder in the same frame.
+- Team skin: skin 0 RED, 1 BLU unless the item says otherwise (`teamSkins: [red, blu]`).
+- Animation follows 4.4: one `AnimationMixer` per copy, `setTime` from tick arithmetic. Pose parameters map the
+  networked value to the manifest range directly (4.1). Clips the items do not use are pruned at build time.
+
+### 12.5 Task notes
+
+- M3-world: the pack map entry gains `files.{conversion, world, lightmap}` and `textures: string[]`. With
+  `assets.mapTextures` on and the entry valid (3.5), World loads the pack `world.glb` instead of the public one on
+  the next map load; `mapNodes` must deep-equal the public load. `scene.mode` untextured and wireframe keep the
+  public path's look. The public `bspSha256` of section 10 is deferred, because DoD forbids `public/` changes; 3.5's
+  `mapName` and `publicProps` check stays. WorldVertexTransition blends and TextureScroll from `tickF` are optional.
+  Report texture GPU memory (12.6) on 1434434 (vigil) and 1428628 (tetsudo).
+- M3-props2: textured stock props from `props-stock.glb` and textured PAK props from a new pack file
+  `maps/<folder>/props-pak.glb` (public `props.glb` stays as it is and keeps drawing without the pack). VTX LOD1 or
+  lower at distance; sprp fades in POV and spectator only (4.5). Record RTS draw calls and triangles per map.
+- W-pack: buildings (sentry 1 to 3 and mini, dispenser, teleporter, sapper, blueprints), extras projectile models,
+  kits, ammo, plates, lockers and the carts (`bomb_cart` variants and tetsudo's PAK `tow_cart`). LOD0. No layer edits.
+- W-buildings: 4.1 binds; `sentryMuzzleAt` reads `attachmentMatrix` when a pack sentry is drawn. Probe rows of pack
+  copies add `source: 'pack'` (4.2).
+- W-projectiles: flares, arrows, bolts, jars, cleavers, balls, cannonballs, syringes. Energy ring, fireball and orb
+  keep placeholders; base rocket, pipe and sticky are unchanged.
+- W-items: kits, ammo, lunchbox plates, drops and lockers by model string; the cart oriented by the train transform
+  `CartObject` already computes.
+
+### 12.6 Checks and budgets
+
+- Budgets are 6.2. RTS draw calls at most 600 with textures (M3-props2 records the measured value). Triangles at most
+  1.2M in RTS on downfall, eruption, divulgence and tetsudo after M3-props2 (11.3 item 1).
+- Texture GPU memory per map = sum over the entry's textures of the bytes with mips: DDS as stored, WebP as
+  `width x height x 4 x 4/3`. Computed from the manifest; at most 256 MB per map and 320 MB per page.
+- Every task: section 7, plus 5.1 N1 against REF once, and pack harness shots on two or three representative
+  maps or demos (1434434 vigil, 1438891 koth_product for models, one tetsudo). With `assets.mapTextures` and
+  `assets.models` off, the pack page draws as on `assets` before the task. No per-map sweeps or repeated perf runs
+  are required; gaps go to the task's `notDone`.
+- Disposal (3.10): `renderer.info.memory` stays flat over two map reloads and one `assets.models` off and on cycle.

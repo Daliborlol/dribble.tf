@@ -145,6 +145,16 @@ function loadSchema(file) {
   }
   return {
     sha256: sha256(Buffer.from(text)),
+    /** Spy watch viewmodels (drawn as viewmodel 1): every `v_models` watch model a spy item names, sorted. */
+    watchModels() {
+      const out = new Set()
+      for (const d of Object.keys(schema.items)) {
+        const def = defOf(d)
+        const model = typeof def?.model_player === 'string' ? lower(def.model_player).replace(/\\/g, '/') : ''
+        if (/\/v_models\/(.*\/)?v_[^/]*watch[^/]*\.mdl$/.test(model) && Object.keys(def.used_by_classes ?? {}).map(lower).includes('spy')) out.add(model)
+      }
+      return [...out].sort()
+    },
     resolve(d, cls) {
       const def = defOf(d)
       if (!def) return { skip: 'not in the schema' }
@@ -174,7 +184,7 @@ export async function run(ctx) {
   ctx.setOptions({ classes, textureMaxSize: maxSize, weaponTextureMaxSize: weaponMaxSize, weaponDefs: schema ? WEAPON_DEFS : [] })
   const io = await createModelIo()
   const wanted = new Set()
-  const stats = { arms: {}, weapons: { built: 0, skipped: 0, reused: 0, failed: [] }, defs: { resolved: 0, skipped: [] }, textures: { built: 0, skipped: 0, reused: 0, unsupported: [] }, perClass: {} }
+  const stats = { arms: {}, watches: {}, weapons: { built: 0, skipped: 0, reused: 0, failed: [] }, defs: { resolved: 0, skipped: [] }, textures: { built: 0, skipped: 0, reused: 0, unsupported: [] }, perClass: {} }
   const armsBones = {}
   const texturesOf = new Map() // model key -> texture keys (for the size report)
 
@@ -197,12 +207,18 @@ export async function run(ctx) {
     }
   }
 
-  // ---- arms ---------------------------------------------------------------------------------------------
-  for (const cls of classes) {
-    const key = ARMS[cls]
+  // ---- arms, and the spy's watch viewmodels (viewmodel 1: legacy v_models with their own hands) ------------
+  const armsJobs = classes.map(cls => ({ cls, key: ARMS[cls], role: 'viewmodel:arms' }))
+  if (schema && classes.includes('spy')) {
+    for (const key of schema.watchModels()) if (ctx.vpk.has(key)) armsJobs.push({ cls: 'spy', key, role: 'viewmodel:watch' })
+  }
+  for (const { cls, key, role } of armsJobs) {
+    const watch = role === 'viewmodel:watch'
+    const record = watch ? stats.watches : stats.arms
+    const slot = watch ? key : cls
     wanted.add(key)
     const file = `${key.slice(0, -4)}.glb`
-    const work = path.join(ctx.tmp, `arms-${cls}`)
+    const work = path.join(ctx.tmp, watch ? `watch-${key.replace(/[^a-z0-9]+/g, '_')}` : `arms-${cls}`)
     let armsMaterials = null
     fs.rmSync(work, { recursive: true, force: true })
     try {
@@ -210,16 +226,16 @@ export async function run(ctx) {
       // 0.3 s per class); the post stage is skipped when the input key matches.
       const groups = exportWithIncludes(ctx, bspToGlb, key, work)
       const files = groups.map(g => [g.key, ...['.mdl', '.vvd', '.dx90.vtx', '.ani'].map(ext => { const b = ctx.vpk.read(g.key.slice(0, -4) + ext); return b ? sha256(b) : null })])
-      const inputKey = ctx.inputKey({ arms: key, files, tool, maxSize, textureExport: TEXTURE_EXPORT_VERSION, viewmodelExport: VIEWMODEL_EXPORT_VERSION })
+      const inputKey = ctx.inputKey({ arms: key, role, files, tool, maxSize, textureExport: TEXTURE_EXPORT_VERSION, viewmodelExport: VIEWMODEL_EXPORT_VERSION })
       const studio = groups[0].studio
-      armsBones[cls] = new Set((studio.bones ?? []).map(b => lower(b.name)))
+      if (!watch) armsBones[cls] = new Set((studio.bones ?? []).map(b => lower(b.name)))
       const materials = studioMaterials([ctx.vpk], studio)
       armsMaterials = materials
       texturesOf.set(key, textureKeys(studio, materials))
       const prev = ctx.previous?.items?.[key]
       if (!ctx.options.force && prev?.inputKey === inputKey && ctx.manifest.items[key] && ctx.hasPackFile(file)) {
-        ctx.addItem(key, { ...ctx.manifest.items[key], weapons: weaponsOfClass[cls] })
-        stats.arms[cls] = { skipped: true }
+        ctx.addItem(key, watch ? { ...ctx.manifest.items[key] } : { ...ctx.manifest.items[key], weapons: weaponsOfClass[cls] })
+        record[slot] = { skipped: true }
       } else {
         const merged = mergeSequences(groups)
         const sequences = []
@@ -229,7 +245,9 @@ export async function run(ctx) {
           const { name, group, seq } = merged[i]
           const anims = groups[group].studio.animations ?? []
           const anim = anims[seq.animationIndices?.[0]]
-          const keep = i > 0 && group > 0 && anim && anim.decodeStatus === 'supported' && !(seq.flags & (STUDIO_DELTA | STUDIO_OVERRIDE)) && !SKIP_SEQUENCE.test(name)
+          // Arms: only the include models' sequences (the arms' own are the reference pose). A watch model
+          // carries its sequences itself.
+          const keep = (watch || (i > 0 && group > 0)) && anim && anim.decodeStatus === 'supported' && !(seq.flags & (STUDIO_DELTA | STUDIO_OVERRIDE)) && !SKIP_SEQUENCE.test(name)
           let clip = null
           if (keep) {
             clip = clipNames.has(anim.name) ? `${anim.name}#${group}` : anim.name
@@ -267,7 +285,7 @@ export async function run(ctx) {
           bytes: result.bytes,
           sha256: result.sha256,
           source: 'vpk',
-          role: 'viewmodel:arms',
+          role,
           class: cls,
           textures: texturesOf.get(key),
           skins: Math.max(1, (studio.skinFamilies ?? []).length),
@@ -280,13 +298,13 @@ export async function run(ctx) {
           bounds: [studio.bounds?.hullMin ?? [0, 0, 0], studio.bounds?.hullMax ?? [0, 0, 0]].map(v => v.map(round)),
           bones: (studio.bones ?? []).map(b => b.name),
           triangles: result.stats.after.triangles,
-          weapons: weaponsOfClass[cls],
+          ...(watch ? {} : { weapons: weaponsOfClass[cls] }),
           inputKey,
         })
-        stats.arms[cls] = { sequences: sequences.length, clips: copied, bytes: result.bytes }
+        record[slot] = { sequences: sequences.length, clips: copied, bytes: result.bytes }
       }
     } catch (error) {
-      stats.arms[cls] = { error: error.message.split('\n')[0] }
+      record[slot] = { error: error.message.split('\n')[0] }
       ctx.removeItem(key)
     } finally {
       fs.rmSync(work, { recursive: true, force: true })
@@ -391,11 +409,12 @@ export async function run(ctx) {
   const armsBuilt = Object.values(stats.arms).filter(a => !a.error).length
   ctx.log(`${armsBuilt} of ${classes.length} arms; weapons ${stats.weapons.built} built, ${stats.weapons.skipped} unchanged, ${stats.weapons.reused} reused, ${stats.weapons.failed.length} failed; ${stats.defs.resolved} def/class pairs, ${stats.defs.skipped.length} skipped; textures ${stats.textures.built} built, ${stats.textures.skipped} unchanged, ${stats.textures.reused} reused, ${stats.textures.unsupported.length} unsupported`)
   for (const [cls, a] of Object.entries(stats.arms)) if (a.error) ctx.log(`arms ${cls} failed: ${a.error}`)
+  for (const [k, a] of Object.entries(stats.watches)) ctx.log(a.error ? `watch ${k} failed: ${a.error}` : `watch ${k}: ${a.skipped ? 'unchanged' : `${a.clips} clips of ${a.sequences} sequences`}`)
   for (const f of stats.weapons.failed) ctx.log(`failed ${f.model}: ${f.error}`)
   for (const [cls, p] of Object.entries(stats.perClass)) ctx.log(`${cls}: ${p.models} models, glb ${(p.glbBytes / 1e6).toFixed(2)} MB, dds ${(p.ddsBytes / 1e6).toFixed(2)} MB, webp ${(p.webpBytes / 1e6).toFixed(2)} MB`)
   ctx.writeFile('reports/viewmodels/summary.json', JSON.stringify(stats, null, 1) + '\n')
   if (armsBuilt < classes.length) throw new Error(`viewmodels: ${classes.length - armsBuilt} arms failed`)
-  return { arms: stats.arms, weapons: { ...stats.weapons }, perClass: stats.perClass }
+  return { arms: stats.arms, watches: stats.watches, weapons: { ...stats.weapons }, perClass: stats.perClass }
 }
 
 /** Texture items for `keys`, as the models stage writes them (contract 12.3); reuses other stages' items. */

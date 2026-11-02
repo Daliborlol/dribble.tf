@@ -2,6 +2,9 @@
 // koth_product_final already contains the lockers.
 
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react'
+import * as THREE from 'three'
+
+import { TEAM_FX, teamKey } from '@highlander/constants'
 
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useMapMeta } from '@highlander/map/mapMeta'
@@ -11,6 +14,17 @@ import { drawn, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { buildLockers, type LockerBox } from './lockers'
 import { PackInstances, slotKey, type PackSlots } from './packModels'
+
+/**
+ * The pack locker model has one skin for both teams, so its copies take a team tint: white moved this far toward
+ * the team's effect colour (the placeholder boxes keep their own colours).
+ */
+const PACK_LOCKER_TINT = 0.5
+const WHITE = new THREE.Color(1, 1, 1)
+const packTint = (team: number) => {
+  const key = teamKey(team)
+  return key ? WHITE.clone().lerp(new THREE.Color(TEAM_FX[key]), PACK_LOCKER_TINT) : WHITE
+}
 
 let activeLockers: LockerBox[] = []
 export const getActiveLockers = () => activeLockers
@@ -46,7 +60,7 @@ export const ResupplyLockers = React.memo(() => {
     for (const box of lockers) {
       const slot = box.model ? slots.get(slotKey(box.model.key)) : undefined
       if (slot) {
-        if (!box.name.endsWith(':front')) slot.add(box.model!.matrix)
+        if (!box.name.endsWith(':front')) slot.add(box.model!.matrix, packTint(box.team))
         continue
       }
       if (!mesh) continue

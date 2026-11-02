@@ -13,17 +13,25 @@ import { sinceTick } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { attachmentMatrix, packTeamSkin, usePackModel, type PackModelHandle } from '@pack/models'
 
-import type { BuildingDraw } from './render'
+import { lastShotTicks, type BuildingDraw } from './render'
 import { MINI_SCALE } from './sentryAim'
 
 const M = (name: string) => `models/buildables/${name}.mdl`
+/** sentry1_heavy's include model: it holds the sentry's build sequence, which plays on sentry1_heavy's bones. */
+const SENTRY_ANIMS = M('sentry1_animations')
+/** A disabled sentry without aim pose data lowers its gun to this pitch (Source: positive is down). */
+const DROOP_PITCH = 50
+/** Seconds the droop takes. */
+const DROOP_SECONDS = 0.5
+/** A sentry keeps cycling its fire sequence while shots follow within this many seconds. */
+const FIRE_HOLD_SECONDS = 0.3
 
 /** Model keys a building of `type` may draw, in a fixed order per type (one usePackModel call each). */
 export function packBuildingKeys(type: number, mini: boolean): string[] {
   if (type === BUILDING_TYPE.SENTRY) {
     return mini
       ? [M('sentry1'), M('sapper_sentry1')]
-      : [M('sentry1'), M('sentry2'), M('sentry3'), M('sentry2_heavy'), M('sentry3_heavy'), M('sapper_sentry1'), M('sapper_sentry2'), M('sapper_sentry3')]
+      : [M('sentry1'), M('sentry2'), M('sentry3'), M('sentry1_heavy'), M('sentry2_heavy'), M('sentry3_heavy'), SENTRY_ANIMS, M('sapper_sentry1'), M('sapper_sentry2'), M('sapper_sentry3')]
   }
   if (type === BUILDING_TYPE.DISPENSER) return [M('dispenser'), M('dispenser_lvl2'), M('dispenser_lvl3'), M('sapper_dispenser')]
   if (type === BUILDING_TYPE.TELEPORTER) return [M('teleporter'), M('sapper_teleporter')]
@@ -154,13 +162,16 @@ export class PackCopy {
     })
   }
 
-  /** The rest pose plus the aim layers at relYaw and pitch (degrees, Source signs). */
-  aim(relYaw: number, pitch: number) {
-    this.play(null, 0)
+  /**
+   * The aim layers at relYaw and pitch (degrees, Source signs) over the rest pose, or over `clip` at `seconds`
+   * (the fire and disabled sequences), as Source adds its aim layers to the playing sequence.
+   */
+  aim(relYaw: number, pitch: number, clip: THREE.AnimationClip | null = null, seconds = 0, loop = false) {
     for (const r of this.layerNodes) {
       r.node.position.copy(r.p)
       r.node.quaternion.copy(r.q)
     }
+    this.play(clip, seconds, loop)
     const yaw = ((((relYaw + 180) % 360) + 360) % 360) - 180
     this.applyLayer(this.yaw, yaw)
     this.applyLayer(this.pitch, Math.max(-50, Math.min(50, pitch)))
@@ -199,6 +210,8 @@ export interface PackFrame {
 export class PackBuilding {
   readonly group = new THREE.Group()
   private copies = new Map<string, PackCopy>()
+  /** the clip-only sentry1_animations model (no copy: its clips play on sentry1_heavy) */
+  private anims: PackModelHandle | null = null
   readonly frame: PackFrame = { body: null, sapper: null }
 
   constructor(private type: number, private mini: boolean) {
@@ -208,8 +221,13 @@ export class PackBuilding {
 
   sync(handles: (PackModelHandle | null)[], team: 'red' | 'blue') {
     const want = new Set<string>()
+    this.anims = null
     for (const h of handles) {
       if (!h) continue
+      if (h.key === SENTRY_ANIMS) {
+        this.anims = h
+        continue
+      }
       want.add(h.key)
       if (this.copies.has(h.key)) continue
       const copy = new PackCopy(h, skinOf(h, team, this.mini))
@@ -234,6 +252,36 @@ export class PackBuilding {
   }
 
   /**
+   * A built sentry: a firing one cycles its `fire` sequence from the first shot of the burst while the shots last,
+   * otherwise it rests; the aim layers go on top. A disabled or sapped one without pose data lowers its gun over
+   * DROOP_SECONDS. Every time comes from tick arithmetic (D12).
+   */
+  private poseSentry(x: HighlanderExtras, body: PackCopy, d: BuildingDraw, tickF: number, tick: number) {
+    if (!body.hasAim || !d.aim) {
+      body.play(null, 0)
+      return
+    }
+    const ipt = x.meta.intervalPerTick || 0.015
+    const s = x.buildings.state
+    const OFF = BLD.SAPPED | BLD.DISABLED | BLD.PLASMA
+    // the networked aim pose already lowers a disabled sentry's gun (about 30 degrees within 1.5 s); only a sentry
+    // without pose data lowers it here
+    if (d.aim.source === 'none' && !d.ghost && (d.sapped || d.disabled)) {
+      const since = sinceTick(s, d.instance, tick, i => (s.flags[i] & OFF) !== 0) ?? tick
+      const seconds = Math.max(0, (tickF - since) * ipt)
+      body.aim(d.aim.relYaw, d.aim.pitch + (DROOP_PITCH - d.aim.pitch) * Math.min(1, seconds / DROOP_SECONDS))
+      return
+    }
+    const fire = body.clipNamed('@fire')
+    const shots = fire ? lastShotTicks(x, d.instance, tickF, FIRE_HOLD_SECONDS / ipt) : null
+    if (fire && shots && (tickF - shots.last) * ipt < FIRE_HOLD_SECONDS) {
+      body.aim(d.aim.relYaw, d.aim.pitch, fire, (tickF - shots.first) * ipt, true)
+      return
+    }
+    body.aim(d.aim.relYaw, d.aim.pitch)
+  }
+
+  /**
    * Poses the copy for `d` at `tickF`. Returns the pack frame (body null: draw the placeholder). The group's z
    * scale undoes the construction squash for models with a build sequence.
    */
@@ -251,19 +299,26 @@ export class PackBuilding {
     const upSeconds = (tickF - since) * ipt
     let body: PackCopy | null = null
     let squash = true
+    let toolbox = this.type !== BUILDING_TYPE.SENTRY
     const level = this.mini ? 1 : d.level
     if (this.type === BUILDING_TYPE.SENTRY) {
       const heavy = upgrading && level >= 2 ? this.copy(`sentry${level}_heavy`) : null
       const upgrade = heavy?.clipNamed('@upgrade')
+      // construction: sentry1_heavy unfolds from the toolbox with the build sequence of its include model, as in
+      // game; without that model or clip (mini sentries, older packs) the level 1 model keeps the z scale-up
+      const builder = flags && !this.mini ? this.copy('sentry1_heavy') : null
+      const build = builder ? this.anims?.clips.find(c => c.name === '@build') ?? null : null
       if (heavy && upgrade && !flags) {
         body = heavy
         body.play(upgrade, upSeconds)
+      } else if (builder && build) {
+        body = builder
+        body.play(build, d.builtFrac * build.duration)
+        squash = false
+        toolbox = true
       } else {
         body = this.copy(`sentry${level}`)
-        if (body) {
-          if (body.hasAim && d.aim) body.aim(d.aim.relYaw, d.aim.pitch)
-          else body.play(null, 0)
-        }
+        if (body) this.poseSentry(x, body, d, tickF, tick)
       }
     } else if (this.type === BUILDING_TYPE.DISPENSER) {
       if (flags) {
@@ -289,7 +344,7 @@ export class PackBuilding {
       } else body?.play(null, 0)
     }
     if (!body) return f
-    if (this.type !== BUILDING_TYPE.SENTRY) body.showToolbox(!!flags)
+    if (toolbox) body.showToolbox(!!flags)
     body.object.visible = true
     f.body = body
     const miniScale = this.mini ? MINI_SCALE : 1

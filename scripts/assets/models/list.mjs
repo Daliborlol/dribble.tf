@@ -10,6 +10,7 @@ const pickup = (model, kind) => ({ model, role: `pickup:${kind}`, clips: 'none' 
 export const MODEL_LIST = [
   building('sentry1', { variants: { mini: { skins: [2, 3] } } }),
   building('sentry1_heavy'),
+  building('sentry1_animations'), // the build sequence of sentry1_heavy (its include model)
   building('sentry2'),
   building('sentry2_heavy'),
   building('sentry3'),

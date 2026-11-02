@@ -79,10 +79,16 @@ export class PackInstancer {
     this.count = 0
   }
 
-  /** Adds one copy at `matrix` (model origin, Source axes); false when full. */
-  add(matrix: THREE.Matrix4): boolean {
+  /**
+   * Adds one copy at `matrix` (model origin, Source axes), tinted by `color` (multiplies the texture; a layer
+   * passes it for every copy or for none); false when full.
+   */
+  add(matrix: THREE.Matrix4, color?: THREE.Color): boolean {
     if (this.count >= this.capacity) return false
-    for (const part of this.parts) part.mesh.setMatrixAt(this.count, _t.multiplyMatrices(matrix, part.local))
+    for (const part of this.parts) {
+      part.mesh.setMatrixAt(this.count, _t.multiplyMatrices(matrix, part.local))
+      if (color) part.mesh.setColorAt(this.count, color)
+    }
     this.count++
     return true
   }
@@ -91,6 +97,7 @@ export class PackInstancer {
     for (const part of this.parts) {
       part.mesh.count = this.count
       part.mesh.instanceMatrix.needsUpdate = true
+      if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true
     }
   }
 

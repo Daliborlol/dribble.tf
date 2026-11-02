@@ -247,6 +247,31 @@ export function healTargets(x: HighlanderExtras, j: number, tick: number): numbe
   return out
 }
 
+const _shots = { first: 0, last: 0 }
+
+/**
+ * The tick of sentry j's last tracer at or before tickF and the first tick of its burst (the run of tracers with
+ * gaps of at most `maxGap` ticks), or null without one. The returned object is reused by the next call.
+ */
+export function lastShotTicks(x: HighlanderExtras, j: number, tickF: number, maxGap: number): { first: number; last: number } | null {
+  const rows = buildingIndex(x).tracers.get(j)
+  if (!rows || rows.length === 0) return null
+  const ticks = x.tempents.tracers.tick
+  let lo = 0, hi = rows.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (ticks[rows[mid]] <= tickF) lo = mid + 1
+    else hi = mid
+  }
+  let k = lo - 1
+  if (k < 0) return null
+  _shots.last = ticks[rows[k]]
+  // the bound keeps a pathological track cheap; real bursts are far shorter
+  for (let n = 0; k > 0 && n < 4096 && ticks[rows[k]] - ticks[rows[k - 1]] <= maxGap; n++) k--
+  _shots.first = ticks[rows[k]]
+  return _shots
+}
+
 /** The tracer row of sentry j that fired within MUZZLE_TICKS before tickF, or -1. */
 export function muzzleRow(x: HighlanderExtras, j: number, tickF: number): number {
   const rows = buildingIndex(x).tracers.get(j)

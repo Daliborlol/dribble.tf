@@ -214,6 +214,8 @@ registerHlProbe('buildings.scene', () => {
     const billboard = label?.parent?.parent?.parent
     buildings.push({
       instance: node.userData.instance,
+      // asset contract 4.2: only rows drawn from the pack carry a source
+      ...(node.userData.source === 'pack' ? { source: 'pack' } : {}),
       visible: nodeVisible,
       pos: world(node),
       visibleMeshes: meshes[0],

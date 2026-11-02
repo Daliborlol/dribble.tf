@@ -29,6 +29,8 @@ import {
   teamName,
 } from './render'
 import { baseHealth, basePosition, baseTeam, povRenderedEntityId } from './scene'
+import { PackCopy, packTeamSkinOf } from './pack'
+import { usePackModel } from '@pack/models'
 
 // Every frame reads the tick and frameProgress together from the store (frameTime). A renderTick prop would lag
 // playback.tick by a frame and step back at tick boundaries.
@@ -258,9 +260,46 @@ const lineMaterial = (color: string) => {
  * TEAM_FX at 0.3; state 3 (invalid spot) in red. Hulls: sentry 40 x 40 x 66, dispenser 40 x 40 x 55,
  * teleporter 48 x 48 x 12.
  */
+const BLUEPRINT_MODELS = [
+  'models/buildables/sentry1_blueprint.mdl',
+  'models/buildables/dispenser_blueprint.mdl',
+  'models/buildables/teleporter_blueprint_enter.mdl',
+  'models/buildables/teleporter_blueprint_exit.mdl',
+]
+const blueprintModel = (type: number, mode: number) =>
+  type === BUILDING_TYPE.SENTRY ? 0 : type === BUILDING_TYPE.DISPENSER ? 1 : type === BUILDING_TYPE.TELEPORTER ? (mode === 1 ? 3 : 2) : -1
+
 export const Blueprints = React.memo(() => {
   const x = useExtras()
   const slots = useRef<(THREE.Group | null)[]>([])
+  // pack blueprint models (asset contract 12.5): per slot one copy per model and team, drawn for valid spots;
+  // an invalid spot and a model the pack lacks keep the placeholder hull
+  const h0 = usePackModel(BLUEPRINT_MODELS[0])
+  const h1 = usePackModel(BLUEPRINT_MODELS[1])
+  const h2 = usePackModel(BLUEPRINT_MODELS[2])
+  const h3 = usePackModel(BLUEPRINT_MODELS[3])
+  const handles = [h0, h1, h2, h3]
+  const packSlots = useMemo(() => {
+    const out: { group: THREE.Group; copies: (Record<TeamKey, PackCopy> | null)[] }[] = []
+    for (let i = 0; i < BLUEPRINT_POOL; i++) {
+      const group = new THREE.Group()
+      group.name = 'packBlueprint'
+      const copies = [h0, h1, h2, h3].map(h => {
+        if (!h) return null
+        const pair = { red: new PackCopy(h, packTeamSkinOf(h, 'red')), blue: new PackCopy(h, packTeamSkinOf(h, 'blue')) }
+        group.add(pair.red.object, pair.blue.object)
+        return pair
+      })
+      out.push({ group, copies })
+    }
+    return out
+  }, [h0, h1, h2, h3])
+  useEffect(
+    () => () => {
+      for (const slot of packSlots) for (const pair of slot.copies) if (pair) (pair.red.dispose(), pair.blue.dispose())
+    },
+    [packSlots]
+  )
 
   useFrame(() => {
     if (!x) return
@@ -273,6 +312,16 @@ export const Blueprints = React.memo(() => {
       const slot = slots.current[used]
       const hull = HULLS[bp.type]
       if (!actor || !team || !slot || !hull) continue
+      const packSlot = packSlots[used]
+      const m = blueprintModel(bp.type, bp.mode)
+      const pair = bp.valid && m >= 0 && handles[m] ? packSlot.copies[m] : null
+      for (const p of packSlot.copies) if (p) p.red.object.visible = p.blue.object.visible = false
+      if (pair) {
+        const copy = pair[team]
+        copy.object.visible = true
+        const idle = copy.handle.clips.find(c => /idle/.test(c.name)) ?? null
+        copy.play(idle, tick * (x.meta.intervalPerTick || 0.015), true)
+      }
       const color = bp.valid ? TEAM_FX[team] : INVALID
       _off.set(BLUEPRINT_DISTANCE, 0, 0).applyQuaternion(actor.body.quaternion)
       slot.position.copy(actor.group.position).add(_off)
@@ -284,7 +333,8 @@ export const Blueprints = React.memo(() => {
       edges.scale.copy(box.scale)
       edges.position.copy(box.position)
       edges.material = lineMaterial(color)
-      slot.userData.blueprint = { p: bp.p, type: bp.type, valid: bp.valid }
+      box.visible = edges.visible = !pair
+      slot.userData.blueprint = pair ? { p: bp.p, type: bp.type, valid: bp.valid, source: 'pack' } : { p: bp.p, type: bp.type, valid: bp.valid }
       slot.visible = true
       used++
     }
@@ -297,6 +347,7 @@ export const Blueprints = React.memo(() => {
         <group key={i} ref={g => (slots.current[i] = g)} visible={false}>
           <mesh geometry={BOX} material={basic(TEAM_FX.red, 0.3)} />
           <lineSegments geometry={BOX_EDGES} material={lineMaterial(TEAM_FX.red)} />
+          <primitive object={packSlots[i].group} />
         </group>
       ))}
     </group>

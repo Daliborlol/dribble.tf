@@ -14,6 +14,7 @@ import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { BuildingObject } from '@highlander/buildings/BuildingObject'
 import { Blueprints, CarryBoxes, Destructions, DispenserBeams } from '@highlander/buildings/EngineerFx'
 import { drawnInstancesAt } from '@highlander/buildings/render'
+import { useRetainPackModels } from '@highlander/buildings/pack'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import '@highlander/buildings/probes'
 
@@ -40,6 +41,7 @@ export const BuildingsLayer = React.memo(({ renderTick }: { renderTick: number }
   const xid = extrasId(extras)
   return (
     <group name="buildings">
+      <RetainPackModels />
       {instances.map(j => (
         <BuildingObject key={`${xid}:${j}`} instance={j} />
       ))}
@@ -50,3 +52,10 @@ export const BuildingsLayer = React.memo(({ renderTick }: { renderTick: number }
     </group>
   )
 })
+
+/** Pack building models stay loaded while the layer draws (asset contract 12.4); renders nothing. */
+function RetainPackModels() {
+  useRetainPackModels()
+  return null
+}
+

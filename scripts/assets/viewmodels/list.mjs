@@ -24,6 +24,18 @@ export const ARMS = {
   spy: 'models/weapons/c_models/c_spy_arms.mdl',
 }
 
+// STANDALONE: viewmodels that replace the class's arms and weapon pair (role `viewmodel:standalone`), drawn alone
+// while a weapon of `itemClass` is out. The Gunslinger swaps the engineer's arms for c_engineer_gunslinger (Source's
+// `g_HACK_GunslingerEngineerArmsOverride`; it has no c_model of its own), so its sequences come from its includes as
+// for c_arms. The disguise kit has no c_model either: TF2 draws its weapon script's legacy v_model, hands included,
+// with its own sequences, as for the watches. The defs come from the schema (every item of `itemClass` the class uses).
+// `armsOverride`: with the Gunslinger equipped TF2 also draws the engineer's other weapons on these arms (vm0 names
+// them), so the item lists the class's weapons as a c_arms item does.
+export const STANDALONE = [
+  { cls: 'engineer', key: 'models/weapons/c_models/c_engineer_gunslinger.mdl', itemClass: 'tf_weapon_robot_arm', ownSequences: false, armsOverride: true },
+  { cls: 'spy', key: 'models/weapons/v_models/v_pda_spy.mdl', itemClass: 'tf_weapon_pda_spy', ownSequences: true },
+]
+
 export const STOCK_DEFS = [
   0, 13, 23, // scout
   18, 10, 6, // soldier

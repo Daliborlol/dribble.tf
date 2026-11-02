@@ -11,6 +11,11 @@
 // - Sequences: the networked `vm0.seq` (an index into the arms' virtual model, contract 13.2) played at
 //   `(tickF - vm0.since) x interval x vm0.rate` seconds; when vm0 is missing or shows another model, draw, idle, fire
 //   and reload are derived from the weapon switch, fire events and the reload phases of the input, by activity.
+// - Standalone viewmodels (`viewmodel:standalone`): the Gunslinger's c_engineer_gunslinger arms and the disguise kit's
+//   v_pda_spy draw alone, without a c_model, while a def the item lists is out; they take the arms' place in every rule
+//   here (vm0 sequences, derived sequences, team skin, cloak fade). An item that also lists `weapons` overrides the
+//   class's arms while vm0 names it: an engineer with the Gunslinger equipped holds his shotgun, pistol and PDAs in
+//   those arms.
 // - Bone merge (13.3): every frame the weapon's `mergeBones` copy the transform of the arms bone of the same name.
 // - The muzzle is the weapon's `muzzle` attachment, else its root bone; ViewmodelLayer turns it into
 //   vmShared.live.muzzleWorld, where F3's own-muzzle tracers start.
@@ -40,10 +45,13 @@ export const GLB_PROVIDER_ID = 'glb'
 
 interface VmSequence { name: string; frames: number; fps: number; clip: string | null; loop?: boolean; activity?: string | null }
 export interface ArmsItem extends PackModelItem {
-  role: 'viewmodel:arms'
+  role: 'viewmodel:arms' | 'viewmodel:standalone'
   class: string
+  /** standalone items: the weapon defs it replaces the arms and weapon pair for */
+  defs?: number[]
   sequences: VmSequence[]
   sequenceIndex?: Record<string, number>
+  /** arms items and standalone arms overrides: def -> weapon c_model key */
   weapons?: Record<string, string>
 }
 export interface WatchItem extends PackModelItem {
@@ -79,6 +87,24 @@ function armsKeyOf(className: string): string | null {
   return map.get(className) ?? null
 }
 
+/** `<class>:<def>` -> standalone viewmodel key, per manifest object. */
+const standaloneByManifest = new WeakMap<object, Map<string, string>>()
+
+function standaloneKeyOf(className: string, def: number): string | null {
+  const manifest = getAssetPackState().manifest as { items?: Record<string, any> } | null
+  if (!manifest?.items) return null
+  let map = standaloneByManifest.get(manifest)
+  if (!map) {
+    map = new Map()
+    for (const [key, item] of Object.entries(manifest.items)) {
+      if (item?.kind !== 'model' || item.role !== 'viewmodel:standalone' || typeof item.class !== 'string' || !Array.isArray(item.defs)) continue
+      for (const d of item.defs) map.set(`${item.class}:${d}`, key)
+    }
+    standaloneByManifest.set(manifest, map)
+  }
+  return map.get(`${className}:${def}`) ?? null
+}
+
 const itemOf = <T>(key: string): T | null => (getAssetPackState().manifest?.items?.[key] as T | undefined) ?? null
 
 /** The c_arms class name: CLASS_MAP calls the demoman 'demoman', as the arms items do. */
@@ -97,7 +123,8 @@ export function packViewmodelsOn(): boolean {
   )
 }
 
-export interface VmKeys { arms: string; weapon: string }
+/** `weapon` is null for a standalone viewmodel, which draws without a c_model. */
+export interface VmKeys { arms: string; weapon: string | null }
 
 /**
  * Weapon kinds that keep the placeholder although the pack lists them (none now). The minigun family draws from
@@ -112,11 +139,24 @@ export function packPoseExcluded(kind: string, weaponClass?: string): string | n
   return PACK_POSE_EXCLUDED.has(k) ? `pose:${k}` : null
 }
 
-/** Arms and weapon model keys of (class, weapon def), or null when the pack is off or lists none. */
-export function glbViewmodelKeys(classId: number, weaponDef: number): VmKeys | null {
+/** The standalone item vm0 names when it overrides `cls`'s arms (it lists weapons), else null. */
+function armsOverrideOf(cls: string, vm0Model: string | null | undefined): string | null {
+  if (!vm0Model) return null
+  const key = vm0Model.toLowerCase().replace(/\\/g, '/')
+  const item = itemOf<ArmsItem>(key)
+  return item?.kind === 'model' && item.role === 'viewmodel:standalone' && item.class === cls && item.weapons ? key : null
+}
+
+/**
+ * Arms and weapon model keys of (class, weapon def), or null when the pack is off or lists none. `vm0Model` is the
+ * networked viewmodel 0 model: an arms override it names (the Gunslinger arms) replaces the class's c_arms.
+ */
+export function glbViewmodelKeys(classId: number, weaponDef: number, vm0Model?: string | null): VmKeys | null {
   if (!packViewmodelsOn()) return null
   const cls = className(classId)
-  const arms = cls ? armsKeyOf(cls) : null
+  const standalone = cls ? standaloneKeyOf(cls, weaponDef) : null
+  if (standalone) return { arms: standalone, weapon: null }
+  const arms = cls ? armsOverrideOf(cls, vm0Model) ?? armsKeyOf(cls) : null
   if (!arms) return null
   const weapon = itemOf<ArmsItem>(arms)?.weapons?.[String(weaponDef)]
   if (!weapon || !itemOf<WeaponItem>(weapon)) return null
@@ -174,7 +214,7 @@ const loadedHandle = (key: string): PackModelHandle | null => held.get(key)?.han
 
 /** Both models loaded, bound and compiled. */
 export function glbModelsReady(keys: VmKeys | null): boolean {
-  return !!keys && !!loadedHandle(keys.arms) && !!loadedHandle(keys.weapon)
+  return !!keys && !!loadedHandle(keys.arms) && (keys.weapon === null || !!loadedHandle(keys.weapon))
 }
 
 /**
@@ -183,13 +223,13 @@ export function glbModelsReady(keys: VmKeys | null): boolean {
  */
 export function requestViewmodelModels(keys: VmKeys, gl: WebGLRenderer, scene: Scene, camera: Camera, onSettled: () => void): () => void {
   let alive = true
-  Promise.all([hold(keys.arms, gl, scene, camera), hold(keys.weapon, gl, scene, camera)]).then(() => {
+  const list = keys.weapon ? [keys.arms, keys.weapon] : [keys.arms]
+  Promise.all(list.map(k => hold(k, gl, scene, camera))).then(() => {
     if (alive) onSettled()
   })
   return () => {
     alive = false
-    unhold(keys.arms)
-    unhold(keys.weapon)
+    for (const k of list) unhold(k)
   }
 }
 
@@ -428,23 +468,24 @@ function disposeWatch(w: WatchSub) {
 }
 
 function createGlb(input: ViewmodelInput): ViewmodelInstance {
-  const keys = glbViewmodelKeys(input.classId, input.weaponDef)
+  const keys = glbViewmodelKeys(input.classId, input.weaponDef, input.vm0?.model)
   const armsHandle = keys ? holdLoaded(keys.arms) : null
-  const weaponHandle = keys ? holdLoaded(keys.weapon) : null
-  if (!keys || !armsHandle || !weaponHandle) {
+  const weaponHandle = keys?.weapon ? holdLoaded(keys.weapon) : null
+  if (!keys || !armsHandle || (keys.weapon && !weaponHandle)) {
     // supports() said yes a moment ago; should the pair have gone since, draw nothing rather than throw
     if (armsHandle && keys) unhold(keys.arms)
-    if (weaponHandle && keys) unhold(keys.weapon)
+    if (weaponHandle && keys?.weapon) unhold(keys.weapon)
     const object = new THREE.Group()
     const muzzle = new THREE.Object3D()
     object.add(muzzle)
     return { object, muzzle, update: () => {}, dispose: () => object.removeFromParent() }
   }
   const armsInfo = armsHandle.info as ArmsItem
-  const weaponInfo = weaponHandle.info as WeaponItem
+  const weaponInfo = (weaponHandle?.info as WeaponItem | undefined) ?? null
   const team = input.team === 'red' ? 2 : 3
   const arms = armsHandle.instantiate(packTeamSkin(armsInfo, team))
-  const weapon = weaponHandle.instantiate(packTeamSkin(weaponInfo, team))
+  // a standalone viewmodel has no weapon model: an empty group keeps the bone merge and muzzle code uniform
+  const weapon = weaponHandle && weaponInfo ? weaponHandle.instantiate(packTeamSkin(weaponInfo, team)) : new THREE.Group()
   arms.name = 'vmArms'
   weapon.name = 'vmWeapon'
   const materials = [...ownMaterials(arms), ...ownMaterials(weapon)]
@@ -459,7 +500,7 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
   // Bone merge pairs, parents first
   const armsNodes = lowerNameMap(arms)
   const weaponNodes = lowerNameMap(weapon)
-  const mergeNames = weaponInfo.viewmodel?.mergeBones?.[armsInfo.class] ?? []
+  const mergeNames = weaponInfo?.viewmodel?.mergeBones?.[armsInfo.class] ?? []
   const pairs: { from: THREE.Object3D; to: THREE.Object3D; depth: number }[] = []
   for (const name of mergeNames) {
     const from = armsNodes.get(name.toLowerCase())
@@ -596,10 +637,10 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
       flashMaterial.dispose()
       for (const m of materials) m.dispose()
       armsHandle.release(arms)
-      weaponHandle.release(weapon)
+      if (weaponHandle) weaponHandle.release(weapon)
       object.removeFromParent()
       unhold(keys.arms)
-      unhold(keys.weapon)
+      if (keys.weapon) unhold(keys.weapon)
     },
   }
   return instance
@@ -611,7 +652,7 @@ export const glbViewmodelProvider: ViewmodelProvider = {
   supports: input =>
     input.localTables === true &&
     !packPoseExcluded(input.kind, input.weaponClass) &&
-    glbModelsReady(glbViewmodelKeys(input.classId, input.weaponDef)),
+    glbModelsReady(glbViewmodelKeys(input.classId, input.weaponDef, input.vm0?.model)),
   create: createGlb,
 }
 

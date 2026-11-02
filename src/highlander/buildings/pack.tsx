@@ -30,7 +30,7 @@ const FIRE_HOLD_SECONDS = 0.3
 export function packBuildingKeys(type: number, mini: boolean): string[] {
   if (type === BUILDING_TYPE.SENTRY) {
     return mini
-      ? [M('sentry1'), M('sapper_sentry1')]
+      ? [M('sentry1'), M('sentry1_heavy'), SENTRY_ANIMS, M('sapper_sentry1')]
       : [M('sentry1'), M('sentry2'), M('sentry3'), M('sentry1_heavy'), M('sentry2_heavy'), M('sentry3_heavy'), SENTRY_ANIMS, M('sapper_sentry1'), M('sapper_sentry2'), M('sapper_sentry3')]
   }
   if (type === BUILDING_TYPE.DISPENSER) return [M('dispenser'), M('dispenser_lvl2'), M('dispenser_lvl3'), M('sapper_dispenser')]
@@ -305,8 +305,9 @@ export class PackBuilding {
       const heavy = upgrading && level >= 2 ? this.copy(`sentry${level}_heavy`) : null
       const upgrade = heavy?.clipNamed('@upgrade')
       // construction: sentry1_heavy unfolds from the toolbox with the build sequence of its include model, as in
-      // game; without that model or clip (mini sentries, older packs) the level 1 model keeps the z scale-up
-      const builder = flags && !this.mini ? this.copy('sentry1_heavy') : null
+      // game, a mini sentry too (in its mini skin when the pack lists sentry1_heavy's mini variant); without that
+      // model or clip (older packs) the level 1 model keeps the z scale-up
+      const builder = flags ? this.copy('sentry1_heavy') : null
       const build = builder ? this.anims?.clips.find(c => c.name === '@build') ?? null : null
       if (heavy && upgrade && !flags) {
         body = heavy

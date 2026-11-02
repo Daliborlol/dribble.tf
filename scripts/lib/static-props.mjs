@@ -968,6 +968,38 @@ function rowLightOrder(doc) {
  * @param {(msg: string) => void} [o.log]
  * @returns {Promise<object>} conversion.json `props` counts plus `stats`
  */
+/**
+ * Pack files (leftovers): the GLB with its JSON chunk rewritten without the glTF default values gltf-transform spells
+ * out (`normalized: false`, `byteOffset: 0`), which are about 1.3 MB of the ten props-stock.glb files with their
+ * thousands of small accessors. Loaders read a missing value as the same default, so nothing drawn changes.
+ */
+export function compactGlbJson(glb) {
+  const bytes = Buffer.from(glb.buffer, glb.byteOffset, glb.byteLength)
+  const jsonLength = bytes.readUInt32LE(12)
+  if (bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(16) !== 0x4e4f534a) throw new Error('compactGlbJson: not a GLB with a JSON chunk')
+  const json = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString('utf8'))
+  for (const a of json.accessors ?? []) {
+    if (a.normalized === false) delete a.normalized
+    if (a.byteOffset === 0) delete a.byteOffset
+  }
+  for (const v of json.bufferViews ?? []) {
+    if (v.byteOffset === 0) delete v.byteOffset
+    const e = v.extensions?.EXT_meshopt_compression
+    if (e && e.byteOffset === 0) delete e.byteOffset
+  }
+  const text = Buffer.from(JSON.stringify(json), 'utf8')
+  const padded = Buffer.alloc(Math.ceil(text.length / 4) * 4, 0x20)
+  text.copy(padded)
+  const rest = bytes.subarray(20 + jsonLength)
+  const header = Buffer.alloc(20)
+  header.writeUInt32LE(0x46546c67, 0)
+  header.writeUInt32LE(2, 4)
+  header.writeUInt32LE(20 + padded.length + rest.length, 8)
+  header.writeUInt32LE(padded.length, 12)
+  header.writeUInt32LE(0x4e4f534a, 16)
+  return Buffer.concat([header, padded, rest])
+}
+
 export async function convertStaticProps(o) {
   const started = performance.now()
   const log = o.log ?? (() => {})
@@ -1940,13 +1972,18 @@ export async function convertStaticProps(o) {
   const any = counts.pak + counts.dynamic > 0
   if (any) {
     await doc.transform(prune({ keepAttributes: true, keepLeaves: true }))
-    const quantizeOptions = { quantizationVolume: 'mesh', quantizePosition: 16, quantizeNormal: 8, quantizeColor: 12 }
+    // Pack files take 8-bit colours (unsigned byte, 4 bytes a vertex instead of 8): the vertex colour is a shading
+    // factor of at most 1 that the 8-bit framebuffer multiplies into the texture, so a step of 1/255 changes no
+    // pixel by more than one level. This keeps the ten props-stock.glb files under the 80 MB budget (leftovers).
+    // The public props.glb keeps 12 bits, byte for byte as before.
+    const quantizeOptions = { quantizationVolume: 'mesh', quantizePosition: 16, quantizeNormal: 8, quantizeColor: packMode ? 8 : 12 }
     if (o.meshopt !== false) await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'high', ...quantizeOptions }))
     else await doc.transform(quantize(quantizeOptions))
     if (rowLightVertices) rowLightOrder(doc)
     // Written in the work dir first and renamed into place, so a failure never leaves half a file.
     const staged = path.join(o.workDir, 'props.glb')
-    await io.write(staged, doc)
+    if (packMode) fs.writeFileSync(staged, compactGlbJson(await io.writeBinary(doc)))
+    else await io.write(staged, doc)
     const partial = `${o.outPath}.partial`
     fs.copyFileSync(staged, partial)
     fs.renameSync(partial, o.outPath)

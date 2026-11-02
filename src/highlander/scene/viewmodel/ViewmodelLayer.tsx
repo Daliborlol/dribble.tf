@@ -20,6 +20,8 @@ import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { hasLocalTables, verticalFov } from '@highlander/extras/getters'
+import { trackIndexAt } from '@highlander/extras/track'
+import type { HighlanderExtras } from '@highlander/extras/types'
 import { itemInfo, itemKind, itemName } from '@highlander/items'
 import type { ActiveWeapon } from '@highlander/extras/getters'
 import { getPovSubject, usePovSubject } from '@highlander/pov/subject'
@@ -45,6 +47,13 @@ const depthClearMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, dept
 interface CachedInstance { provider: ViewmodelProvider; instance: ViewmodelInstance }
 
 const _muzzleWorld = new THREE.Vector3()
+
+/** The vm0 model string of player p at a tick (no since search: the layer only needs the model). */
+function vm0ModelAt(x: HighlanderExtras, p: number, tick: number): string | null {
+  const t = x.players.vm0
+  const i = trackIndexAt(t, p, tick)
+  return i < 0 ? null : x.strings.models[t.model[i]] ?? null
+}
 const _time: FrameTime = { tick: 0, tickF: 0 }
 
 export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }) => {
@@ -82,14 +91,16 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
   const [, setPackVersion] = useState(0)
   const localTables = !!(extras && subject && subject.p >= 0 && hasLocalTables(extras, subject.p))
   const packOn = pack.status === 'ready' && packEnabled && packModels && packViewmodels
+  // the networked vm0 model picks an arms override (the Gunslinger arms)
+  const vm0Model = extras && subject && subject.p >= 0 ? vm0ModelAt(extras, subject.p, renderTick) : null
   const glbKeys =
     weapon && state?.block === 'ok' && localTables && packOn && !packPoseExcluded(weapon.kind, weapon.cls)
-      ? glbViewmodelKeys(state.classId, weapon.def)
+      ? glbViewmodelKeys(state.classId, weapon.def, vm0Model)
       : null
   const glbArms = glbKeys?.arms ?? null
   const glbWeapon = glbKeys?.weapon ?? null
   useEffect(() => {
-    if (!glbArms || !glbWeapon) return
+    if (!glbArms) return
     return requestViewmodelModels({ arms: glbArms, weapon: glbWeapon }, gl, scene, defaultCamera, () => setPackVersion(v => v + 1))
     // defaultCamera only serves the shader compile, so a camera swap need not request the pair again
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,7 +126,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchList, gl, scene])
 
-  const key = weapon && state?.team ? `${state.classId}:${weapon.def}:${state.team}:${weapon.cls}:${glb ? 'g' : 'p'}` : ''
+  const key = weapon && state?.team ? `${state.classId}:${weapon.def}:${state.team}:${weapon.cls}:${glb ? `g:${glbArms}` : 'p'}` : ''
 
   // LRU of provider instances, disposed on unmount
   const cache = useRef(new Map<string, CachedInstance>())
@@ -296,7 +307,7 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
 
 /** Pack viewmodel rows (V-provider): absent without a pack, so pages without one answer as before (contract 4.2). */
 function packRows(input: ReturnType<typeof buildViewmodelInput>, live: VmLive | null) {
-  const keys = glbViewmodelKeys(input.classId, input.weaponDef)
+  const keys = glbViewmodelKeys(input.classId, input.weaponDef, input.vm0?.model)
   if (!keys) return {}
   const arms = getAssetPackState().manifest?.items?.[keys.arms] as Parameters<typeof chooseSequence>[2] | undefined
   const choice = arms ? chooseSequence(input, keys.arms, arms) : null

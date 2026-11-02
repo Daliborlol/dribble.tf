@@ -57,7 +57,8 @@
     "convert:map": "node scripts/convert-map.mjs",
     "update:map-bounds": "node scripts/update-map-bounds.mjs",
     "setup:bsp": "node scripts/setup-bsp-to-glb.mjs",
-    "convert:bsp": "node scripts/convert-bsp.mjs"
+    "convert:bsp": "node scripts/convert-bsp.mjs",
+    "assets:build": "node scripts/assets/build-pack.mjs"
   },
   "browserslist": {
     "production": [

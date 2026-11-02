@@ -5,6 +5,9 @@
 import type { Camera, Material, Object3D, Scene, Texture, WebGLRenderer } from 'three'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
+import { ASSET_PACK_URL } from './config'
+import { getAssetPackState, subscribeAssetPack } from './pack'
+
 type Libs = {
   loader: import('three/examples/jsm/loaders/GLTFLoader.js').GLTFLoader
   clone: (source: Object3D) => Object3D
@@ -100,6 +103,8 @@ export interface PackModel {
   gltf: GLTF
   skinned: boolean
   instantiate(): Object3D
+  /** A copy of `template` (a clone of gltf.scene that may carry its own materials), own bones when skinned. */
+  instantiateFrom(template: Object3D): Object3D
   release(copy: Object3D): void
   dispose(): void
 }
@@ -115,6 +120,7 @@ export async function loadPackModel(url: string): Promise<PackModel> {
     gltf,
     skinned,
     instantiate: () => (skinned ? clone(gltf.scene) : gltf.scene.clone(true)),
+    instantiateFrom: template => (skinned ? clone(template) : template.clone(true)),
     release: copy => {
       if (skinned) disposeSkeletons(copy)
     },
@@ -151,4 +157,16 @@ export async function warmUpObject(
   } catch (error) {
     console.warn('[assets] shader warm-up failed', error)
   }
+}
+
+// The model probes (modelProbes.ts) load only once a pack is ready, so a page without one requests nothing.
+let modelProbesRequested = false
+if (ASSET_PACK_URL) {
+  const loadModelProbes = () => {
+    if (modelProbesRequested || getAssetPackState().status !== 'ready') return
+    modelProbesRequested = true
+    import('./modelProbes').catch(error => console.warn('[assets] model probes failed to load', error))
+  }
+  subscribeAssetPack(loadModelProbes)
+  loadModelProbes()
 }

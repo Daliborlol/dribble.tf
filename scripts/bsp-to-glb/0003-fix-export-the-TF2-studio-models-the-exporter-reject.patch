@@ -1,0 +1,452 @@
+From 61faedf9b31c0a0d9656187c0506ddee74a4da55 Mon Sep 17 00:00:00 2001
+From: Daliborlol <dalibor@pyro.tf>
+Date: Mon, 2 Nov 2026 13:54:16 +0100
+Subject: [PATCH] fix: export the TF2 studio models the exporter rejected
+
+- Accept MDL version 47 (the five TF2 sapper building models). Its
+  header layout matches v48; as Studio_ConvertStudioHdrToNewVersion
+  does, the v47 zero-frame cache is discarded.
+- Sequence layers whose start/peak/tail/end range is NaN (studiomdl
+  leaves an addlayer without a range that way: c_ubersaw, c_uberneedle,
+  demo_animations, engineer_animations, treasure_hat_oct) no longer fail
+  the export. The engine applies such a layer at full weight; its layer
+  cycle is NaN unless the layer is pose-driven. The range is stored as
+  zeros with nonFiniteRange: true, so readers use the parent cycle.
+- A bodypart model name that fills its 64-byte field without a
+  terminator (tomb_pick_*, whose names are exactly 64 characters) is
+  read as the whole field.
+- Repairs are listed in the manifest's new warnings array (left out
+  when empty) and printed to stderr as "warning: <path>: ...".
+- mesh.weights is written only for meshes with morph targets, and empty
+  top-level arrays and node.children are left out of the GLB, so
+  gltf-validator reports no EMPTY_ENTITY for empty arrays of these kinds.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/main.rs        |   3 +
+ src/studiomodel.rs | 255 +++++++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 240 insertions(+), 18 deletions(-)
+
+diff --git a/src/main.rs b/src/main.rs
+index b90bc28..f8b01b2 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -177,6 +177,9 @@ fn run_studio_model(args: &[OsString]) -> Result<(), String> {
+     manifest.push(b'\n');
+     write(&output_path, &exported.glb)?;
+     write(&manifest_path, &manifest)?;
++    for warning in &exported.manifest.warnings {
++        eprintln!("warning: {source_path}: {warning}");
++    }
+     println!(
+         "{}",
+         serde_json::json!({
+diff --git a/src/studiomodel.rs b/src/studiomodel.rs
+index 6f6a6a3..d4d34c5 100644
+--- a/src/studiomodel.rs
++++ b/src/studiomodel.rs
+@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
+ 
+ pub const STUDIO_MODEL_PACKAGE_VERSION: u32 = 2;
+ pub const STUDIO_MODEL_MDL_VERSION: i32 = 48;
+-pub const STUDIO_MODEL_MDL_VERSIONS: [i32; 4] = [44, 45, 46, 48];
++pub const STUDIO_MODEL_MDL_VERSIONS: [i32; 5] = [44, 45, 46, 47, 48];
+ pub const STUDIO_MODEL_VVD_VERSION: i32 = 4;
+ pub const STUDIO_MODEL_VTX_VERSION: i32 = 7;
+ 
+@@ -159,6 +159,14 @@ pub struct StudioSequenceLayer {
+     pub peak: f32,
+     pub tail: f32,
+     pub end: f32,
++    /// studiomdl writes NaN for the range of an `addlayer` without one. The engine's
++    /// AccumulateLayers then applies the layer at full weight for the whole cycle, but its
++    /// layer cycle, (cycle - start) / (end - start), is undefined (NaN) unless the layer is
++    /// pose-driven. Such a range is stored as zeros, so a reader applies the layer at full
++    /// weight and uses the parent cycle; for layered animations with more than one frame
++    /// (c_uberneedle) that cycle is a choice, not what the engine computes.
++    #[serde(skip_serializing_if = "std::ops::Not::not")]
++    pub non_finite_range: bool,
+ }
+ 
+ #[derive(Clone, Debug, Serialize)]
+@@ -311,6 +319,9 @@ pub struct StudioModelManifest {
+     pub flex_controllers: Vec<StudioFlexController>,
+     pub flex_rules: Vec<StudioFlexRule>,
+     pub physics_link: StudioPhysicsLink,
++    /// Source data the exporter repaired or accepted with a loss; absent when empty.
++    #[serde(skip_serializing_if = "Vec::is_empty")]
++    pub warnings: Vec<String>,
+ }
+ 
+ #[derive(Clone, Debug, Serialize)]
+@@ -409,6 +420,7 @@ struct ParsedMdl {
+     mesh_flex_count: usize,
+     animation_block_count: usize,
+     animation_blocks: Vec<(usize, usize)>,
++    warnings: Vec<String>,
+ }
+ 
+ #[derive(Clone)]
+@@ -626,6 +638,18 @@ fn c_string(data: &[u8], offset: usize, context: &str) -> Result<String, String>
+     Ok(value.replace('\\', "/"))
+ }
+ 
++/// A fixed-size `char[N]` field. studiomdl copies names with strncpy, so a name that fills
++/// the field has no terminator and the whole field is the name (complete or truncated).
++fn fixed_c_string(field: &[u8], context: &str) -> Result<String, String> {
++    let length = field
++        .iter()
++        .position(|byte| *byte == 0)
++        .unwrap_or(field.len());
++    let value = std::str::from_utf8(&field[..length])
++        .map_err(|error| format!("{context} string is not UTF-8: {error}"))?;
++    Ok(value.replace('\\', "/"))
++}
++
+ fn relative_string(
+     data: &[u8],
+     base: usize,
+@@ -816,7 +840,9 @@ fn parse_mdl(data: &[u8]) -> Result<ParsedMdl, String> {
+                     offset + 72,
+                     "MDL animation local hierarchy count",
+                 )?,
+-                zero_frame_count: if version < 47 {
++                // Studio_ConvertStudioHdrToNewVersion (SDK 2013 studio.h) discards the
++                // zero-frame cache of v46 and older, and of v47, whose layout differs from v48.
++                zero_frame_count: if version <= 47 {
+                     0
+                 } else {
+                     u16_at(data, offset + 90, "MDL animation zero frame count")? as usize
+@@ -917,14 +943,27 @@ fn parse_mdl(data: &[u8]) -> Result<ParsedMdl, String> {
+         let auto_layers = (0..auto_layer_count)
+             .map(|layer| {
+                 let layer_offset = auto_layer_offset + layer * 24;
++                let mut range = [0.0_f32; 4];
++                for (field, value) in range.iter_mut().enumerate() {
++                    *value = f32::from_bits(u32_at(
++                        data,
++                        layer_offset + 8 + field * 4,
++                        "MDL sequence layer range",
++                    )?);
++                }
++                let non_finite_range = range.iter().any(|value| !value.is_finite());
++                if non_finite_range {
++                    range = [0.0; 4];
++                }
+                 Ok(StudioSequenceLayer {
+                     sequence: i16_at(data, layer_offset, "MDL sequence layer sequence")?,
+                     pose: i16_at(data, layer_offset + 2, "MDL sequence layer pose")?,
+                     flags: i32_at(data, layer_offset + 4, "MDL sequence layer flags")?,
+-                    start: f32_at(data, layer_offset + 8, "MDL sequence layer start")?,
+-                    peak: f32_at(data, layer_offset + 12, "MDL sequence layer peak")?,
+-                    tail: f32_at(data, layer_offset + 16, "MDL sequence layer tail")?,
+-                    end: f32_at(data, layer_offset + 20, "MDL sequence layer end")?,
++                    start: range[0],
++                    peak: range[1],
++                    tail: range[2],
++                    end: range[3],
++                    non_finite_range,
+                 })
+             })
+             .collect::<Result<Vec<_>, String>>()?;
+@@ -1385,9 +1424,8 @@ fn parse_mdl(data: &[u8]) -> Result<ParsedMdl, String> {
+                 });
+             }
+             models.push(MdlModel {
+-                name: c_string(
++                name: fixed_c_string(
+                     checked_range(data, model_offset, 64, "MDL model name")?,
+-                    0,
+                     "MDL model name",
+                 )?,
+                 vertex_count,
+@@ -1483,6 +1521,36 @@ fn parse_mdl(data: &[u8]) -> Result<ParsedMdl, String> {
+         animation_blocks.push((start, end));
+     }
+ 
++    let mut warnings = Vec::new();
++    let non_finite_layers: Vec<String> = sequences
++        .iter()
++        .flat_map(|sequence| {
++            sequence
++                .auto_layers
++                .iter()
++                .enumerate()
++                .filter(|(_, layer)| layer.non_finite_range)
++                .map(move |(layer, _)| format!("{}#{layer}", sequence.name))
++        })
++        .collect();
++    if !non_finite_layers.is_empty() {
++        warnings.push(format!(
++            "{} sequence layers have a non-finite start/peak/tail/end range, applied at full weight; the engine's layer cycle is undefined (NaN), stored as a zero range, so the parent cycle is used: {}",
++            non_finite_layers.len(),
++            non_finite_layers.join(", ")
++        ));
++    }
++    for body_part in &body_parts {
++        for model in &body_part.models {
++            if model.name.len() >= 64 {
++                warnings.push(format!(
++                    "body part {:?} model name fills its 64-byte field and has no terminator; the whole field is read as the name: {:?}",
++                    body_part.name, model.name
++                ));
++            }
++        }
++    }
++
+     Ok(ParsedMdl {
+         checksum,
+         version,
+@@ -1503,6 +1571,7 @@ fn parse_mdl(data: &[u8]) -> Result<ParsedMdl, String> {
+         mesh_flex_count,
+         animation_block_count,
+         animation_blocks,
++        warnings,
+     })
+ }
+ 
+@@ -2486,9 +2555,27 @@ impl GlbBuilder {
+     }
+ }
+ 
++/// glTF 2.0 gives every top-level array and `node.children` `minItems: 1` (validator
++/// EMPTY_ENTITY), so an animation library without meshes or materials, or a model without
++/// geometry, leaves those properties out.
++fn drop_empty_top_level_arrays(document: &mut Value) {
++    let is_empty_array = |value: &Value| value.as_array().is_some_and(Vec::is_empty);
++    if let Some(nodes) = document.get_mut("nodes").and_then(Value::as_array_mut) {
++        for node in nodes.iter_mut().filter_map(Value::as_object_mut) {
++            if node.get("children").is_some_and(is_empty_array) {
++                node.remove("children");
++            }
++        }
++    }
++    if let Some(object) = document.as_object_mut() {
++        object.retain(|_, value| !is_empty_array(value));
++    }
++}
++
+ fn encode_glb(mut document: Value, mut binary: Vec<u8>) -> Result<Vec<u8>, String> {
+     pad4(&mut binary, 0);
+     document["buffers"] = json!([{ "byteLength": binary.len() }]);
++    drop_empty_top_level_arrays(&mut document);
+     let mut document = serde_json::to_vec(&document)
+         .map_err(|error| format!("failed to serialize StudioModel GLTF: {error}"))?;
+     pad4(&mut document, b' ');
+@@ -3138,10 +3225,9 @@ fn export_studio_model_parts(
+                         .map(|flex| mdl.flex_descriptors[flex.descriptor].name.clone())
+                         .collect();
+                     let gltf_mesh = meshes_json.len();
+-                    meshes_json.push(json!({
++                    let mut gltf_mesh_json = json!({
+                         "name": format!("body{body_part_index}_model{model_index}_lod{lod_index}_mesh{mesh_index}"),
+                         "primitives": [gltf_primitive],
+-                        "weights": vec![0.0; morph_targets.len()],
+                         "extras": {
+                             "sourceBodyPart": body_part_index,
+                             "sourceModel": model_index,
+@@ -3154,7 +3240,13 @@ fn export_studio_model_parts(
+                             "targetNames": target_names,
+                             "sourceMorphTargets": morph_targets
+                         }
+-                    }));
++                    });
++                    // glTF 2.0 5.23: mesh.weights must not be empty, so it is written only
++                    // when the primitive has morph targets.
++                    if !morph_targets.is_empty() {
++                        gltf_mesh_json["weights"] = json!(vec![0.0; morph_targets.len()]);
++                    }
++                    meshes_json.push(gltf_mesh_json);
+                     let gltf_node = nodes.len();
+                     let mut node = json!({
+                         "name": format!("body{body_part_index}_model{model_index}_lod{lod_index}_mesh{mesh_index}"),
+@@ -3370,6 +3462,7 @@ fn export_studio_model_parts(
+         flex_controllers: mdl.flex_controllers,
+         flex_rules: mdl.flex_rules,
+         physics_link,
++        warnings: mdl.warnings,
+     };
+     let document = json!({
+         "asset": {
+@@ -3416,8 +3509,8 @@ fn export_studio_model_parts(
+ mod tests {
+     use super::{
+         MDL_BONE_BYTES, MDL_HEADER_BYTES, ParsedVvd, SOURCE_TO_GLTF_ROTATION, StudioFeatureStatus,
+-        StudioModelInput, VvdFixup, VvdVertex, animation_value, compressed_quaternion,
+-        export_studio_metadata_model, package_content_hash, parse_mdl,
++        StudioModelInput, VvdFixup, VvdVertex, animation_value, compressed_quaternion, encode_glb,
++        export_studio_metadata_model, fixed_c_string, package_content_hash, parse_mdl,
+     };
+ 
+     fn write_i32(data: &mut [u8], offset: usize, value: i32) {
+@@ -3452,7 +3545,7 @@ mod tests {
+ 
+     #[test]
+     fn accepts_only_source_compatible_tf2_mdl_versions() {
+-        for version in [44, 45, 46, 48] {
++        for version in [44, 45, 46, 47, 48] {
+             let mut mdl = vec![0_u8; MDL_HEADER_BYTES];
+             mdl[0..4].copy_from_slice(b"IDST");
+             write_i32(&mut mdl, 4, version);
+@@ -3473,12 +3566,19 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn clears_pre_v47_zero_frame_cache_metadata() {
++    fn clears_pre_v48_zero_frame_cache_metadata() {
++        for version in [46, 47] {
++            assert_eq!(zero_frame_count_of(version), 0, "v{version}");
++        }
++        assert_eq!(zero_frame_count_of(48), 9);
++    }
++
++    fn zero_frame_count_of(version: i32) -> usize {
+         let animation_offset = MDL_HEADER_BYTES;
+         let animation_name_offset = animation_offset + 100;
+         let mut mdl = vec![0_u8; animation_name_offset + 5];
+         mdl[0..4].copy_from_slice(b"IDST");
+-        write_i32(&mut mdl, 4, 46);
++        write_i32(&mut mdl, 4, version);
+         let mdl_length = mdl.len() as i32;
+         write_i32(&mut mdl, 76, mdl_length);
+         write_i32(&mut mdl, 180, 1);
+@@ -3495,8 +3595,8 @@ mod tests {
+         write_i32(&mut mdl, animation_offset + 92, 1234);
+         mdl[animation_name_offset..].copy_from_slice(b"idle\0");
+ 
+-        let parsed = parse_mdl(&mdl).expect("v46 metadata must be converted before use");
+-        assert_eq!(parsed.animations[0].metadata.zero_frame_count, 0);
++        let parsed = parse_mdl(&mdl).expect("animation metadata must parse");
++        parsed.animations[0].metadata.zero_frame_count
+     }
+ 
+     #[test]
+@@ -3585,6 +3685,125 @@ mod tests {
+         assert_eq!(sequence.ik_locks[0].flags, 7);
+     }
+ 
++    #[test]
++    fn stores_nan_sequence_layer_range_as_full_weight_and_warns() {
++        // studiomdl writes NaN start/peak/tail/end for an addlayer without a range
++        // (c_ubersaw, demo_animations): the layer stays, with a zero range.
++        let sequence_offset = MDL_HEADER_BYTES;
++        let layer_offset = sequence_offset + 212;
++        let label_offset = layer_offset + 48;
++        let activity_offset = label_offset + 5;
++        let mut mdl = vec![0_u8; activity_offset + 9];
++        mdl[0..4].copy_from_slice(b"IDST");
++        write_i32(&mut mdl, 4, 48);
++        let mdl_length = mdl.len() as i32;
++        write_i32(&mut mdl, 76, mdl_length);
++        write_i32(&mut mdl, 188, 1);
++        write_i32(&mut mdl, 192, sequence_offset as i32);
++        write_i32(
++            &mut mdl,
++            sequence_offset + 4,
++            (label_offset - sequence_offset) as i32,
++        );
++        write_i32(
++            &mut mdl,
++            sequence_offset + 8,
++            (activity_offset - sequence_offset) as i32,
++        );
++        write_i32(&mut mdl, sequence_offset + 148, 2);
++        write_i32(
++            &mut mdl,
++            sequence_offset + 152,
++            (layer_offset - sequence_offset) as i32,
++        );
++        write_i32(
++            &mut mdl,
++            sequence_offset + 168,
++            (layer_offset - sequence_offset) as i32,
++        );
++        mdl[layer_offset..layer_offset + 2].copy_from_slice(&1_i16.to_le_bytes());
++        for field in 0..4 {
++            write_i32(
++                &mut mdl,
++                layer_offset + 8 + field * 4,
++                0xffc0_0000_u32 as i32,
++            );
++        }
++        let second = layer_offset + 24;
++        mdl[second..second + 2].copy_from_slice(&2_i16.to_le_bytes());
++        write_f32(&mut mdl, second + 8, 0.1);
++        write_f32(&mut mdl, second + 12, 0.2);
++        write_f32(&mut mdl, second + 16, 0.8);
++        write_f32(&mut mdl, second + 20, 0.9);
++        mdl[label_offset..label_offset + 5].copy_from_slice(b"idle\0");
++        mdl[activity_offset..activity_offset + 9].copy_from_slice(b"ACT_IDLE\0");
++
++        let parsed = parse_mdl(&mdl).expect("NaN layer ranges must not fail the export");
++        let layers = &parsed.sequences[0].auto_layers;
++        assert_eq!(layers.len(), 2);
++        assert_eq!(layers[0].sequence, 1);
++        assert!(layers[0].non_finite_range);
++        assert_eq!(
++            [
++                layers[0].start,
++                layers[0].peak,
++                layers[0].tail,
++                layers[0].end
++            ],
++            [0.0; 4]
++        );
++        assert!(!layers[1].non_finite_range);
++        assert_eq!(
++            [
++                layers[1].start,
++                layers[1].peak,
++                layers[1].tail,
++                layers[1].end
++            ],
++            [0.1, 0.2, 0.8, 0.9]
++        );
++        assert_eq!(parsed.warnings.len(), 1);
++        assert!(parsed.warnings[0].contains("idle#0"));
++        let json = serde_json::to_value(layers).unwrap();
++        assert_eq!(json[0]["nonFiniteRange"], true);
++        assert!(json[1].get("nonFiniteRange").is_none());
++    }
++
++    #[test]
++    fn glb_leaves_out_empty_top_level_arrays() {
++        let glb = encode_glb(
++            serde_json::json!({
++                "asset": { "version": "2.0" },
++                "meshes": [],
++                "materials": [],
++                "nodes": [{ "name": "root", "children": [] }]
++            }),
++            vec![1, 2, 3],
++        )
++        .unwrap();
++        let length = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
++        let document: serde_json::Value = serde_json::from_slice(&glb[20..20 + length]).unwrap();
++        assert!(document.get("meshes").is_none());
++        assert!(document.get("materials").is_none());
++        assert_eq!(document["nodes"][0]["name"], "root");
++        assert!(document["nodes"][0].get("children").is_none());
++        assert_eq!(document["buffers"][0]["byteLength"], 4);
++    }
++
++    #[test]
++    fn reads_fixed_name_fields_that_fill_their_size() {
++        // A 64-byte bodypart model name without a terminator, as in tomb_pick_*.
++        let field = b"../../../parts/dmx/a_bodypart_model_name_that_fills_all_64_bytes";
++        assert_eq!(field.len(), 64);
++        assert_eq!(
++            fixed_c_string(field, "test").unwrap(),
++            "../../../parts/dmx/a_bodypart_model_name_that_fills_all_64_bytes"
++        );
++        let mut short = [0_u8; 64];
++        short[..8].copy_from_slice(b"a\\b\0junk");
++        assert_eq!(fixed_c_string(&short, "test").unwrap(), "a/b");
++    }
++
+     fn vertex(position_x: f32) -> VvdVertex {
+         VvdVertex {
+             weights: [1.0, 0.0, 0.0],
+-- 
+2.56.0
+

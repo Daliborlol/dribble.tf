@@ -6,6 +6,10 @@
  * PINNED_COMMIT, with scripts/bsp-to-glb/*.patch applied on a local `dribble` branch. Upstream has
  * no tagged release archives yet, so we build from source (Rust ≥ 1.85, edition 2024; ~25 s).
  *
+ * A patch counts as applied when its subject line appears in `git log PINNED_COMMIT..dribble`.
+ * An existing `dribble` checkout gets the missing patches applied in file order on top, so a
+ * patch added later (0003, the studio exporter fixes) reaches checkouts set up before it.
+ *
  * Usage: node scripts/setup-bsp-to-glb.mjs [--dir ../bsp-to-glb] [--jobs 4] [--skip-build true]
  */
 
@@ -30,6 +34,16 @@ const skipBuild = opt('skip-build', 'false') === 'true'
 const patchDir = path.join(__dirname, 'bsp-to-glb')
 const patches = fs.existsSync(patchDir) ? fs.readdirSync(patchDir).filter(f => f.endsWith('.patch')).sort().map(f => path.join(patchDir, f)) : []
 
+/** The commit subject of a format-patch file: the folded Subject header without its [PATCH n/m] tag. */
+const patchSubject = file => {
+  const lines = fs.readFileSync(file, 'utf8').split('\n')
+  const start = lines.findIndex(line => line.startsWith('Subject: '))
+  if (start < 0) throw new Error(`${path.basename(file)} has no Subject header`)
+  let subject = lines[start].slice('Subject: '.length)
+  for (let i = start + 1; i < lines.length && /^[ \t]/.test(lines[i]); i++) subject += ' ' + lines[i].trim()
+  return subject.replace(/^\[PATCH[^\]]*\]\s*/, '').trim()
+}
+
 const sh = (cmd, args, options = {}) => {
   const result = spawnSync(cmd, args, { stdio: options.capture ? 'pipe' : 'inherit', encoding: 'utf8', cwd: options.cwd, env: { ...process.env, ...(options.env || {}) } })
   if (result.status !== 0 && !options.allowFail) {
@@ -43,27 +57,49 @@ console.log(`bsp-to-glb checkout: ${dir}`)
 if (!fs.existsSync(path.join(dir, '.git'))) {
   sh('git', ['clone', REPO_URL, dir])
 }
-const head = git(['rev-parse', 'HEAD'], { capture: true }).stdout.trim()
 const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], { capture: true }).stdout.trim()
-const patchedAlready = branch === 'dribble' && git(['merge-base', '--is-ancestor', PINNED_COMMIT, 'HEAD'], { allowFail: true, capture: true }).status === 0
-if (!patchedAlready) {
+const containsPinned = git(['merge-base', '--is-ancestor', PINNED_COMMIT, 'HEAD'], { allowFail: true, capture: true }).status === 0
+const requireClean = () => {
   if (git(['status', '--porcelain'], { capture: true }).stdout.trim()) {
     throw new Error(`${dir} has local changes; commit or stash them first`)
   }
+}
+if (branch !== 'dribble' || !containsPinned) {
+  requireClean()
   git(['cat-file', '-e', `${PINNED_COMMIT}^{commit}`], { allowFail: true, capture: true }).status === 0 || git(['fetch', 'origin'])
   git(['checkout', '-B', 'dribble', PINNED_COMMIT])
-  for (const patch of patches) {
+}
+const applied = new Set(git(['log', '--format=%s', `${PINNED_COMMIT}..HEAD`], { capture: true }).stdout.split('\n').map(line => line.trim()).filter(Boolean))
+const missingPatches = patches.filter(patch => !applied.has(patchSubject(patch)))
+if (missingPatches.length) {
+  requireClean()
+  for (const patch of missingPatches) {
     console.log(`Applying ${path.basename(patch)}`)
     git(['-c', 'commit.gpgsign=false', '-c', 'user.name=dribble.tf', '-c', 'user.email=dribble@localhost', 'am', '--3way', patch])
   }
 } else {
-  console.log(`Already on patched branch 'dribble' (${head.slice(0, 10)})`)
+  const head = git(['rev-parse', 'HEAD'], { capture: true }).stdout.trim()
+  console.log(`Already on patched branch 'dribble' (${head.slice(0, 10)}), all ${patches.length} patches applied`)
 }
 
+// Every patch must now be on the branch, whatever state the checkout started in.
+const appliedNow = new Set(git(['log', '--format=%s', `${PINNED_COMMIT}..HEAD`], { capture: true }).stdout.split('\n').map(line => line.trim()).filter(Boolean))
+const stillMissing = patches.filter(patch => !appliedNow.has(patchSubject(patch))).map(patch => path.basename(patch))
+if (stillMissing.length) throw new Error(`patches missing from branch 'dribble' after applying: ${stillMissing.join(', ')}`)
+
+const exe = name => path.join(dir, 'target', 'release', process.platform === 'win32' ? `${name}.exe` : name)
 if (!skipBuild) {
   sh('cargo', ['build', '--release', '--locked'], { cwd: dir, env: jobs ? { CARGO_BUILD_JOBS: jobs } : {} })
+} else if (!fs.existsSync(exe('bsp-to-glb'))) {
+  console.log(`Patches applied; --skip-build true and no binary at ${exe('bsp-to-glb')}, so nothing was checked. Run again without --skip-build to build it.`)
+  process.exit(0)
+} else {
+  // A binary older than the newest commit was built before the last patch reached the branch.
+  const headTime = Number(git(['log', '-1', '--format=%ct'], { capture: true }).stdout.trim()) * 1000
+  if (fs.statSync(exe('bsp-to-glb')).mtimeMs < headTime) {
+    console.warn(`warning: --skip-build true: ${exe('bsp-to-glb')} is older than HEAD and may lack the newest patches; run again without --skip-build`)
+  }
 }
-const exe = name => path.join(dir, 'target', 'release', process.platform === 'win32' ? `${name}.exe` : name)
 const version = sh(exe('bsp-to-glb'), ['--version-json'], { capture: true }).stdout.trim()
 const usage = sh(exe('bsp-to-glb'), [], { capture: true, allowFail: true }).stderr
 if (!usage.includes('--lightmap-styles') || !usage.includes('--allow-unresolved-patch-includes')) {

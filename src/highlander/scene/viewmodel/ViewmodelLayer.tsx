@@ -25,7 +25,7 @@ import type { ActiveWeapon } from '@highlander/extras/getters'
 import { getPovSubject, usePovSubject } from '@highlander/pov/subject'
 import { getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
 import { useAssetSetting } from '@pack/hooks'
-import { getAssetPackState, useAssetPack } from '@pack/pack'
+import { getAssetPackState, subscribeAssetPack, useAssetPack } from '@pack/pack'
 
 import { DEPTH_CLEAR_ORDER, prepareViewmodelObject } from './kit'
 import { buildViewmodelInput, viewmodelBlock } from './input'
@@ -238,7 +238,7 @@ registerHlProbe('viewmodel.state', (tick?: number) => {
     liveSubject: live?.subjectEntityId ?? null,
     liveTickF: live?.tickF ?? null, // the tickF the layer posed the viewmodel at in the last frame
   }
-  if (s.block !== 'ok' || !x || !subject || !s.weapon || !s.team) return { ...base, pack: null, provider: null, kind: null, weaponDef: null, draw: null, kick: null, reload: null, swing: null }
+  if (s.block !== 'ok' || !x || !subject || !s.weapon || !s.team) return { ...base, provider: null, kind: null, weaponDef: null, draw: null, kick: null, reload: null, swing: null }
   const input = buildViewmodelInput(x, demo, subject.p, s.classId, s.team, s.weapon, at)
   const kind = resolveKind(s.weapon.kind, s.weapon.cls)
   const pose = computePose(input, kind, { kick: [1, 1], melee: MELEE_KINDS.has(kind), reloads: true })
@@ -308,9 +308,18 @@ registerHlProbe('viewmodel.debug', (opts?: { flip?: boolean | null; def?: number
   return { ...vmShared.debug }
 })
 
-// Probe: the meshes of the mounted viewmodel in camera space (V-provider): name, visibility, material flags and the
-// box of the vertices' bind positions after the current pose is not computed (skinned), so the box is the node's.
-registerHlProbe('viewmodel.meshes', () => {
+// Probe (registered once a pack is ready, so pages without one list the probes they listed before): the meshes of
+// the mounted viewmodel, with visibility, material flags and the camera-space box of a sample of skinned vertices.
+let meshesProbeRegistered = false
+const registerMeshesProbe = () => {
+  if (meshesProbeRegistered || getAssetPackState().status !== 'ready') return
+  meshesProbeRegistered = true
+  registerHlProbe('viewmodel.meshes', viewmodelMeshes)
+}
+subscribeAssetPack(registerMeshesProbe)
+registerMeshesProbe()
+
+function viewmodelMeshes() {
   const live = vmShared.live
   if (!live?.instance) return { mounted: false }
   const root = live.instance.object
@@ -351,4 +360,4 @@ registerHlProbe('viewmodel.meshes', () => {
     })
   })
   return { mounted: true, provider: live.provider, rows }
-})
+}

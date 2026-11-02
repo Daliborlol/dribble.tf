@@ -8,6 +8,8 @@ import {
   animEvents,
   fireTicks,
   flagsAt,
+  hasLocalTables,
+  invisAt,
   medigunAt,
   miscAt,
   sniperChargeAt,
@@ -204,5 +206,7 @@ export function buildViewmodelInput(x: HighlanderExtras, demo: AsyncParser, p: n
     stateSince: wstate ? wstateSince(x, p, tick, i => x.players.wstate.state[i] === wstate.state) ?? undefined : undefined,
     clipUpTicks: windowReload.clipUpTicks,
     weaponClass: weapon.cls,
+    localTables: hasLocalTables(x, p),
+    invis: invisAt(x, p, tickF),
   }
 }

@@ -1,6 +1,6 @@
 // Viewmodel provider interface (contract section 5 F4, written verbatim by S0). F4 registers the placeholder provider
-// (priority 0, supports everything); a GLB provider (priority 10) can register later and take over the classes and
-// weapons it has models for.
+// (priority 0, supports everything); the GLB provider (glbProvider.ts, priority 10) takes over the classes
+// and weapons the asset pack has models for.
 //
 // What a provider gets and returns:
 // - `create(input)` builds one instance for (classId, weaponDef, team); ViewmodelLayer recreates it whenever one of
@@ -51,6 +51,10 @@ export interface ViewmodelInput {
   clipUpTicks?: number[]
   /** Server class name of the active weapon, for weapons items.json does not know. */
   weaponClass?: string
+  /** The subject has local tables (`hasLocalTables`); old demos without them keep the placeholder (V-provider). */
+  localTables?: boolean
+  /** Invisibility 0..0.95 of the subject at tickF (`invisAt`), for the cloak fade of the GLB viewmodel. */
+  invis?: number
 }
 export interface ViewmodelInstance { object: THREE.Object3D; muzzle: THREE.Object3D; update(input: ViewmodelInput): void; dispose(): void }
 export interface ViewmodelProvider { id: string; priority: number; supports(input: ViewmodelInput): boolean; create(input: ViewmodelInput): ViewmodelInstance }

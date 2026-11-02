@@ -2,6 +2,8 @@
 
 import * as THREE from 'three'
 
+import type { ViewmodelInstance } from './provider'
+
 export interface VmLive {
   subjectEntityId: number
   provider: string
@@ -16,6 +18,8 @@ export interface VmLive {
   /** Render tick and tick + frameProgress the viewmodel was posed at in the last frame. */
   tick: number
   tickF: number
+  /** The mounted instance (probes). */
+  instance?: ViewmodelInstance
 }
 
 export const vmShared: { live: VmLive | null; debug: { flip: boolean | null; def: number | null; noDepthClear: boolean; push: number }; beamOrigin: THREE.Vector3 } = {

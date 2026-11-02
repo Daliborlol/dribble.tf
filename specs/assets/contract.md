@@ -1,6 +1,6 @@
 # Asset-phase contract
 
-Version 1.1, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
+Version 1.2, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
 every asset-phase task after C0. It extends `specs/highlander/contract.md`. Where the two disagree on game assets,
 this file wins; everything else in the Highlander contract and in `AGENTS.md` still holds (build, tsc, harness, lock,
 `/tmp` quota, GPU disposal, D12 determinism, the memory rule of Highlander contract 12.3, the settings reducer).
@@ -380,8 +380,9 @@ alpha rule of 2.6, compiles (4.3) and only then shows the mesh with the texture.
    line, no settings section, no new code on the map load path (3.4, 3.5).
 2. **Pack configured but absent.** One request, `<url>manifest.json`, and one `console.info` line. Everything drawn
    is identical to `a06e4c7`.
-3. **Pack present, disabled** (`?assets=off` or `assets.enabled` false at resolution). No pack request. Drawn output
-   identical to `a06e4c7`.
+3. **Pack present, disabled** (`?assets=off` or `assets.enabled` false at resolution). No pack request while it stays
+   disabled, and drawn output identical to `a06e4c7`. Turning `assets.enabled` on later in the page (not
+   `?assets=off`, which holds for the page) resolves the pack once more (3.4).
 4. **Item absent from the manifest.** That item keeps its fallback. No request for it.
 5. **Item load failure.** 3.6: one warning, fallback for the page, the rest stays real.
 6. **Stale map entry.** 3.5: the whole map entry falls back.
@@ -392,7 +393,7 @@ Use the harness of the task's checkout for both runs. `REF` is a run with `--roo
 
 | run | harness flags | must hold |
 |---|---|---|
-| N1 | none | `compare-runs REF N1` exits 0 on `plans/1438891-baseline.json`, and the request path sets are equal |
+| N1 | none | `compare-runs REF N1` exits 0 on `plans/1438891-baseline.json`, and the request keys (below) are equal |
 | N2 | `--asset-pack missing` | `compare-runs` exits 0 with `--allow-request /tf2-assets/manifest.json`; exactly 1 request under `/tf2-assets/`, status 404 |
 | N3 | `--asset-pack PACK --query assets=off` | `compare-runs REF N3` exits 0; 0 requests under `/tf2-assets/` |
 | N4 | `--asset-pack PACK`, Highlander off (`settings` step) | 0 requests under `/tf2-assets/models/`; map items as 3.9 says |
@@ -401,9 +402,26 @@ Manifest structure rule (A0-harness implements it; the gate depends on it). Toda
 difference of JSON paths or value types between the two manifests, array indices and eval results included. The
 new manifest fields would break N1 to N3 under that rule, so compare-runs leaves these subtrees out of the structure
 check: `assetPack`, `requests`, `requestSummary`, every step's `assetsIdle` and every step's eval result. Requests are
-judged only by the request-set rule (unique same-origin paths, `--allow-request`), and evals stay warnings. The
-harness also writes fixed shapes: `assetPack` is always an object with nullable fields, and `assetsIdle` is `null`
-when the page has no `assets.waitIdle` probe.
+judged only by the request-set rule below, and evals stay warnings. The harness also writes fixed shapes: `assetPack`
+is always an object with nullable fields, and `assetsIdle` is `null` when the page has no `assets.waitIdle` probe.
+
+Request-set rule (A0-harness implements it in `compare-runs.mjs`; the log itself stays raw):
+- **Pathname only.** Each same-origin request is compared by its URL pathname. The query string stays in the
+  `requests` log but takes no part in the comparison, so the page URL of N3 (`/?debug=1&demoUrl=...&assets=off`)
+  and REF's (`/?debug=1&demoUrl=...`) are the same key `/`.
+- **Build hashes normalised.** Vite names build output by content hash (`/assets/index-B-261qmv.js`,
+  `/assets/ParseWorker-BJEWqfZR.js`), so any `src/` change renames them. Under `/assets/` only, the final
+  `-<8 chars of [A-Za-z0-9_-]>` before the extension becomes `-[hash]`: the pattern
+  `/^(\/assets\/.+)-[A-Za-z0-9_-]{8}(\.[A-Za-z0-9]+)$/` is replaced by `$1-[hash]$2`. `/assets/index-[hash].js`
+  is then one key for REF and N1. No other path is rewritten; `/tf2-assets/` paths are compared verbatim.
+- **Counted keys.** Two build files can share a normalised key (two chunks named `index`), so each side is a
+  map from key to the number of distinct raw pathnames behind it. The maps must be equal, apart from the keys given
+  with `--allow-request <pathname or normalised key>` (repeatable). The failure reason `requests differ` lists each
+  key with both counts.
+- A task whose change adds or removes a requested chunk with the pack not configured fails N1 on purpose, because
+  D21 case 1 says no new code runs on the map load path. The task either removes the request or, when the chunk is
+  justified (for example a lazy chunk that only loads after a user action the plan triggers), names the key with
+  `--allow-request` and gives the reason in its report.
 
 Eval differences, among them the 3 new probe keys of the smoke sweep, are the only accepted warnings. A run on the
 6v6 sample smoke plan repeats N1 under the same rule.
@@ -422,7 +440,7 @@ Measured on this machine (Radeon 680M, 1600x900, headless shell 1248, `egl`). Th
 | Pack not configured | section 5.1 N1 passes; main bundle growth at most 25 KB minified |
 | `props-stock.glb` per map | at most 12 MB; all 10 maps at most 80 MB; reported per map |
 | Pack build per map (props stage) | at most 60 s under the lock; all 10 maps at most 10 min |
-| RTS draw calls / triangles (`renderer.info.render`, the smoke RTS shots) | M3-props first measures the no-pack calls per map (only textured world plus stock props was measured: 259 to 474). Then at most 450 calls, or no-pack calls + 300 on a map that misses 450, and at most 1.2M triangles, on every packed map |
+| RTS draw calls / triangles (`renderer.info.render`, the smoke RTS shots) | The research measured 259 to 474 calls for a textured world with stock props; no no-pack count exists yet, so M3-props first measures the no-pack calls per map and records them in 11. Then at most 450 calls, or no-pack calls + 300 on a map that misses 450, and at most 1.2M triangles, on every packed map |
 | Frame time, uncapped, `--perf-play 50%:10:rts` and a POV run on 1434434 | p95 at most 13.3 ms; if the no-pack run already misses that, at most no-pack p95 + 3 ms |
 | Long tasks | none over 50 ms in the perf window, which starts after `assets.waitIdle()` resolved and 3 s of play warmed every player model (their first shader compile, 120 to 133 ms, predates this phase) |
 | Peak PSS 1434434 | at most 1.15 GB (no-pack measured 872 MB) |
@@ -542,18 +560,25 @@ Owns `scripts/hl/harness/**`.
 - Before each screenshot, when the page has the probe `assets.waitIdle`, the harness awaits it (30 s) and records
   `assetsIdle` in the step. Pages without the probe (`a06e4c7`) get `assetsIdle: null`, so REF runs still work.
 - `--no-vsync` adds `--disable-gpu-vsync --disable-frame-rate-limit`; `perf.json` records it.
-- `compare-runs.mjs`: a difference in the set of unique same-origin request paths is a failure reason
-  (`requests differ`, exit 1), except paths given with `--allow-request <path>` (repeatable). A different pack
+- `compare-runs.mjs`: a difference under the request-set rule of 5.1 (pathname only, `/assets/` hashes normalised,
+  counted keys) is a failure reason (`requests differ`, exit 1), except keys given with `--allow-request <key>`
+  (repeatable). A different pack
   fingerprint is a warning. The structure check skips the subtrees named in 5.1 (`assetPack`, `requests`,
   `requestSummary`, each step's `assetsIdle` and eval result). `smoke-gen.mjs` adds `assets.status` and
   `assets.items` to the sweep.
 - README and `--help` updated.
 
 Acceptance:
-- REF against itself (two runs of `a06e4c7`) exits 0, with equal request sets.
+- REF against itself (two runs of `a06e4c7`) exits 0, with equal request keys.
+- REF against a run of a scratch checkout of `a06e4c7` plus a trivial `src/` change that changes every bundle hash
+  (for example one added `console.debug` string in `src/main.tsx`, never committed) exits 0 on requests. The raw
+  `requests` logs of the two runs differ in their `/assets/` names, which the report shows.
+- REF against N3 (`--asset-pack <test manifest dir> --query assets=off`) exits 0 on requests, although the logged
+  document URLs differ by `assets=off`.
 - REF (the `a06e4c7` page) against N1 (the A0-harness checkout's page, new manifest fields present) exits 0 on the
   baseline plan and on the 6v6 smoke plan, whose sweep differs by the new probe keys once A0-runtime is merged.
-- A deliberately extra request (a plan `eval` that fetches `/favicon.ico?x`) makes compare-runs exit 1 naming it.
+- A deliberately extra request (a plan `eval` that fetches `/__extra-request-test`, a path no page requests) makes
+  compare-runs exit 1 naming that key; the same run passes with `--allow-request /__extra-request-test`.
 - `--asset-pack missing` against REF fails without `--allow-request` and passes with it, once A0-runtime is merged
   (before that, test against a branch that has it, or report as pending).
 
@@ -696,3 +721,9 @@ decisions here, as numbered subsections, and bumps the version line.
 
 The task asked for about 300 to 500 lines. This file is longer, because the wave-1 acceptance lists of section 9 are
 kept here, where every task and reviewer reads the same text. Accepted.
+
+### 11.2 Request comparison (v1.2)
+
+Raw same-origin paths cannot be compared between checkouts: Vite's content-hashed bundle names change with any
+`src/` edit, and the page URL carries the run's `--query`. Section 5.1 therefore compares pathnames, with the
+`/assets/` hashes normalised and the keys counted. The A0-harness acceptance tests both cases.

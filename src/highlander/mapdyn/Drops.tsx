@@ -1,7 +1,7 @@
 // Dropped items (contract section 5 F6, setting map.drops): death ammo packs, building gibs and dropped
 // weapons as small boxes at their networked transform.
 
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 
@@ -12,6 +12,10 @@ import { DROP_AMMO_SIZE, DROP_GIB_SIZE, DROP_WEAPON_SIZE } from './constants'
 import { drawn, frameTickF, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { forEachDropAt } from './markers'
+import { PackInstances, packModelKey, slotKey, type PackSlots } from './packModels'
+
+/** Copies per pack model at most (drops of one model alive at once). */
+const PACK_DROP_CAP = 128
 
 const SIZES = {
   [DROP.AMMO_PACK]: new THREE.Vector3(...DROP_AMMO_SIZE),
@@ -21,6 +25,7 @@ const SIZES = {
 const _m = new THREE.Matrix4()
 const _c = new THREE.Vector3()
 const _up = new THREE.Vector3()
+const _one = new THREE.Vector3(1, 1, 1)
 
 export const Drops = React.memo(() => {
   const x = useExtras()
@@ -36,6 +41,22 @@ export const Drops = React.memo(() => {
   const ammo = useInstancedMesh(UNIT_BOX, MATERIALS.dropAmmo, capacity[0], { count: 0 })
   const gib = useInstancedMesh(UNIT_BOX, MATERIALS.dropGib, capacity[1], { count: 0 })
   const weapon = useInstancedMesh(UNIT_BOX, MATERIALS.dropWeapon, capacity[2], { count: 0 })
+  // W-items: drops whose model string is a pack model draw it at the networked transform
+  const models = useMemo(() => {
+    if (!active || !x) return { byDrop: [] as string[], counts: [] as [string, number][] }
+    const byDrop: string[] = []
+    const counts = new Map<string, number>()
+    for (let j = 0; j < x.drops.count; j++) {
+      const key = packModelKey(x.strings.models[x.drops.model[j]])
+      byDrop.push(key)
+      if (key.endsWith('.mdl')) counts.set(key, Math.min(PACK_DROP_CAP, (counts.get(key) ?? 0) + 1))
+    }
+    return { byDrop, counts: Array.from(counts.entries()).sort(([a], [b]) => (a < b ? -1 : 1)) }
+  }, [active, x])
+  const slots = useMemo<PackSlots>(() => new Map(), [])
+  const redraw = useCallback(() => {
+    lastTickF.current = NaN
+  }, [])
 
   useEffect(() => {
     lastTickF.current = NaN
@@ -51,7 +72,10 @@ export const Drops = React.memo(() => {
     lastTickF.current = tickF
     const meshes = [ammo, gib, weapon]
     const counts = [0, 0, 0]
-    forEachDropAt(x, tickF, (_j, kind, pos, quat) => {
+    slots.forEach(slot => slot.begin())
+    forEachDropAt(x, tickF, (j, kind, pos, quat) => {
+      const slot = slots.size > 0 ? slots.get(slotKey(models.byDrop[j])) : undefined
+      if (slot && slot.add(_m.compose(pos, quat, _one))) return
       const k = Math.min(2, kind)
       const mesh = meshes[k]
       if (!mesh || counts[k] >= capacity[k]) return
@@ -62,6 +86,7 @@ export const Drops = React.memo(() => {
       _m.compose(_c, quat, size)
       mesh.setMatrixAt(counts[k]++, _m)
     })
+    slots.forEach(slot => slot.finish())
     meshes.forEach((mesh, k) => {
       if (!mesh) return
       mesh.count = counts[k]
@@ -78,6 +103,9 @@ export const Drops = React.memo(() => {
       {ammo && <primitive object={ammo} />}
       {gib && <primitive object={gib} />}
       {weapon && <primitive object={weapon} />}
+      {models.counts.map(([key, count]) => (
+        <PackInstances key={key} modelKey={key} capacity={count} slots={slots} onChange={redraw} />
+      ))}
     </group>
   )
 })

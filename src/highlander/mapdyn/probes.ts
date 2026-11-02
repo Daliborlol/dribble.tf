@@ -48,7 +48,7 @@ import {
   sampleMover,
   type MoverSample,
 } from './movers'
-import { getActiveKits, getMovingDrawn, getMovingNearPov, kitSurfaceOptions, povEyePosition } from './Pickups'
+import { getActiveKits, getMovingDrawn, getMovingNearPov, getPackPickupsDrawn, kitSurfaceOptions, povEyePosition } from './Pickups'
 import {
   PICKUP_KIND_NAMES,
   PICKUP_SIZE_NAMES,
@@ -496,5 +496,25 @@ registerHlProbe('mapdyn.summary', () => {
     kitsSkipped: reasons,
     ragdolls: x.ragdolls.count,
     drops: x.drops.count,
+  }
+})
+
+/** mapdyn.pack(): map items drawn from asset-pack models (W-items); empty without a pack. */
+registerHlProbe('mapdyn.pack', () => {
+  const scene = useInstance.getState().threeScene
+  const instanced: Record<string, number> = {}
+  scene?.traverse(node => {
+    const mesh = node as THREE.InstancedMesh
+    if (mesh.isInstancedMesh && node.name.startsWith('pack:') && node.parent) {
+      const key = node.name.slice(5)
+      instanced[key] = Math.max(instanced[key] ?? 0, mesh.count)
+    }
+  })
+  const cart = scene?.getObjectByName('hl-cart')
+  const cartModel = cart?.getObjectByName('pack-model') ?? null
+  return {
+    pickups: getPackPickupsDrawn(),
+    instanced,
+    cart: cart ? { visible: cart.visible, pack: !!cartModel } : null,
   }
 })

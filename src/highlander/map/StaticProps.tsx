@@ -176,8 +176,10 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     }
     // Pack files written for the runtime bake are merged once, before the bounds and materials (propBatch.ts).
     let batch: PropBatchResult | null = null
-    const bake = (root: THREE.Group, textures: Map<string, THREE.Texture | null> | null) => {
-      const result = itemKey ? bakeRuntimeProps(root, textures, gl.capabilities.isWebGL2) : null
+    const bake = async (root: THREE.Group, textures: Map<string, THREE.Texture | null> | null) => {
+      const t0 = performance.now()
+      const result = itemKey ? await bakeRuntimeProps(root, textures, gl.capabilities.isWebGL2) : null
+      if (result) result.bakeMs = Math.round(performance.now() - t0)
       freeze(root)
       return result
     }
@@ -192,7 +194,8 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
           const list = await Promise.all(keys.map(key => acquirePackTexture(key, gl)))
           if (request !== requestRef.current) throw new Superseded(root)
           textures = new Map(keys.map((key, i) => [key, list[i]]))
-          batch = bake(root, textures)
+          batch = await bake(root, textures)
+          if (request !== requestRef.current) throw new Superseded(root, batch)
           // Materials and programs before the props are shown (asset contract 4.3); the effect below adopts them.
           const { materialMode: m, useTextures: t } = modeRef.current
           const materials = applyBspMaterials(root, {
@@ -211,7 +214,8 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
             throw new Superseded(root, batch)
           }
         } else {
-          batch = bake(root, null)
+          batch = await bake(root, null)
+          if (request !== requestRef.current) throw new Superseded(root, batch)
         }
         held = []
         setLoaded({ url, root, textures, prepared, batch })
@@ -245,7 +249,9 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     current.textures = loaded.textures
       ? { keys: keys.length, loaded: [...loaded.textures.values()].filter(Boolean).length }
       : null
+    const t0 = performance.now()
     const lod = new PropLodController(loaded.root)
+    if (loaded.batch) loaded.batch.lodSetupMs = Math.round(performance.now() - t0)
     current.lod = lod.active ? lod : null
     if (loaded.batch) {
       const { dispose: _dispose, ...batchStats } = loaded.batch

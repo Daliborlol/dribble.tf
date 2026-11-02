@@ -27,9 +27,20 @@ export interface PropBatchResult {
   layers: number
   vertices: number
   triangles: number
+  /** Wall time of the sliced bake and main-thread time of propLod's setup of the batch (StaticProps fills both). */
+  bakeMs?: number
+  lodSetupMs?: number
   /** Frees the array textures (the geometry goes with the root). */
   dispose(): void
 }
+
+/** The index layout of a merged mesh, for propLod: per slot [start, count] into the index, per row its bounds. */
+export interface LodLayout {
+  ranges: Int32Array
+  boxes: Float32Array
+}
+
+const SLICE_MS = 24
 
 export interface ArrayMaterials {
   count: number
@@ -111,6 +122,10 @@ function sourceArrays(geometry: THREE.BufferGeometry, cache: Map<THREE.BufferGeo
   return arrays
 }
 
+// Frees a CPU copy after its one upload. This assumes nothing re-uploads the attribute or the array texture: a
+// WebGL context restore, or disposing the geometry and drawing it again, would send empty data (black or broken
+// props). Nothing in this app does either. Only the colours
+// and the array mips are freed; `dribbleLayer` (1 byte per vertex) keeps its Uint8 copy.
 function freeArray(this: THREE.BufferAttribute) {
   ;(this as unknown as { array: ArrayLike<number> }).array = new Float32Array(0)
 }
@@ -181,7 +196,7 @@ function buildArrayTexture(sources: TextureSource[]): THREE.CompressedArrayTextu
   array.generateMipmaps = false
   array.channel = first.channel
   array.name = `dribble_props_array_${sources.length}`
-  // Uploaded once: the CPU copy goes after the upload (the textures stay in the pack registry).
+  // Uploaded once: the CPU copy goes after the upload (the textures stay in the pack registry; see freeArray).
   array.onUpdate = () => {
     for (const mip of array.mipmaps as unknown as { data: Uint8Array }[]) mip.data = new Uint8Array(0)
   }
@@ -193,11 +208,11 @@ function buildArrayTexture(sources: TextureSource[]): THREE.CompressedArrayTextu
  * Merges every instance of a runtime-bake pack file into one mesh per material or texture array (see the file
  * comment). Returns null and leaves the root untouched when the file is not one, or when anything fails.
  */
-export function bakeRuntimeProps(
+export async function bakeRuntimeProps(
   root: THREE.Object3D,
   textures: Map<string, THREE.Texture | null> | null,
   webgl2 = true
-): PropBatchResult | null {
+): Promise<PropBatchResult | null> {
   // The row-light carriers are data, never drawn: read and removed first, whatever happens next.
   // Its RGBA bytes are VHV values: linear light = (2b / 255)^2.2 x exposure + floor (the props root's `lighting`).
   let carrier: Float32Array | null = null
@@ -347,6 +362,15 @@ export function bakeRuntimeProps(
   let vertices = 0
   let triangles = 0
   let layers = 0
+  // The merge runs in slices of about SLICE_MS with a task boundary between them, so loading a map's props never
+  // blocks the main thread for long (0.47 s in one task on pl_vigil before). The result does not depend on it.
+  let sliceStart = performance.now()
+  const breathe = async () => {
+    if (performance.now() - sliceStart < SLICE_MS) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+    sliceStart = performance.now()
+  }
+  const rowSlots = origins.length * 2
 
   try {
     for (const group of groups) {
@@ -365,6 +389,21 @@ export function bakeRuntimeProps(
         hasUv ||= !!src.uv
       }
       if (!vertexCount || !indexCount) continue
+      // The index is written sorted by slot (row x 2 + level), with each slot's [start, count] and each row's
+      // bounds for propLod (`dribbleLodLayout`), which then needs no sort of its own.
+      const range = new Int32Array(rowSlots * 2)
+      for (const { piece } of groupPieces) {
+        const length = sourceArrays(piece.mesh.geometry, cache).index.length
+        for (let i = 0; i < piece.mesh.count; i++) range[((piece.base + i) * 2 + piece.level) * 2 + 1] += length
+      }
+      for (let r = 0, start = 0; r < rowSlots; r++) {
+        range[r * 2] = start
+        start += range[r * 2 + 1]
+      }
+      const cursor = new Int32Array(rowSlots)
+      for (let r = 0; r < rowSlots; r++) cursor[r] = range[r * 2]
+      const box = new Float32Array(origins.length * 6)
+      for (let r = 0; r < origins.length; r++) box.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], r * 6)
       const position = new Float32Array(vertexCount * 3)
       const normal = new Int8Array(vertexCount * 3)
       const color = colorSize ? new Float32Array(vertexCount * colorSize) : null
@@ -373,7 +412,6 @@ export function bakeRuntimeProps(
       const layerAttr = group.layers ? new Uint8Array(vertexCount) : null
       const index = new Uint32Array(indexCount)
       let vo = 0
-      let io = 0
       const p = new THREE.Vector3()
       const n = new THREE.Vector3()
       for (const { piece, layer } of groupPieces) {
@@ -382,6 +420,7 @@ export function bakeRuntimeProps(
         const count = src.position.length / 3
         meshMatrix.multiplyMatrices(rootInverse, mesh.matrixWorld)
         for (let i = 0; i < mesh.count; i++) {
+          await breathe()
           mesh.getMatrixAt(i, instance)
           m.multiplyMatrices(meshMatrix, instance)
           nm.getNormalMatrix(m)
@@ -398,6 +437,13 @@ export function bakeRuntimeProps(
             position[o] = p.x
             position[o + 1] = p.y
             position[o + 2] = p.z
+            const b = (piece.base + i) * 6
+            if (p.x < box[b]) box[b] = p.x
+            if (p.y < box[b + 1]) box[b + 1] = p.y
+            if (p.z < box[b + 2]) box[b + 2] = p.z
+            if (p.x > box[b + 3]) box[b + 3] = p.x
+            if (p.y > box[b + 4]) box[b + 4] = p.y
+            if (p.z > box[b + 5]) box[b + 5] = p.z
             if (src.normal) {
               n.fromArray(src.normal, v * 3).applyMatrix3(nm).normalize()
               normal[o] = Math.round(n.x * 127)
@@ -426,22 +472,24 @@ export function bakeRuntimeProps(
             prop[vo + v] = slot
             if (layerAttr) layerAttr[vo + v] = layer
           }
-          for (let k = 0; k < src.index.length; k++) index[io + k] = src.index[k] + vo
-          io += src.index.length
+          const at = cursor[slot - 2]
+          for (let k = 0; k < src.index.length; k++) index[at + k] = src.index[k] + vo
+          cursor[slot - 2] += src.index.length
           vo += count
         }
       }
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(position, 3))
       geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3, true))
-      // Colours and layers are only read by the GPU: their CPU copy goes after the upload (positions, normals and
-      // UVs stay for raycasts, the index and `_prop` for propLod).
+      // Colours are only read by the GPU: their CPU copy goes after the upload (positions, normals and UVs stay
+      // for raycasts, the index and `_prop` for propLod, and the small layer array stays; see freeArray).
       if (color) geometry.setAttribute('color', new THREE.BufferAttribute(color, colorSize).onUpload(freeArray))
       if (uv) geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
       geometry.setAttribute('_prop', new THREE.BufferAttribute(prop, 1))
-      if (layerAttr) geometry.setAttribute('dribbleLayer', new THREE.BufferAttribute(layerAttr, 1).onUpload(freeArray))
+      if (layerAttr) geometry.setAttribute('dribbleLayer', new THREE.BufferAttribute(layerAttr, 1))
       geometry.setIndex(new THREE.BufferAttribute(index, 1))
       const mesh = new THREE.Mesh(geometry, group.materials[0])
+      mesh.userData.dribbleLodLayout = { ranges: range, boxes: box } satisfies LodLayout
       mesh.name = group.layers ? `static_props_batch_array_${group.layers.length}` : `static_props_batch:${group.materials[0].name}`
       if (group.layers) {
         const texture = buildArrayTexture(group.layers)

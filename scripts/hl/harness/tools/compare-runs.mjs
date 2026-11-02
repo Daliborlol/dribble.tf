@@ -2,10 +2,15 @@
 // Compare two harness runs of the same plan:
 //
 //   node scripts/hl/harness/tools/compare-runs.mjs <runA> <runB> [outDir] [--threshold 24] [--max-pct <p>]
-//        [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]
+//        [--allow-request <key>]... [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]
 //
 // 1. Manifest structure: every JSON path and value type of both manifest.json files (array indices
-//    included), so a missing key, a changed type or an extra step shows up.
+//    included), so a missing key, a changed type or an extra step shows up. The asset-phase subtrees
+//    assetPack, requests, requestSummary and each step's assetsIdle and eval are left out
+//    (specs/assets/contract.md 5.1).
+// 1b. Requests: the same-origin request log by the request-set rule of contract 5.1: pathname only, Vite's
+//    content hashes under /assets/ normalised to -[hash], each key counted by its distinct raw pathnames.
+//    Keys given with --allow-request are left out. A different asset-pack fingerprint is a warning.
 // 2. Per step: the step as written, tick, render tick, camera mode, focused player, step error, and whether
 //    the eval result and the player list are identical.
 // 3. Pixel diff of each screenshot pair (lib/images.mjs; threshold 24 of 255 per channel).
@@ -18,7 +23,7 @@
 // definition, tick, camera mode, focused player and error, a screenshot in both runs or in neither, and,
 // unless the step plays ("play" runs on wall time), the same render tick and player list. Differences in
 // eval results, browser, renderer and console error counts are warnings only: some probes return frame
-// counts that change from run to run.
+// counts that change from run to run. Different request keys are a failure ("requests differ").
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -31,11 +36,11 @@ const EXIT_DIFFERENT = 1
 const EXIT_TROUBLE = 2
 const EXIT_USAGE = 64
 const USAGE =
-  'usage: node scripts/hl/harness/tools/compare-runs.mjs <runA> <runB> [outDir] [--threshold 24] [--max-pct <p>] [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]'
+  'usage: node scripts/hl/harness/tools/compare-runs.mjs <runA> <runB> [outDir] [--threshold 24] [--max-pct <p>] [--allow-request <key>]... [--cols 2] [--tile 400x225] [--no-diff-tile] [--no-sheet]'
 
 const argv = process.argv.slice(2)
 const positional = []
-const opts = { threshold: DEFAULT_THRESHOLD, cols: 2, tile: '400x225', diffTile: true, sheet: true, maxPct: null }
+const opts = { threshold: DEFAULT_THRESHOLD, cols: 2, tile: '400x225', diffTile: true, sheet: true, maxPct: null, allowRequests: [] }
 const usageProblems = []
 const numberArg = (name, value) => {
   const n = Number(value)
@@ -50,6 +55,11 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--tile') opts.tile = String(argv[++i])
   else if (a === '--no-diff-tile') opts.diffTile = false
   else if (a === '--no-sheet') opts.sheet = false
+  else if (a === '--allow-request' || a.startsWith('--allow-request=')) {
+    const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : argv[++i]
+    if (!value || value.startsWith('--')) usageProblems.push('--allow-request needs a pathname or normalised key')
+    else opts.allowRequests.push(value)
+  }
   else if (a.startsWith('--')) usageProblems.push(`unknown option ${a}`)
   else positional.push(a)
 }
@@ -83,7 +93,10 @@ const stepLabel = s => `step ${String(s.index).padStart(2, '0')}${s.name ? ` ${s
 // ─── 1. structure ─────────────────────────────────────────────────────────────────
 
 const typeOf = v => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v)
+// Contract 5.1: these subtrees are judged by the request-set rule or are warnings (evals), not by structure.
+const UNCHECKED = [/^\.(assetPack|requests|requestSummary)$/, /^\.shots\[\d+\]\.(assetsIdle|eval)$/]
 const shapeOf = (value, prefix = '', out = new Set()) => {
+  if (UNCHECKED.some(re => re.test(prefix))) return out
   const type = typeOf(value)
   out.add(`${prefix || '.'}:${type}`)
   if (type === 'object') for (const [k, v] of Object.entries(value)) shapeOf(v, `${prefix}.${k}`, out)
@@ -95,6 +108,40 @@ const shapeB = shapeOf(B)
 const onlyA = [...shapeA].filter(p => !shapeB.has(p))
 const onlyB = [...shapeB].filter(p => !shapeA.has(p))
 const structureSame = onlyA.length === 0 && onlyB.length === 0
+
+// ─── 1b. requests ─────────────────────────────────────────────────────────────────
+
+// Contract 5.1 request-set rule. The log keeps the query; the comparison uses the pathname, with the Vite
+// content hash of build files under /assets/ replaced by [hash]. Each key counts the distinct raw pathnames
+// behind it, since two chunks can share a normalised name.
+const HASHED = /^(\/assets\/.+)-[A-Za-z0-9_-]{8}(\.[A-Za-z0-9]+)$/
+const requestKey = pathname => pathname.replace(HASHED, '$1-[hash]$2')
+const requestKeys = M => {
+  if (!Array.isArray(M.requests)) return null
+  const raw = new Map()
+  for (const entry of M.requests) {
+    const pathname = String(entry?.path ?? '').split('?')[0]
+    const key = requestKey(pathname)
+    if (!raw.has(key)) raw.set(key, new Set())
+    raw.get(key).add(pathname)
+  }
+  return new Map([...raw].map(([key, set]) => [key, set.size]))
+}
+const keysA = requestKeys(A)
+const keysB = requestKeys(B)
+const allowed = new Set(opts.allowRequests.map(key => requestKey(String(key).split('?')[0])))
+const requestDiffs = []
+const allowedDiffs = []
+if (keysA && keysB) {
+  for (const key of [...new Set([...keysA.keys(), ...keysB.keys()])].sort()) {
+    const counts = [keysA.get(key) ?? 0, keysB.get(key) ?? 0]
+    if (counts[0] === counts[1]) continue
+    ;(allowed.has(key) ? allowedDiffs : requestDiffs).push({ key, a: counts[0], b: counts[1] })
+  }
+}
+const requestsCompared = !!(keysA && keysB)
+const requestsSame = requestsCompared && requestDiffs.length === 0
+const unusedAllows = [...allowed].filter(key => !allowedDiffs.some(d => d.key === key))
 
 // ─── 2 + 3. steps and pixels ──────────────────────────────────────────────────────
 
@@ -191,6 +238,9 @@ if (!same(A.header, B.header)) failures.push(`demo header: ${JSON.stringify(A.he
 if (!same(A.viewport, B.viewport)) failures.push(`viewport: ${JSON.stringify(A.viewport)} -> ${JSON.stringify(B.viewport)}`)
 for (const s of steps) for (const reason of s.failures) failures.push(`${stepLabel(s)}: ${reason}`)
 if (tooMuch) failures.push(`largest pixel change ${worst} % exceeds --max-pct ${opts.maxPct}`)
+const countsText = d => `${d.key} ${d.a} -> ${d.b}`
+if (requestDiffs.length) failures.push(`requests differ: ${requestDiffs.map(countsText).join(', ')}`)
+if (!keysA !== !keysB) failures.push(`request log only in run ${keysA ? 'A' : 'B'} (the other run's harness predates it)`)
 
 const warnings = []
 const evalDiffers = steps.filter(s => !s.evalSame && !s.timed && !s.failures.length)
@@ -209,6 +259,17 @@ if (!same(browserOf(A).gpu, browserOf(B).gpu) || !same(browserOf(A).renderer, br
   warnings.push(`different WebGL backend: ${browserOf(A).gpu} ${browserOf(A).renderer} -> ${browserOf(B).gpu} ${browserOf(B).renderer}`)
 }
 if (ca && cb && ca.appErrors !== cb.appErrors) warnings.push(`console app errors ${ca.appErrors} -> ${cb.appErrors} (read console.log)`)
+const packOf = M => M.assetPack ?? {}
+if (!same(packOf(A).fingerprint ?? null, packOf(B).fingerprint ?? null)) {
+  warnings.push(`different asset-pack fingerprint: ${packOf(A).fingerprint ?? 'none'} -> ${packOf(B).fingerprint ?? 'none'}`)
+} else if (!same(packOf(A).manifestSha256 ?? null, packOf(B).manifestSha256 ?? null) || !same(packOf(A).served ?? null, packOf(B).served ?? null)) {
+  warnings.push(
+    `different asset pack: served ${packOf(A).served ?? null} -> ${packOf(B).served ?? null}, manifest sha256 ${packOf(A).manifestSha256?.slice(0, 12) ?? 'none'} -> ${packOf(B).manifestSha256?.slice(0, 12) ?? 'none'}`
+  )
+}
+if (!keysA && !keysB) warnings.push('no request log in either run (harness before the asset phase); requests not compared')
+if (allowedDiffs.length) warnings.push(`allowed request differences: ${allowedDiffs.map(countsText).join(', ')}`)
+if (unusedAllows.length) warnings.push(`--allow-request key(s) that did not differ: ${unusedAllows.join(', ')}`)
 const exitCode = failures.length ? EXIT_DIFFERENT : 0
 
 // ─── report ───────────────────────────────────────────────────────────────────────
@@ -220,6 +281,16 @@ console.log(
 )
 for (const p of onlyA.slice(0, 15)) console.log(`  only A  ${p}`)
 for (const p of onlyB.slice(0, 15)) console.log(`  only B  ${p}`)
+console.log(
+  `requests: ${
+    requestsCompared
+      ? `${requestsSame ? 'same keys' : 'DIFFERENT keys'} (${keysA.size} -> ${keysB.size} keys, ${A.requests.length} -> ${B.requests.length} logged paths${allowedDiffs.length ? `, ${allowedDiffs.length} allowed difference(s)` : ''})`
+      : 'not compared'
+  }`
+)
+for (const d of requestDiffs.slice(0, 20)) console.log(`  differ  ${countsText(d)}`)
+for (const d of allowedDiffs) console.log(`  allowed ${countsText(d)}`)
+console.log(`asset pack: ${pair([packOf(A).dir ?? null, packOf(B).dir ?? null])}  fingerprint: ${pair([packOf(A).fingerprint ?? null, packOf(B).fingerprint ?? null])}`)
 console.log(`demo: ${pair([A.header?.map, B.header?.map])}  steps: ${pair([A.shots?.length, B.shots?.length])}  warnings: ${pair([A.warnings?.length, B.warnings?.length])}`)
 console.log(`browser: ${pair([browserOf(A).executablePath, browserOf(B).executablePath])}`)
 console.log(`renderer: ${pair([browserOf(A).renderer, browserOf(B).renderer])}  gpu: ${pair([browserOf(A).gpu, browserOf(B).gpu])}`)
@@ -243,6 +314,15 @@ const report = {
   maxPct: opts.maxPct,
   result: { exitCode, same: exitCode === 0, failures, warnings },
   structure: { same: structureSame, paths: shapeA.size, onlyA, onlyB },
+  requests: {
+    compared: requestsCompared,
+    same: requestsSame,
+    keys: [keysA?.size ?? null, keysB?.size ?? null],
+    differ: requestDiffs,
+    allowed: allowedDiffs,
+    allowRequest: opts.allowRequests,
+  },
+  assetPack: { a: A.assetPack ?? null, b: B.assetPack ?? null },
   browser: { a: A.browser ?? null, b: B.browser ?? null },
   console: { a: ca, b: cb },
   steps: steps.map(({ paths, ...row }) => row),
@@ -296,7 +376,7 @@ if (failures.length) {
   console.log(`result: DIFFERENT (exit ${exitCode})\n${failures.map(f => `  - ${f}`).join('\n')}`)
 } else {
   console.log(
-    `result: same steps, ticks, modes, focus and players (exit 0); judge the pixel changes above${opts.maxPct === null ? '' : ` (all within --max-pct ${opts.maxPct})`}`
+    `result: same steps, ticks, modes, focus, players and request keys (exit 0); judge the pixel changes above${opts.maxPct === null ? '' : ` (all within --max-pct ${opts.maxPct})`}`
   )
 }
 process.exit(exitCode)

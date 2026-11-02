@@ -70,6 +70,17 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.dem': 'application/octet-stream',
 }
+// The asset pack (specs/assets/contract.md 3.3): served at PACK_ROUTE, built in with VITE_ASSET_PACK_URL.
+const PACK_ROUTE = '/tf2-assets/'
+const PACK_MISSING = 'missing'
+const PACK_MIME = {
+  '.json': 'application/json',
+  '.glb': 'model/gltf-binary',
+  '.dds': 'application/octet-stream',
+  '.webp': 'image/webp',
+}
+const NO_VSYNC_FLAGS = ['--disable-gpu-vsync', '--disable-frame-rate-limit']
+const ASSETS_IDLE_MS = 30000
 const INTERP_DELAY_TICKS = 2 // DemoViewer renders playback tick - 2
 const CLASS_ORDER = { scout: 1, soldier: 2, pyro: 3, demoman: 4, heavy: 5, engineer: 6, medic: 7, sniper: 8, spy: 9 }
 const MODES = ['rts', 'pov', 'spectator']
@@ -121,6 +132,12 @@ Browser and page
   --allow-network         do not block non-local requests (fonts, analytics)
   --query <a=1&b=2>       extra URL query parameters (repeatable)
   --init-script <file>    add a script that runs in the page before the app (repeatable)
+  --no-vsync              uncapped frames: --disable-gpu-vsync --disable-frame-rate-limit (recorded in perf.json)
+Asset pack
+  --asset-pack <dir|missing>
+                          serve <dir> at ${PACK_ROUTE} and build with VITE_ASSET_PACK_URL=${PACK_ROUTE} (own build
+                          cache entry); "missing" builds the same way and answers 404 for every ${PACK_ROUTE} path.
+                          Without it the build is the production default and ${PACK_ROUTE} answers 404
 Run
   --timeout <sec>         hard timeout for the whole run (default 900)
   --load-timeout <sec>    time for the demo to parse and the scene to switch to its map (default 300)
@@ -172,6 +189,8 @@ const FLAGS = {
   'allow-network': 'bool',
   query: 'list',
   'init-script': 'list',
+  'no-vsync': 'bool',
+  'asset-pack': 'value',
   timeout: 'number',
   'load-timeout': 'number',
   lock: 'value',
@@ -291,9 +310,24 @@ function resolveSetup() {
   const plan = args.plan ? readPlan(path.resolve(String(args.plan))) : null
   const initScripts = list(args['init-script']).map(file => path.resolve(file))
   for (const file of initScripts) if (!fs.existsSync(file)) throw new SetupError(`--init-script ${file} not found`)
+  const assetPack = resolveAssetPackArg()
   const playwright = resolvePlaywright()
   const browser = resolveBrowser(args.browser, playwright)
-  return { root, demoPath, plan, initScripts, playwright, browser }
+  return { root, demoPath, plan, initScripts, assetPack, playwright, browser }
+}
+
+/** --asset-pack: null without it, { dir: null } for "missing", else { dir } (absolute, an existing folder). */
+function resolveAssetPackArg() {
+  if (args['asset-pack'] === undefined) return null
+  const value = String(args['asset-pack'])
+  if (value === PACK_MISSING) return { dir: null }
+  const dir = path.resolve(value)
+  let stat = null
+  try {
+    stat = fs.statSync(dir)
+  } catch {}
+  if (!stat?.isDirectory()) throw new SetupError(`--asset-pack ${dir} is not a folder (give a pack folder or the word "${PACK_MISSING}")`)
+  return { dir: fs.realpathSync(dir) }
 }
 
 const failSetup = error => {
@@ -374,15 +408,24 @@ async function runCheck() {
     if (shared) return `missing; the run links it to ${shared}`
     throw new SetupError(`${target} missing and no main checkout to share it from. ${installAppHint(root)}`)
   })
+  let packArg = null
+  attempt('asset pack', () => {
+    packArg = resolveAssetPackArg()
+    if (!packArg) return `none (production default build, ${PACK_ROUTE} answers 404)`
+    if (!packArg.dir) return `missing: build with VITE_ASSET_PACK_URL=${PACK_ROUTE}, every ${PACK_ROUTE} path answers 404`
+    const info = readPackInfo(packArg)
+    return `${packArg.dir} at ${PACK_ROUTE} (manifest.json ${info.manifestSha256 ? `sha256 ${info.manifestSha256.slice(0, 12)}, fingerprint ${info.fingerprint ?? 'null'}, generator ${info.generatorVersion ?? 'null'}` : 'MISSING'}${info.problem ? `; ${info.problem}` : ''})`
+  })
   attempt('build cache', () => {
     const dir = buildCacheDir(root)
-    const key = buildKey(root)
+    const packUrl = packArg ? PACK_ROUTE : null
+    const key = buildKey(root, packUrl)
     const status = ['', '-nominify']
       .map(suffix => {
         const distDir = path.join(dir, key + suffix, 'dist')
         if (!fs.existsSync(path.join(distDir, 'index.html'))) return null
         const fpFile = path.join(dir, key + suffix, 'fingerprint.txt')
-        const fresh = fs.existsSync(fpFile) && fs.readFileSync(fpFile, 'utf8') === fingerprint(root)
+        const fresh = fs.existsSync(fpFile) && fs.readFileSync(fpFile, 'utf8') === fingerprint(root, packUrl)
         return `${key + suffix} ${fresh ? 'fresh' : 'stale'}`
       })
       .filter(Boolean)
@@ -453,7 +496,7 @@ async function memoryGate() {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────────
 
-async function main({ root, demoPath, plan, initScripts, playwright, browser: browserChoice }) {
+async function main({ root, demoPath, plan, initScripts, assetPack, playwright, browser: browserChoice }) {
   const startedAt = Date.now()
   const elapsed = () => ((Date.now() - startedAt) / 1000).toFixed(1).padStart(6)
   const log = (...parts) => console.log(`[harness ${elapsed()}s]`, ...parts)
@@ -505,14 +548,30 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
     header: demoHeader,
     viewport: { width, height },
     startedAt: new Date(startedAt).toISOString(),
+    assetPack: readPackInfo(assetPack),
     shots: [],
     warnings,
   }
+  if (manifest.assetPack.problem) {
+    warnings.push(`asset pack: ${manifest.assetPack.problem}`)
+    log(`WARNING asset pack: ${manifest.assetPack.problem}`)
+  }
+  delete manifest.assetPack.problem
+  if (assetPack) log(`asset pack: ${assetPack.dir ?? PACK_MISSING} at ${PACK_ROUTE}${manifest.assetPack.fingerprint ? ` fingerprint ${manifest.assetPack.fingerprint}` : ''}`)
+  // Every same-origin request, one entry per method and path (query kept) in order of first occurrence.
+  const requestLog = new Map()
+  const requestEntry = new Map()
+  const requestTotals = { total: 0, failed: 0, byPrefix: {} }
+  manifest.requests = []
+  manifest.requestSummary = requestTotals
+  // A request failed when it got no response, a status of 400 or more, or a network error after its response.
+  const rawFailed = raw => !!raw.failure || raw.status === null || raw.status >= 400
 
   try {
     // 1. dependencies + build
     ensureNodeModules(root, log)
-    const distDir = await ensureBuild(root, outDir, log)
+    const packUrl = assetPack ? PACK_ROUTE : null
+    const distDir = await ensureBuild(root, outDir, log, packUrl)
 
     // 2. server
     const server = await startServer({
@@ -521,6 +580,7 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
       demoPath,
       demoMap: demoHeader.map,
       stubOtherMaps: !args['keep-default-map'],
+      packDir: assetPack?.dir ?? null,
       log,
     })
     cleanups.push(
@@ -540,8 +600,9 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
       warnings.push(`browser: ${browserChoice.mismatch}`)
       log(`WARNING: ${browserChoice.mismatch}`)
     }
-    const { browser, gpu, renderer } = await launchBrowser(chromium, executablePath, String(args.gpu ?? 'egl'), log)
-    manifest.browser = { executablePath, gpu, renderer }
+    const noVsync = !!args['no-vsync']
+    const { browser, gpu, renderer } = await launchBrowser(chromium, executablePath, String(args.gpu ?? 'egl'), noVsync, log)
+    manifest.browser = { executablePath, gpu, renderer, noVsync }
     const browserPid = findChildPid(executablePath)
     cleanups.push(async () => {
       const closed = await withTimeout(browser.close().then(() => true), 15000, 'browser.close')
@@ -584,6 +645,51 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
         }
       )
     }
+
+    // Request log: the context sees the page's and its workers' requests.
+    const sameOrigin = request => {
+      try {
+        const url = new URL(request.url())
+        return url.origin === server.origin ? url : null
+      } catch {
+        return null
+      }
+    }
+    context.on('request', request => {
+      const url = sameOrigin(request)
+      if (!url) return
+      const method = request.method()
+      const key = `${method} ${url.pathname}${url.search}`
+      let entry = requestLog.get(key)
+      if (!entry) {
+        entry = { path: url.pathname + url.search, method, status: null, type: request.resourceType(), count: 0, failure: null }
+        requestLog.set(key, entry)
+        manifest.requests.push(entry)
+      }
+      entry.count++
+      requestEntry.set(request, { entry, status: null, failure: null })
+      requestTotals.total++
+      const prefix = url.pathname.match(/^\/[^/]+\//)?.[0] ?? '/'
+      requestTotals.byPrefix[prefix] = (requestTotals.byPrefix[prefix] ?? 0) + 1
+    })
+    context.on('response', response => {
+      const raw = requestEntry.get(response.request())
+      if (!raw) return
+      raw.status = response.status()
+      if (raw.entry.status === null) raw.entry.status = raw.status
+    })
+    const settleLog = (request, failure) => {
+      const raw = requestEntry.get(request)
+      if (!raw) return
+      requestEntry.delete(request)
+      if (failure) {
+        raw.failure = failure
+        raw.entry.failure ??= failure
+      }
+      if (rawFailed(raw)) requestTotals.failed++
+    }
+    context.on('requestfinished', request => settleLog(request, null))
+    context.on('requestfailed', request => settleLog(request, request.failure()?.errorText ?? 'failed'))
 
     const inflight = new Set()
     let lastNetworkActivity = Date.now()
@@ -715,6 +821,25 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
       await sleep(Math.max(num(args['settle-ms'], 700), tipWait))
     }
 
+    // assets.waitIdle (src/assetpack/probes.ts) resolves once the pack has settled and no item loads. A page
+    // without the probe (a06e4c7) gets null, so reference runs of older checkouts still work.
+    const waitAssetsIdle = async () => {
+      const result = await withTimeout(
+        bridge(async ms => {
+          const hl = window.__dribble?.hl
+          if (!hl?.probes || !hl.probes().includes('assets.waitIdle')) return null
+          try {
+            return (await hl.probe('assets.waitIdle', ms)) ?? null
+          } catch (error) {
+            return { idle: false, error: String(error) }
+          }
+        }, ASSETS_IDLE_MS),
+        ASSETS_IDLE_MS + 10000,
+        'assets.waitIdle'
+      )
+      return result === false ? { idle: false, error: 'the probe did not resolve' } : result
+    }
+
     const setHudHidden = hidden =>
       page.evaluate(h => {
         let style = document.getElementById('__harness-hide-hud')
@@ -757,6 +882,12 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
           await bridge(() => window.__dribble.setPlaying(false))
         }
         if (step.eval) entry.eval = await page.evaluate(String(step.eval)).catch(error => ({ error: String(error) }))
+        entry.assetsIdle = await waitAssetsIdle()
+        if (entry.assetsIdle && entry.assetsIdle.idle !== true) {
+          const why = entry.assetsIdle.error ?? `pending ${JSON.stringify(entry.assetsIdle.pending ?? [])}`
+          warnings.push(`step ${index}: asset pack not idle after ${ASSETS_IDLE_MS / 1000}s: ${why}`)
+          log(`WARNING step ${index}: asset pack not idle: ${why}`)
+        }
         await setHudHidden(!!(step.hideHud ?? args['hide-hud']))
         await settle()
         const after = await getState()
@@ -787,6 +918,10 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
 
     manifest.memoryMB = { peak: memory.peak(), final: memory.sample() }
   } finally {
+    // Requests Playwright never settled: error responses whose body nobody read, and requests still open
+    // when the run ends (status null, counted as failed).
+    for (const raw of requestEntry.values()) if (rawFailed(raw)) requestTotals.failed++
+    requestEntry.clear()
     manifest.finishedAt = new Date().toISOString()
     manifest.perfLines = consoleLines.filter(line => line.includes('[Perf]') || line.includes('parser2:'))
     fs.writeFileSync(path.join(outDir, 'console.log'), consoleLines.join('\n') + '\n')
@@ -817,12 +952,12 @@ async function main({ root, demoPath, plan, initScripts, playwright, browser: br
 
 // ─── BROWSER ──────────────────────────────────────────────────────────────────────
 
-async function launchBrowser(chromium, executablePath, requestedGpu, log) {
+async function launchBrowser(chromium, executablePath, requestedGpu, noVsync, log) {
   const order = requestedGpu === 'swiftshader' ? ['swiftshader'] : [requestedGpu, 'swiftshader']
   for (const gpu of order) {
     const flags = GPU_FLAGS[gpu]
     if (!flags) throw new Error(`unknown --gpu ${gpu} (egl|vulkan|swiftshader)`)
-    const browser = await chromium.launch({ executablePath, headless: true, args: [...COMMON_FLAGS, ...flags], timeout: 60000 })
+    const browser = await chromium.launch({ executablePath, headless: true, args: [...COMMON_FLAGS, ...flags, ...(noVsync ? NO_VSYNC_FLAGS : [])], timeout: 60000 })
     let renderer = 'unknown'
     try {
       const probe = await browser.newPage()
@@ -927,7 +1062,7 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
   const toMb = bytes => (bytes ? Math.round(bytes / 1048576) : null)
   const round1 = v => Number(v.toFixed(1))
   return {
-    spec: { tick, seconds, mode, player: player ?? null, speed },
+    spec: { tick, seconds, mode, player: player ?? null, speed, noVsync: !!args['no-vsync'] },
     summary: {
       fps: round1(1000 / avg),
       frameMs: { avg: round1(avg), p50: round1(pct(50)), p95: round1(pct(95)), max: round1(pct(100)) },
@@ -1065,15 +1200,18 @@ function buildCacheDir(root) {
   return path.resolve(String(args['build-cache'] ?? process.env.DRIBBLE_HARNESS_BUILDS ?? path.join(root, 'node_modules', '.cache', 'dribble-harness')))
 }
 
-function buildKey(root) {
+// One cache entry per checkout path and VITE_ASSET_PACK_URL; the production default (no pack URL) keeps
+// the key it had before the asset phase.
+function buildKey(root, packUrl = null) {
   let real = root
   try {
     real = fs.realpathSync(root)
   } catch {}
-  return crypto.createHash('sha1').update(real).digest('hex').slice(0, 12)
+  const key = crypto.createHash('sha1').update(real).digest('hex').slice(0, 12)
+  return packUrl ? `${key}-pack-${crypto.createHash('sha1').update(packUrl).digest('hex').slice(0, 6)}` : key
 }
 
-function fingerprint(root) {
+function fingerprint(root, packUrl = null) {
   const entries = []
   const walk = dir => {
     for (const name of fs.readdirSync(dir)) {
@@ -1092,14 +1230,15 @@ function fingerprint(root) {
     }
   }
   entries.sort()
+  if (packUrl) entries.push(`VITE_ASSET_PACK_URL=${packUrl}`)
   return crypto.createHash('sha1').update(entries.join('\n')).digest('hex')
 }
 
-async function ensureBuild(root, outDir, log) {
-  const buildRoot = path.join(buildCacheDir(root), buildKey(root) + (args['no-minify'] ? '-nominify' : ''))
+async function ensureBuild(root, outDir, log, packUrl) {
+  const buildRoot = path.join(buildCacheDir(root), buildKey(root, packUrl) + (args['no-minify'] ? '-nominify' : ''))
   const distDir = path.join(buildRoot, 'dist')
   const fpFile = path.join(buildRoot, 'fingerprint.txt')
-  const current = fingerprint(root)
+  const current = fingerprint(root, packUrl)
   const hasBuild = fs.existsSync(path.join(distDir, 'index.html'))
   const fresh = hasBuild && fs.existsSync(fpFile) && fs.readFileSync(fpFile, 'utf8') === current
 
@@ -1109,14 +1248,22 @@ async function ensureBuild(root, outDir, log) {
   }
 
   fs.mkdirSync(buildRoot, { recursive: true })
-  log(`build: vite build of ${root} -> ${distDir}`)
+  log(`build: vite build of ${root} -> ${distDir}${packUrl ? ` with VITE_ASSET_PACK_URL=${packUrl}` : ''}`)
   const logFile = path.join(outDir, 'build.log')
   const output = []
   const code = await new Promise(resolve => {
-    const childArgs = [path.join(HARNESS_DIR, 'build-child.mjs'), root, distDir, ...(args['no-minify'] ? ['--no-minify'] : [])]
+    const childArgs = [
+      path.join(HARNESS_DIR, 'build-child.mjs'),
+      root,
+      distDir,
+      ...(args['no-minify'] ? ['--no-minify'] : []),
+      ...(packUrl ? ['--asset-pack-url', packUrl] : []),
+    ]
+    const env = { ...process.env, VITE_APP_ASSET_URL: '' }
+    delete env.VITE_ASSET_PACK_URL // build-child sets it from --asset-pack-url only
     const child = spawn(process.execPath, childArgs, {
       cwd: root,
-      env: { ...process.env, VITE_APP_ASSET_URL: '' },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const timer = setTimeout(() => child.kill('SIGKILL'), 300000)
@@ -1148,7 +1295,7 @@ function emptyGlb() {
   return Buffer.concat([header, padded])
 }
 
-function startServer({ distDir, publicDir, demoPath, demoMap, stubOtherMaps, log }) {
+function startServer({ distDir, publicDir, demoPath, demoMap, stubOtherMaps, packDir, log }) {
   const demoRoute = `/__harness/demo/${encodeURIComponent(path.basename(demoPath))}`
   const mapBase = demoMap.split('_').slice(0, 2).join('_').toLowerCase()
   const EMPTY_GLB = emptyGlb()
@@ -1178,9 +1325,49 @@ function startServer({ distDir, publicDir, demoPath, demoMap, stubOtherMaps, log
     }
   }
 
+  // Contract 3.3: GET and HEAD only, paths stay inside the pack root (symlinks resolved), a missing file or
+  // pack answers 404 text/plain and never falls through to index.html. Without a pack folder ("missing", or
+  // no --asset-pack) every pack path answers 404.
+  const servePack = (req, res, rawPathname) => {
+    const notFound = () => res.writeHead(404, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache' }).end(req.method === 'HEAD' ? undefined : 'not found')
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return res.writeHead(405, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache', Allow: 'GET, HEAD' }).end('method not allowed')
+    }
+    if (!packDir) return notFound()
+    let rel
+    try {
+      rel = decodeURIComponent(rawPathname.slice(PACK_ROUTE.length))
+    } catch {
+      return notFound()
+    }
+    if (!rel || rel.includes('\0')) return notFound()
+    const file = path.resolve(packDir, rel)
+    if (!file.startsWith(packDir + path.sep)) return notFound()
+    let real
+    try {
+      real = fs.realpathSync(file)
+      if (!real.startsWith(packDir + path.sep) || !fs.statSync(real).isFile()) return notFound()
+    } catch {
+      return notFound()
+    }
+    const size = fs.statSync(real).size
+    res.writeHead(200, {
+      'Content-Type': PACK_MIME[path.extname(real).toLowerCase()] ?? 'application/octet-stream',
+      'Content-Length': size,
+      'Cache-Control': 'no-cache',
+    })
+    if (req.method === 'HEAD') return res.end()
+    fs.createReadStream(real).pipe(res)
+  }
+
   const server = http.createServer((req, res) => {
     try {
       const url = new URL(req.url, 'http://127.0.0.1')
+      if (url.pathname.startsWith(PACK_ROUTE) || url.pathname === PACK_ROUTE.slice(0, -1)) return servePack(req, res, url.pathname)
+      // A raw path under the pack route whose dot segments (also %2e%2e) left it after URL normalisation stays a 404,
+      // so such a request never falls through to the build or the SPA index.
+      const rawPath = String(req.url).split(/[?#]/, 1)[0]
+      if (rawPath.startsWith(PACK_ROUTE) || rawPath === PACK_ROUTE.slice(0, -1)) return send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
       const pathname = decodeURIComponent(url.pathname)
       if (url.pathname === demoRoute) return sendFile(req, res, demoPath)
       if (pathname.startsWith('/umami/')) return send(res, 204, {}, '')
@@ -1211,6 +1398,38 @@ function startServer({ distDir, publicDir, demoPath, demoMap, stubOtherMaps, log
       resolve(server)
     })
   })
+}
+
+// ─── ASSET PACK ───────────────────────────────────────────────────────────────────
+
+/**
+ * The manifest's assetPack record: always the same keys, all null without --asset-pack. `problem` is a
+ * message for warnings and is removed before the manifest is written.
+ */
+function readPackInfo(pack) {
+  const info = { dir: null, served: null, manifestSha256: null, fingerprint: null, generatorVersion: null, problem: null }
+  if (!pack) return info
+  info.dir = pack.dir ?? PACK_MISSING
+  info.served = !!pack.dir
+  if (!pack.dir) return info
+  const file = path.join(pack.dir, 'manifest.json')
+  let bytes
+  try {
+    bytes = fs.readFileSync(file)
+  } catch {
+    info.problem = `${file} not found; the page will see 404`
+    return info
+  }
+  info.manifestSha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+  try {
+    const json = JSON.parse(bytes.toString('utf8'))
+    info.fingerprint = typeof json?.builtFrom?.fingerprint === 'string' ? json.builtFrom.fingerprint : null
+    info.generatorVersion = typeof json?.generator?.version === 'string' ? json.generator.version : null
+    if (json?.format !== 'dribble-asset-pack' || json?.version !== 1) info.problem = `${file} is not a dribble-asset-pack v1 manifest`
+  } catch (error) {
+    info.problem = `${file} is not valid JSON (${error?.message || error})`
+  }
+  return info
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────────
@@ -1257,12 +1476,16 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// Resolves with the promise's value, or false (with a message) when it takes longer than ms.
 function withTimeout(promise, ms, label) {
+  let timer
   return Promise.race([
-    promise,
-    sleep(ms).then(() => {
-      console.error(`[harness] ${label} timed out`)
-      return false
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    new Promise(resolve => {
+      timer = setTimeout(() => {
+        console.error(`[harness] ${label} timed out`)
+        resolve(false)
+      }, ms)
     }),
   ])
 }

@@ -40,7 +40,9 @@ const formats = new WeakMap<WebGLRenderer, PackTextureFormat>()
 export function packTextureFormat(renderer: WebGLRenderer): PackTextureFormat {
   let format = formats.get(renderer)
   if (format === undefined) {
-    const s3tc = !!renderer?.extensions?.has?.('WEBGL_compressed_texture_s3tc')
+    // DDS textures are bound as sRGB, so the sRGB DXT extension is needed too; without it fall back.
+    const ext = renderer?.extensions
+    const s3tc = !!ext?.has?.('WEBGL_compressed_texture_s3tc') && !!ext?.has?.('WEBGL_compressed_texture_s3tc_srgb')
     format = s3tc ? 'dds' : 'webp'
     formats.set(renderer, format)
   }

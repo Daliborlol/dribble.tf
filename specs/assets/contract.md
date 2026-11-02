@@ -1,6 +1,6 @@
 # Asset-phase contract
 
-Version 1.2, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
+Version 1.3, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
 every asset-phase task after C0. It extends `specs/highlander/contract.md`. Where the two disagree on game assets,
 this file wins; everything else in the Highlander contract and in `AGENTS.md` still holds (build, tsc, harness, lock,
 `/tmp` quota, GPU disposal, D12 determinism, the memory rule of Highlander contract 12.3, the settings reducer).
@@ -727,3 +727,29 @@ kept here, where every task and reviewer reads the same text. Accepted.
 Raw same-origin paths cannot be compared between checkouts: Vite's content-hashed bundle names change with any
 `src/` edit, and the page URL carries the run's `--query`. Section 5.1 therefore compares pathnames, with the
 `/assets/` hashes normalised and the keys counted. The A0-harness acceptance tests both cases.
+
+### 11.3 M3-props merge (v1.3)
+
+Recorded by the integrator when `as/m3-props` (`30a6f80`) was merged; the implementer and the reviewer both asked for it.
+
+1. Triangle budget (6.1): wave 1 reports triangles per map and does not gate on 1.2M. M3-lod (section 9) owns the cut
+   and re-measures against 1.2M. Measured by M3-props (`renderer.info.render`, RTS, POV and RTS-close shots at 50 %,
+   max calls / max triangles, no pack then pack): divulgence 299 / 0.17M, 444 / 1.25M; tetsudo 322 / 1.00M,
+   503 / 1.95M; eruption 183 / 0.41M, 264 / 1.34M; downfall 134 / 0.35M, 339 / 1.70M; ashville 243 / 0.39M,
+   301 / 1.07M; vigil 189 / 0.18M, 314 / 1.19M; upward 284 / 0.17M, 336 / 0.97M; proot 221 / 0.25M, 249 / 0.38M;
+   steel 329 / 0.16M, 433 / 1.19M; warmtic 162 / 0.14M, 270 / 1.16M; koth_product_final (no pack entry) 340 / 0.85M
+   both. These are also the no-pack call counts 6.1 asks for. Tetsudo already draws 0.64 to 1.0M without the pack.
+   Frame time met its budget on every measured map.
+2. `map.propInstances` stock rows carry `source: 'stock'` with their Source origin under `origin`; PAK rows are
+   unchanged. `map.props()` gains a `stock` sub-object only while stock props are drawn.
+3. Stock mode reads VMTs through `scripts/assets/lib/vmt.mjs` (2.6, alpha-test reference 0.5); the PAK path keeps its
+   own reader.
+4. Stock mode excludes models below 90 % winding agreement, 1 to 4 per map; rock006c's 25 instances on tetsudo and 9
+   on eruption stay a gap.
+5. Unnamed, unparented, non-animated stock `prop_dynamic` entities are included by the PAK rule.
+6. Clusters of one or two lit instances join the merged exact-VHV batch.
+7. Manifest `stats` hold counts and `inputKey` only; timings go to `reports/maps/<folder>.json`.
+8. `mapdyn.surface` and `map.status` differ with the pack; `map.nodes` and `map.meta` are identical.
+9. Textures grow by 2 per map reload with and without the pack, outside M3-props' files (pre-existing).
+10. A forced `scene.map` switch to a map other than the demo's own loads empty world and props roots, already on
+    `a06e4c7`. It matters only to probes and test plans; measure on the demo's own map.

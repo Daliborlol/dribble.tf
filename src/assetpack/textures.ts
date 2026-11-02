@@ -10,7 +10,7 @@
 import * as THREE from 'three'
 import type { Material, Object3D, Texture, WebGLRenderer } from 'three'
 
-import { loadPackItem } from './items'
+import { loadPackItem, releaseAssetItem } from './items'
 import { assetPackFile, getAssetPackState } from './pack'
 import type { AssetPackManifestItem } from './types'
 
@@ -191,6 +191,8 @@ export function releasePackTexture(key: string): void {
   if (entry.count > 0) return
   entries.delete(key)
   disposeEntry(entry)
+  releaseAssetItem(key)
+  releaseAssetItem(`${key}@webp`)
 }
 
 /**
@@ -273,7 +275,7 @@ export async function bindPackTextures(
       seen.add(material)
       const record = material.userData?.dribble?.texture as PackTextureRecord | undefined
       if (!record?.key) continue
-      const key = (opts.skin !== undefined && record.skins?.[opts.skin]) || record.key
+      const key = (record.skins?.[opts.skin ?? 0] ?? record.key).toLowerCase()
       jobs.push({ material: material as THREE.MeshBasicMaterial, record, key })
     }
   })

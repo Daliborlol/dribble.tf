@@ -1,6 +1,6 @@
 # Asset-phase contract
 
-Version 2.0, 2026-11-02 (section 12 adds wave 2). Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
+Version 2.1, 2026-11-02 (section 12 adds wave 2, section 13 viewmodels). Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
 every asset-phase task after C0. It extends `specs/highlander/contract.md`. Where the two disagree on game assets,
 this file wins; everything else in the Highlander contract and in `AGENTS.md` still holds (build, tsc, harness, lock,
 `/tmp` quota, GPU disposal, D12 determinism, the memory rule of Highlander contract 12.3, the settings reducer).
@@ -890,3 +890,65 @@ export function attachmentMatrix(copy: Object3D, name: string, out: Matrix4): bo
   `assets.models` off, the pack page draws as on `assets` before the task. No per-map sweeps or repeated perf runs
   are required; gaps go to the task's `notDone`.
 - Disposal (3.10): `renderer.info.memory` stays flat over two map reloads and one `assets.models` off and on cycle.
+
+---
+
+## 13. Viewmodels (v2.1, wave 3)
+
+Phase 4 replaces the outline of section 10 where they differ. V-pack builds the pack side; V-provider owns the
+runtime (`src/highlander/scene/viewmodel/**`, `ViewmodelLayer.tsx`) and reads only what 13.3 lists.
+
+### 13.1 Stage
+
+- `scripts/assets/viewmodels/` (`stage.mjs`, `list.mjs`), run by `--stages viewmodels`. Options: `--set
+  itemsGame=<items_game.txt>` (default `<tf dir>/scripts/items/items_game.txt`, which the VPK copy lacks; without
+  a schema only the arms are built, with a warning), `viewmodelClasses=[...]`, `textureMaxSize` (1024, 6.2).
+- Arms: `models/weapons/c_models/c_<class>_arms.mdl` for the nine classes (`c_demo_arms`, `c_heavy_arms`, ...).
+- Weapons: `list.mjs` `WEAPON_DEFS` = the stock defs and their Upgradeable copies plus every def the local HL
+  demos hold or fire (extras `players.weapon.def`, `players.vm0.weaponDef`, `players.fire.weaponDef`). Def ids are
+  public schema numbers. The stage resolves each (def, class) through the schema with prefabs merged
+  (`build-items.mjs`'s `parseKeyValues` and `mergeDefinition`): `model_player_per_class[class]`, else
+  `model_player`, and keeps it only with `attach_to_hands` or `attach_to_hands_vm_only` = 1. Skipped pairs (no
+  model, not attached to hands, model missing) go to `reports/viewmodels/summary.json`.
+- Export as the models stage (patch 0003, LOD 0, meshopt, flat albedo plus `extras.dribble.texture`). A weapon
+  model another stage owns (a throwable) is reused as it is; textures follow 12.3, reuse included.
+
+### 13.2 Sequence order and clips
+
+`vm0.seq` indexes the arms' virtual model. The stage rebuilds it as Source's `virtualmodel_t::AppendModels`
+does: the arms' own sequences, then each `$includemodel` depth first (recursively). A name already present
+(case-insensitive) is skipped, unless the present one has `STUDIO_OVERRIDE` (0x800, a `$declaresequence`), which
+the include's sequence replaces at the same index. Names only in an include are appended, which is where the
+indices that the arms do not declare come from (contract 10: soldier 57, 59, 66; heavy 42).
+
+- `sequences[i]` is index i: `{ name, frames, fps, clip, loop, activity, from }` (`from` = 0 for the arms, else
+  the position in `includeModels`). `clip` is null for index 0 (the reference pose), delta and still-declared
+  sequences, undecoded animations and names matching `inspect|^passtime_|taunt|^r_handposes$`; every other
+  sequence keeps its first animation, copied from the include GLB onto the arms' bones by name.
+- Blend sequences keep their first animation; the `r_handposes` finger layer is dropped (a gap).
+
+### 13.3 Manifest items
+
+- Arms, key = the arms model path: the 12.4 model fields plus `role: 'viewmodel:arms'`, `class`, `sequences`
+  (13.2), `sequenceIndex { name: index }` for the sequences with a clip, `includeModels`, `bones` (names) and
+  `weapons { <def>: <weapon model key> }` for that class.
+- Weapon, key = the c_model path: the 12.4 fields with `sequences: []` and no clips (rest pose from its first
+  sequence), `role: 'viewmodel:weapon'`, `bones`, and `viewmodel { defs, classes, mergeBones { <class>: names } }`.
+  `mergeBones` are the weapon bones whose names (case-insensitive) exist in that class's arms: TF2 draws the
+  c_model bone-merged, so those bones copy the arms bone's transform every frame and the rest keep the weapon's
+  own pose. Attachments (`muzzle`, `weapon_bone` and the rest) are in `attachments`, relative to their bone.
+- Team skin 0 RED, 1 BLU as in 12.4; `bodygroups` lists names and counts.
+
+### 13.4 Budget, measurements and checks
+
+- Per class (6.2, DDS at most 10 MB): measured on the experiment pack, the arms with the stock loadout take 3.6
+  (scout) to 8.2 MB (engineer), GLB and DDS together. A class with every weapon of `weapons` takes 11.9 (spy) to
+  24.3 MB (pyro); a page downloads only what it draws, so that is a worst case no viewer reaches. Weapon textures
+  are capped at 512 (`weaponTextureMaxSize`) and exported for skins 0 and 1 only; other skins draw flat albedo.
+  DXT textures have no WebP copy (2.5), so the WebP column stays 0.
+- The indices contract 10 left open are include-only sequences: soldier 57, 59 and 66 are inspects (no clip;
+  the provider holds idle), heavy 42 is a melee draw with a clip.
+- `mapdyn` Drops (W-items) draws any listed pack model by model string, so with this stage dropped weapons draw
+  their c_model in the rest pose instead of the placeholder.
+- No `src/` change; `@pack/models` loads both kinds. D21 holds: without a pack or with `assets.viewmodels` off
+  the placeholder provider draws exactly as before.

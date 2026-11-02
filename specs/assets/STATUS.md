@@ -194,6 +194,20 @@ Experiment packs that can go once their reviews are closed: `/home/dalibor/tf2-p
 
 **Next: phase 4, viewmodels.** A `ViewmodelProvider` at priority 10 that reads pack viewmodels (the `viewmodels` stage and the reserved `assets.viewmodels` setting). The instance cache must take the model's ready state into its key, and old demos without local tables keep the placeholder. Still unscheduled: M3-blend texture scroll, M3-overlays and `map.skybox3d`, third-person weapon models, KTX2 hosting, light styles, other maps.
 
+## Wave 3 (viewmodels, contract v2.1 section 13)
+
+With a pack, POV now draws TF2 viewmodels: the class's c_arms model playing the networked `vm0` sequence, with the active weapon's c_model bone-merged onto it in the team skin. Without a pack, with `assets.viewmodels` off, on demos without local tables and for the minigun family the placeholders draw as before. After each merge tsc gave the 10 known errors, the build passed and the no-pack 1438891 baseline against REF `a06e4c7` exited 0 (largest pixel change 0.311 %). `/home/dalibor/tf2-pack` now holds 10 maps and 2902 items; the weapons need `--set itemsGame=<items_game.txt>` and the build used the patch-0003 bsp-to-glb from `as-exporter-bsp2glb`.
+
+| task | branch and tip | merged in | state |
+|---|---|---|---|
+| V-pack viewmodels stage | `as/v-pack` `a81fc60` | `f64a768` | done |
+| V-provider GLB viewmodel provider | `as/v-provider` `4b2fcc1` | `e5e4fe5` | done, minigun excluded |
+| DOCS3 | `as/docs3` | this merge | done |
+
+- **V-pack**: `scripts/assets/viewmodels/` exports the nine c_arms models with their include models' sequences in Source's virtual-model order (13.2) and 157 c_model weapons of the stock and locally used defs, with `mergeBones` per class (13.3). About 30 s and 115 MB. Gaps: blend sequences keep only their first animation, the `r_handposes` finger layer is dropped, weapon skins other than 0 and 1 draw flat albedo.
+- **V-provider**: `glbProvider.ts` at priority 10, sequence time from `tickF` (D12), derived draw, fire, reload and idle when vm0 is unusable, muzzle attachment for F3's tracers, cloak fade, per-weapon placeholder fallback; `viewmodel.state` gains `source` and `pack`, and `viewmodel.meshes` is new. Checked on 1434434: soldier, medic and spy draw from the pack, the heavy's minigun keeps the placeholder.
+- **Gaps**: the minigun pose is broken (the heavy's clips put the arms root about 50 units off; cause not found), so `PACK_POSE_EXCLUDED` keeps it on the placeholder; heavy fists and other heavy weapons were not shot. Not implemented: minigun barrel spin, the spy's watch hand, bodygroups, the finger layer. Not run: the 6v6 sample with a pack (the local-tables gate is checked in code only), a determinism double seek with the pack, the Gunslinger (not in the pack), the spy watch on vm1, a GPU-memory reload check. `assets.viewmodels` has no settings row and also needs `assets.models` on.
+
 ## Next phases as planned after wave 1 (contract section 10; phases 2 and 3 are done, see "Wave 2")
 
 - **Phase 2, textured maps.**

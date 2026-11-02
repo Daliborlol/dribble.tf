@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useSyncExternalStore } from 'react'
 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -30,9 +30,9 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
-import { StaticProps, useStockProps } from '@highlander/map/StaticProps'
+import { StaticProps, usePackPakProps, useStockProps } from '@highlander/map/StaticProps'
 import { getAssetSetting } from '@pack/hooks'
-import { loadPackItem } from '@pack/items'
+import { getAssetItem, loadPackItem, subscribeAssetItems } from '@pack/items'
 import { loadPackGltf, warmUpObject } from '@pack/loaders'
 import { assetPackFile, getAssetPackState, isAssetPackSettled, resolveAssetPack } from '@pack/pack'
 import { acquirePackTexture, releasePackTexture, setPackWorldInfo } from '@pack/textures'
@@ -518,12 +518,34 @@ export const World = (props: WorldProps) => {
     loadedMap?.conversion ?? null
   )
 
+  // Textured PAK props of the pack (M3-props2) replace props.glb while assets.mapTextures is on.
+  const pakProps = usePackPakProps(
+    loadedMap?.pipeline === 'bsp-to-glb' && propsUrl ? loadedMap.folder : undefined,
+    loadedMap?.conversion ?? null
+  )
+  // A props-pak.glb that failed or was skipped falls back to public props.glb (per-item fallback, asset contract 3.6).
+  const pakKey = pakProps?.key
+  const pakUnavailable = useSyncExternalStore(subscribeAssetItems, () => {
+    const state = pakKey ? getAssetItem(pakKey)?.state : undefined
+    return state === 'failed' || state === 'skipped'
+  })
+  const pakPropsDrawn = pakProps && !pakUnavailable ? pakProps : null
+
   return (
     // Account for valve maps using different axis system
     <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]}>
       {mapModel ? <primitive object={mapModel} /> : null}
       {mapOverlay ? <primitive object={mapOverlay} /> : null}
-      {propsUrl ? <StaticProps url={propsUrl} mode={mode ?? 'textured'} /> : null}
+      {pakPropsDrawn ? (
+        <StaticProps
+          key={pakPropsDrawn.key}
+          url={pakPropsDrawn.url}
+          itemKey={pakPropsDrawn.key}
+          mode={mode ?? 'textured'}
+        />
+      ) : propsUrl ? (
+        <StaticProps url={propsUrl} mode={mode ?? 'textured'} />
+      ) : null}
       {stockProps ? (
         <StaticProps
           key={stockProps.key}

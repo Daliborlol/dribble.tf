@@ -27,6 +27,10 @@ export interface PackTextureRecord {
   cutoff?: number
   /** The opacity the flat material drew with (world translucent kinds without a VMT alpha). */
   flatAlpha?: number
+  /** Pack props (M3-props2): base colour = 1 / flat albedo, over vertex colours that hold albedo x light. */
+  colorScale?: number[]
+  /** Pack props: the flat vertex alpha that the texture's alpha replaces. */
+  vertexAlpha?: number
   /** WorldVertexTransition: the second base texture, blended by the vertex attribute. */
   blend?: { key: string; attribute: string }
 }

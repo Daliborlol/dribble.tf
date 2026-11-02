@@ -123,6 +123,8 @@ function manifestStats(result) {
     winding: s.winding.agree,
     lighting: { vhv: s.lighting.exact, estimated: s.lighting.estimated, mismatched: s.lighting.mismatched, shared: s.lighting.shared },
     materials: { textured: s.materials.pak, neutral: s.materials.neutral },
+    ...(s.lod ? { lod: s.lod } : {}),
+    ...(s.textures !== undefined ? { textures: s.textures } : {}),
   }
 }
 
@@ -146,40 +148,12 @@ function indexDir(dir) {
  */
 const EXPORT_HASH = sourcesHash([path.resolve(HERE, '..', 'lib', 'texture-export.mjs'), path.resolve(HERE, '..', 'lib', 'vtf.mjs')])
 
-async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir, options, written }) {
+/**
+ * Exports every texture of `textureList` ({ key: { lookup, source: 'pak' | 'vpk', alpha, cutoff } }) as a texture
+ * item, reusing items with the same input key. Returns { textures, stats, unsupported }.
+ */
+async function exportTextures(ctx, { folder, textureList, pakDir, options, written, reuseWritten = false }) {
   const exportHash = EXPORT_HASH
-  const mounts = { schemaVersion: 1, mounts: ctx.vpk.vpks.map((v, i) => ({ id: `vpk${i}`, kind: 'vpk', path: v.file })) }
-  const mountsPath = path.join(tmp, 'mounts.json')
-  fs.writeFileSync(mountsPath, JSON.stringify(mounts))
-  const outDir = path.join(tmp, 'world')
-  const convTmp = path.join(tmp, 'world-tmp')
-  fs.mkdirSync(convTmp, { recursive: true })
-  const result = spawnSync(process.execPath, [
-    CONVERT_BSP, '--bsp', bspPath, '--out-dir', outDir, '--skybox-dir', path.join(tmp, 'sky'), '--temp-dir', convTmp,
-    '--props', 'false', '--bsp-to-glb', bspToGlb, '--chunk-grid', String(options.chunkGrid),
-    '--material-mount-plan', mountsPath, '--texture-uvs', 'true', '--texture-pak-prefix', `pak/${folder}/`,
-  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  if (result.status !== 0) throw new Error(`${folder}: textured world failed (${result.status}): ${(result.stderr || result.stdout || '').trim().split('\n').slice(-3).join(' / ')}`)
-  const conversion = JSON.parse(fs.readFileSync(path.join(outDir, 'conversion.json'), 'utf8'))
-  const textureList = JSON.parse(fs.readFileSync(path.join(outDir, 'textures.json'), 'utf8'))
-  const files = {
-    world: `maps/${folder}/world.glb`,
-    lightmap: `maps/${folder}/${conversion.files.lightmap}`,
-    conversion: `maps/${folder}/conversion.json`,
-  }
-  fs.copyFileSync(path.join(outDir, 'world.glb'), ctx.stagePath(files.world))
-  fs.copyFileSync(path.join(outDir, conversion.files.lightmap), ctx.stagePath(files.lightmap))
-  // Only what World reads, without timestamps or timings, so equal inputs give equal bytes.
-  const packConversion = {
-    mapName: conversion.mapName,
-    pipeline: conversion.pipeline,
-    files: { model: 'world.glb', lightmap: conversion.files.lightmap },
-    lightmap: conversion.lightmap,
-    chunking: conversion.chunking,
-    textures: conversion.textures,
-  }
-  ctx.writeFile(files.conversion, `${JSON.stringify(packConversion, null, 1)}\n`)
-
   const pak = indexDir(pakDir)
   const textures = []
   const unsupported = {}
@@ -192,7 +166,8 @@ async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir,
     const itemKey = ctx.inputKey({ texture: key, vtf: crypto.createHash('sha256').update(vtf).digest('hex'), options: { textureMax: options.textureMax, webp: options.webp, webpMax: options.webpMax }, exportHash })
     const existing = ctx.manifest.items[key]
     const files = existing ? [existing.file, existing.webp].filter(Boolean) : []
-    if (existing?.kind === 'texture' && existing.inputKey === itemKey && (written.has(key) || files.every(f => ctx.hasPackFile(f)))) {
+    // `reuseWritten` (props): a key the world of some map wrote in this build keeps the world's item.
+    if (existing?.kind === 'texture' && ((reuseWritten && written.has(key)) || (existing.inputKey === itemKey && (written.has(key) || files.every(f => ctx.hasPackFile(f)))))) {
       textures.push(key)
       gpuBytes += textureGpuBytes(existing)
       reused++
@@ -234,10 +209,51 @@ async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir,
     writtenCount++
   }
   return {
-    files,
     textures,
-    stats: { textures: textures.length, texturesWritten: writtenCount, texturesReused: reused, texturesUnsupported: Object.keys(unsupported).length, textureGpuBytes: gpuBytes, chunkGrid: options.chunkGrid },
-    report: { unsupported, glbBytes: conversion.stats?.glbBytes ?? null },
+    unsupported,
+    stats: { textures: textures.length, texturesWritten: writtenCount, texturesReused: reused, texturesUnsupported: Object.keys(unsupported).length, textureGpuBytes: gpuBytes },
+  }
+}
+
+async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir, options, written }) {
+  const mounts = { schemaVersion: 1, mounts: ctx.vpk.vpks.map((v, i) => ({ id: `vpk${i}`, kind: 'vpk', path: v.file })) }
+  const mountsPath = path.join(tmp, 'mounts.json')
+  fs.writeFileSync(mountsPath, JSON.stringify(mounts))
+  const outDir = path.join(tmp, 'world')
+  const convTmp = path.join(tmp, 'world-tmp')
+  fs.mkdirSync(convTmp, { recursive: true })
+  const result = spawnSync(process.execPath, [
+    CONVERT_BSP, '--bsp', bspPath, '--out-dir', outDir, '--skybox-dir', path.join(tmp, 'sky'), '--temp-dir', convTmp,
+    '--props', 'false', '--bsp-to-glb', bspToGlb, '--chunk-grid', String(options.chunkGrid),
+    '--material-mount-plan', mountsPath, '--texture-uvs', 'true', '--texture-pak-prefix', `pak/${folder}/`,
+  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (result.status !== 0) throw new Error(`${folder}: textured world failed (${result.status}): ${(result.stderr || result.stdout || '').trim().split('\n').slice(-3).join(' / ')}`)
+  const conversion = JSON.parse(fs.readFileSync(path.join(outDir, 'conversion.json'), 'utf8'))
+  const textureList = JSON.parse(fs.readFileSync(path.join(outDir, 'textures.json'), 'utf8'))
+  const files = {
+    world: `maps/${folder}/world.glb`,
+    lightmap: `maps/${folder}/${conversion.files.lightmap}`,
+    conversion: `maps/${folder}/conversion.json`,
+  }
+  fs.copyFileSync(path.join(outDir, 'world.glb'), ctx.stagePath(files.world))
+  fs.copyFileSync(path.join(outDir, conversion.files.lightmap), ctx.stagePath(files.lightmap))
+  // Only what World reads, without timestamps or timings, so equal inputs give equal bytes.
+  const packConversion = {
+    mapName: conversion.mapName,
+    pipeline: conversion.pipeline,
+    files: { model: 'world.glb', lightmap: conversion.files.lightmap },
+    lightmap: conversion.lightmap,
+    chunking: conversion.chunking,
+    textures: conversion.textures,
+  }
+  ctx.writeFile(files.conversion, `${JSON.stringify(packConversion, null, 1)}\n`)
+
+  const exported = await exportTextures(ctx, { folder, textureList, pakDir, options, written })
+  return {
+    files,
+    textures: exported.textures,
+    stats: { ...exported.stats, chunkGrid: options.chunkGrid },
+    report: { unsupported: exported.unsupported, glbBytes: conversion.stats?.glbBytes ?? null },
   }
 }
 
@@ -251,6 +267,14 @@ export async function run(ctx) {
   const options = {
     meshopt: set.propsMeshopt !== false,
     ...(Number.isFinite(set.propsBakeVertexBudget) ? { bakeVertexBudget: set.propsBakeVertexBudget } : {}),
+    // M3-props2: textured props (UV0, skins, VMT alpha) with their own texture items, the far VTX LOD, and the
+    // PAK props again as props-pak.glb with VPK materials. The texture caps follow contract 6.2 (stock props).
+    textured: set.propsTextures !== false,
+    lod: set.propsLod !== false,
+    pak: set.propsPak !== false,
+    textureMax: Number.isFinite(set.propsTextureMax) ? set.propsTextureMax : 512,
+    webp: set.mapWebp !== false,
+    webpMax: Number.isFinite(set.propsWebpMax) ? set.propsWebpMax : 256,
   }
   const worldOptions = set.mapTextures === false ? null : {
     textureMax: Number.isFinite(set.mapTextureMax) ? set.mapTextureMax : 2048,
@@ -307,13 +331,12 @@ export async function run(ctx) {
     ], `${folder}: render export`)
     const exportMs = Math.round(performance.now() - started)
 
-    const result = await convertStaticProps({
+    const propsJson = JSON.parse(fs.readFileSync(path.join(tmp, 'props.json'), 'utf8'))
+    const propsCommon = {
       bspToGlb,
       vtfToPng,
       pakDir: path.join(tmp, 'pak'),
-      props: JSON.parse(fs.readFileSync(path.join(tmp, 'props.json'), 'utf8')),
-      workDir: path.join(tmp, 'props'),
-      outPath: ctx.stagePath(file),
+      props: propsJson,
       worldMins,
       worldMaxs,
       lighting,
@@ -321,6 +344,14 @@ export async function run(ctx) {
       meshopt: options.meshopt,
       ...(options.bakeVertexBudget !== undefined ? { bakeVertexBudget: options.bakeVertexBudget } : {}),
       stockSource: ctx.vpk,
+      textured: options.textured,
+      lod: options.lod,
+      texturePakPrefix: `pak/${folder}/`,
+    }
+    const result = await convertStaticProps({
+      ...propsCommon,
+      workDir: path.join(tmp, 'props'),
+      outPath: ctx.stagePath(file),
       log: message => ctx.log(`${folder}:${message}`),
     })
     const worldStarted = performance.now()
@@ -328,6 +359,17 @@ export async function run(ctx) {
       ? await buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir: path.join(tmp, 'pak'), options: worldOptions, written })
       : null
     const worldMs = Math.round(performance.now() - worldStarted)
+    // PAK props with VPK materials (props-pak.glb), only for maps whose public props.glb has PAK props.
+    const pakFile = `maps/${folder}/props-pak.glb`
+    const pakResult = options.pak && Number(info.props?.pak) + Number(info.props?.dynamic ?? 0) > 0
+      ? await convertStaticProps({ ...propsCommon, select: 'pak', workDir: path.join(tmp, 'props-pak'), outPath: ctx.stagePath(pakFile), log: message => ctx.log(`${folder}: pak${message}`) })
+      : null
+    // Prop textures after the world's, so a key both use keeps the world item (its larger cap).
+    const propTextureList = { ...(result.textures ?? {}), ...(pakResult?.textures ?? {}) }
+    const propTextures = options.textured && Object.keys(propTextureList).length
+      ? await exportTextures(ctx, { folder, textureList: propTextureList, pakDir: path.join(tmp, 'pak'), options, written, reuseWritten: true })
+      : null
+    if (propTextures) ctx.log(`${folder}: prop textures ${propTextures.stats.textures} (${propTextures.stats.texturesWritten} written, ${propTextures.stats.texturesReused} reused, ${propTextures.stats.texturesUnsupported} unsupported), ${(propTextures.stats.textureGpuBytes / 1048576).toFixed(1)} MB GPU`)
     if (world) ctx.log(`${folder}: textured world, ${world.stats.textures} textures (${world.stats.texturesWritten} written, ${world.stats.texturesReused} reused, ${world.stats.texturesUnsupported} unsupported), ${(world.stats.textureGpuBytes / 1048576).toFixed(1)} MB GPU, ${(worldMs / 1000).toFixed(1)} s`)
     if (!set.propsKeepTmp) fs.rmSync(tmp, { recursive: true, force: true })
     const ms = Math.round(performance.now() - started)
@@ -342,9 +384,16 @@ export async function run(ctx) {
       bspSha256,
       bspBytes: fs.statSync(bspPath).size,
       publicProps: info.props,
-      files: { ...(result.file ? { propsStock: file } : {}), ...(world?.files ?? {}) },
+      files: { ...(result.file ? { propsStock: file } : {}), ...(pakResult?.file ? { propsPak: pakFile } : {}), ...(world?.files ?? {}) },
       ...(world ? { textures: world.textures } : {}),
-      stats: { inputKey, ...(result.file ? manifestStats(result) : {}), ...(world ? { world: world.stats } : {}) },
+      ...(propTextures ? { propTextures: propTextures.textures } : {}),
+      stats: {
+        inputKey,
+        ...(result.file ? manifestStats(result) : {}),
+        ...(pakResult?.file ? { propsPak: manifestStats(pakResult) } : {}),
+        ...(propTextures ? { propTextures: propTextures.stats } : {}),
+        ...(world ? { world: world.stats } : {}),
+      },
     })
     if (world) report.maps[folder] = { worldMs, world: world.stats }
     const mapReport = { folder, mapName: info.mapName, ms, exportMs, propsMs: result.stats.ms, worldMs, bytes: result.stats.bytes, props: result.props, stats: result.stats, world: world ? { ...world.stats, ...world.report } : null }
@@ -357,7 +406,7 @@ export async function run(ctx) {
   // Map entries this run kept (not selected, or unchanged) still need their texture items, which a --force run of
   // this stage does not carry over; take them from the previous manifest while their files are in the pack.
   for (const entry of Object.values(ctx.manifest.maps)) {
-    for (const key of entry.textures ?? []) {
+    for (const key of [...(entry.textures ?? []), ...(entry.propTextures ?? [])]) {
       for (const k of [key, `${key}@webp`]) {
         const old = ctx.previous?.items?.[k]
         if (ctx.manifest.items[k] || !old || old.kind !== 'texture' || !ctx.hasPackFile(old.file)) continue

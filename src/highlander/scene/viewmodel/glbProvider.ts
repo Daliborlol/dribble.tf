@@ -1,0 +1,446 @@
+// GLB viewmodel provider (asset contract 10 and 13, V-provider): priority 10, over the pack's `viewmodels` stage.
+// It draws the class's c_arms model with the active weapon's c_model bone-merged onto it, both in the team skin,
+// and plays the arms' sequences from tick arithmetic (contract 4.4).
+//
+// - Models come from `@pack/models` and are held here with a reference count of our own: ViewmodelLayer requests
+//   the pair for the subject's (class, weapon) and re-renders when both are loaded; every instance holds its own
+//   reference and releases it in dispose(), so instances kept in the layer's LRU stay valid after the request moves on.
+// - supports() is true only when the pack is ready, assets.enabled, assets.models and assets.viewmodels are on, the
+//   arms list a model for the weapon def, both models are loaded, and the subject has local tables (old demos such as
+//   the 6v6 sample keep the placeholder). Everything else falls back to the placeholder provider per weapon.
+// - Sequences: the networked `vm0.seq` (an index into the arms' virtual model, contract 13.2) played at
+//   `(tickF - vm0.since) x interval x vm0.rate` seconds; when vm0 is missing or shows another model, draw, idle, fire
+//   and reload are derived from the weapon switch, fire events and the reload phases of the input, by activity.
+// - Bone merge (13.3): every frame the weapon's `mergeBones` copy the transform of the arms bone of the same name.
+// - The muzzle is the weapon's `muzzle` attachment, else its root bone; ViewmodelLayer turns it into
+//   vmShared.live.muzzleWorld, where F3's own-muzzle tracers start.
+//
+// No number from a Valve model is in this file: positions, bones and sequences all come from the pack at runtime.
+
+import * as THREE from 'three'
+import type { Camera, Scene, WebGLRenderer } from 'three'
+
+import { CLASS_MAP } from '@constants/mappings'
+import { itemInfo } from '@highlander/items'
+import { getAssetSetting } from '@pack/hooks'
+import { acquirePackModel, packTeamSkin, releasePackModel, type PackModelHandle, type PackModelItem } from '@pack/models'
+import { getAssetPackState } from '@pack/pack'
+
+import { computePose, MELEE_KINDS } from './animate'
+import { VM_GLOW_ORDER } from './kit'
+import { registerViewmodelProvider, type ViewmodelInput, type ViewmodelInstance, type ViewmodelProvider } from './provider'
+import { flashTexture } from './textures'
+import { resolveKind } from './weapons'
+
+export const GLB_PROVIDER_ID = 'glb'
+
+interface VmSequence { name: string; frames: number; fps: number; clip: string | null; loop?: boolean; activity?: string | null }
+export interface ArmsItem extends PackModelItem {
+  role: 'viewmodel:arms'
+  class: string
+  sequences: VmSequence[]
+  sequenceIndex?: Record<string, number>
+  weapons?: Record<string, string>
+}
+interface WeaponItem extends PackModelItem {
+  role: 'viewmodel:weapon'
+  viewmodel?: { defs: number[]; classes: string[]; mergeBones?: Record<string, string[]> }
+}
+
+/** Source rig axes (+X forward, +Y left, +Z up) to camera axes (+x right, +y up, -z forward), as the placeholder. */
+const EYE_FROM_SOURCE = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0))
+)
+
+// ─── manifest lookups ──────────────────────────────────────────────────────────
+
+/** class name -> arms key, per manifest object (the manifest is replaced, never mutated). */
+const armsByManifest = new WeakMap<object, Map<string, string>>()
+
+function armsKeyOf(className: string): string | null {
+  const manifest = getAssetPackState().manifest as { items?: Record<string, any> } | null
+  if (!manifest?.items) return null
+  let map = armsByManifest.get(manifest)
+  if (!map) {
+    map = new Map()
+    for (const [key, item] of Object.entries(manifest.items)) {
+      if (item?.kind === 'model' && item.role === 'viewmodel:arms' && typeof item.class === 'string') map.set(item.class, key)
+    }
+    armsByManifest.set(manifest, map)
+  }
+  return map.get(className) ?? null
+}
+
+const itemOf = <T>(key: string): T | null => (getAssetPackState().manifest?.items?.[key] as T | undefined) ?? null
+
+/** The c_arms class name: CLASS_MAP calls the demoman 'demoman', as the arms items do. */
+const className = (classId: number): string | null => {
+  const name = CLASS_MAP[classId]
+  return name && name !== 'empty' ? name : null
+}
+
+/** Pack switches of viewmodels: pack ready, assets.enabled, assets.models (the model loader) and assets.viewmodels. */
+export function packViewmodelsOn(): boolean {
+  return (
+    getAssetPackState().status === 'ready' &&
+    getAssetSetting('enabled') &&
+    getAssetSetting('models') &&
+    getAssetSetting('viewmodels')
+  )
+}
+
+export interface VmKeys { arms: string; weapon: string }
+
+/** Arms and weapon model keys of (class, weapon def), or null when the pack is off or lists none. */
+export function glbViewmodelKeys(classId: number, weaponDef: number): VmKeys | null {
+  if (!packViewmodelsOn()) return null
+  const cls = className(classId)
+  const arms = cls ? armsKeyOf(cls) : null
+  if (!arms) return null
+  const weapon = itemOf<ArmsItem>(arms)?.weapons?.[String(weaponDef)]
+  if (!weapon || !itemOf<WeaponItem>(weapon)) return null
+  return { arms, weapon }
+}
+
+// ─── model references ──────────────────────────────────────────────────────────
+
+interface Held { refs: number; handle: PackModelHandle | null; done: boolean; promise: Promise<PackModelHandle | null> }
+/** Pack models the viewmodel code holds (pack handles, never demo data: contract 12.3 memory rule). */
+const held = new Map<string, Held>()
+
+function hold(key: string, gl: WebGLRenderer, scene: Scene, camera: Camera): Promise<PackModelHandle | null> {
+  let entry = held.get(key)
+  if (!entry) {
+    const created: Held = { refs: 0, handle: null, done: false, promise: Promise.resolve(null) }
+    created.promise = acquirePackModel(key, gl, scene, camera).then(handle => {
+      created.handle = handle
+      created.done = true
+      return handle
+    })
+    held.set(key, created)
+    entry = created
+  }
+  entry.refs++
+  return entry.promise
+}
+
+/** Another reference to a model that is already loaded (instances); false when it is not. */
+function holdLoaded(key: string): PackModelHandle | null {
+  const entry = held.get(key)
+  if (!entry?.handle) return null
+  entry.refs++
+  return entry.handle
+}
+
+function unhold(key: string) {
+  const entry = held.get(key)
+  if (!entry) return
+  entry.refs--
+  if (entry.refs > 0) return
+  held.delete(key)
+  releasePackModel(key)
+}
+
+const loadedHandle = (key: string): PackModelHandle | null => held.get(key)?.handle ?? null
+
+/** Both models loaded, bound and compiled. */
+export function glbModelsReady(keys: VmKeys | null): boolean {
+  return !!keys && !!loadedHandle(keys.arms) && !!loadedHandle(keys.weapon)
+}
+
+/**
+ * Loads the pair for the layer; `onSettled` runs once both settled (loaded or failed). Returns the release, which
+ * the layer calls when the subject's (class, weapon) changes or it unmounts.
+ */
+export function requestViewmodelModels(keys: VmKeys, gl: WebGLRenderer, scene: Scene, camera: Camera, onSettled: () => void): () => void {
+  let alive = true
+  Promise.all([hold(keys.arms, gl, scene, camera), hold(keys.weapon, gl, scene, camera)]).then(() => {
+    if (alive) onSettled()
+  })
+  return () => {
+    alive = false
+    unhold(keys.arms)
+    unhold(keys.weapon)
+  }
+}
+
+/** Probe rows: the models the viewmodel code holds. */
+export function heldViewmodelModels() {
+  return Array.from(held.entries()).map(([key, e]) => ({ key, refs: e.refs, loaded: !!e.handle, failed: e.done && !e.handle }))
+}
+
+// ─── sequences ─────────────────────────────────────────────────────────────────
+
+const SLOT_ACT: Record<string, string> = {
+  primary: 'PRIMARY',
+  secondary: 'SECONDARY',
+  melee: 'MELEE',
+  pda: 'ENGINEER_PDA1',
+  pda2: 'ENGINEER_PDA2',
+  building: 'ENGINEER_BLD',
+}
+
+export interface SeqChoice { seq: number; name: string; clip: string | null; time: number; source: 'vm0' | 'derived'; since: number }
+
+const DERIVED_DRAW = 'VM_DRAW'
+const DERIVED_IDLE = 'VM_IDLE'
+const DERIVED_FIRE = 'VM_PRIMARYATTACK'
+const DERIVED_RELOAD = 'VM_RELOAD'
+
+/** First sequence with a clip whose activity is ACT_<slot>_<what>, else ACT_<what>. */
+function byActivity(seqs: VmSequence[], slot: string | undefined, what: string): number {
+  const want = slot ? [`ACT_${slot}_${what}`, `ACT_${what}`] : [`ACT_${what}`]
+  for (const name of want) {
+    const i = seqs.findIndex(s => s.clip && s.activity === name)
+    if (i >= 0) return i
+  }
+  return -1
+}
+
+/** The idle a clip-less sequence (inspects, the reference pose) holds: `<prefix>_idle`, else `idle`, else any idle. */
+function idleFor(arms: ArmsItem, name: string): number {
+  const index = arms.sequenceIndex ?? {}
+  const prefix = name.includes('_') ? name.slice(0, name.indexOf('_')) : ''
+  const pick = (n: string) => (index[n] !== undefined && arms.sequences[index[n]]?.clip ? index[n] : -1)
+  let i = prefix ? pick(`${prefix}_idle`) : -1
+  if (i < 0) i = pick('idle')
+  if (i < 0) i = arms.sequences.findIndex(s => s.clip && /idle/i.test(s.name))
+  return i
+}
+
+function derivedSequence(input: ViewmodelInput, arms: ArmsItem, interval: number): { seq: number; since: number } {
+  const seqs = arms.sequences
+  const slot = SLOT_ACT[itemInfo(input.weaponDef)?.slot ?? '']
+  const tick = input.tickF
+  const lastFire = input.fireTicks.length ? input.fireTicks[input.fireTicks.length - 1] : -Infinity
+  const draw = byActivity(seqs, slot, DERIVED_DRAW)
+  const seconds = (i: number) => (i >= 0 ? seqs[i].frames / (seqs[i].fps || 30) : 0)
+  // Latest of draw, fire and reload whose clip is still running, else idle from the draw
+  let best = { seq: -1, since: -Infinity }
+  if (draw >= 0 && (tick - input.drawTick) * interval < seconds(draw)) best = { seq: draw, since: input.drawTick }
+  const fire = byActivity(seqs, slot, DERIVED_FIRE)
+  if (fire >= 0 && lastFire >= input.drawTick && lastFire > best.since && (tick - lastFire) * interval < seconds(fire)) {
+    best = { seq: fire, since: lastFire }
+  }
+  if (input.reloadSince !== undefined && input.reloadSince > best.since) {
+    const reload = byActivity(seqs, slot, DERIVED_RELOAD)
+    if (reload >= 0) best = { seq: reload, since: input.reloadSince }
+  }
+  if (best.seq >= 0) return best
+  return { seq: byActivity(seqs, slot, DERIVED_IDLE), since: input.drawTick }
+}
+
+/** The arms sequence and its time in seconds at input.tickF. Pure (D12). */
+export function chooseSequence(input: ViewmodelInput, armsKey: string, arms: ArmsItem): SeqChoice {
+  const interval = input.interval || 0.015
+  const vm0 = input.vm0
+  let seq = -1
+  let since = input.drawTick
+  let rate = 1
+  let source: SeqChoice['source'] = 'derived'
+  if (vm0 && vm0.model.toLowerCase().replace(/\\/g, '/') === armsKey && vm0.seq < arms.sequences.length) {
+    source = 'vm0'
+    seq = vm0.seq
+    since = vm0.since
+    rate = Number.isFinite(vm0.rate) && vm0.rate > 0 ? vm0.rate : 1
+    if (!arms.sequences[seq]?.clip) seq = idleFor(arms, arms.sequences[seq]?.name ?? '') // inspects hold idle (13.4)
+  } else {
+    const d = derivedSequence(input, arms, interval)
+    seq = d.seq
+    since = d.since
+  }
+  const info = seq >= 0 ? arms.sequences[seq] : undefined
+  if (!info?.clip) return { seq, name: info?.name ?? '', clip: null, time: 0, source, since }
+  const duration = Math.max(1, info.frames - 1) / (info.fps || 30)
+  let time = Math.max(0, (input.tickF - since) * interval * rate)
+  time = info.loop ? time % duration : Math.min(time, duration)
+  return { seq, name: info.name, clip: info.clip, time, source, since }
+}
+
+// ─── instance ──────────────────────────────────────────────────────────────────
+
+export interface GlbInstance extends ViewmodelInstance {
+  keys: VmKeys
+  lastChoice: SeqChoice | null
+  mergedBones: number
+}
+
+function lowerNameMap(root: THREE.Object3D): Map<string, THREE.Object3D> {
+  const map = new Map<string, THREE.Object3D>()
+  root.traverse(node => {
+    const key = node.name.toLowerCase()
+    if (node.name && !map.has(key)) map.set(key, node)
+  })
+  return map
+}
+
+function depthOf(node: THREE.Object3D): number {
+  let d = 0
+  for (let n = node.parent; n; n = n.parent) d++
+  return d
+}
+
+/** Per-copy materials, so the layer's viewmodel flags and the cloak fade never touch the shared pack materials. */
+function ownMaterials(root: THREE.Object3D): THREE.Material[] {
+  const clones = new Map<THREE.Material, THREE.Material>()
+  root.traverse(node => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    const swap = (m: THREE.Material) => {
+      let c = clones.get(m)
+      if (!c) {
+        c = m.clone()
+        // The layer draws every viewmodel mesh in the transparent pass; an opaque pack material must not start
+        // blending its texture's alpha, which holds the VMT's masks (phong, envmap), so it draws without blending
+        // until the cloak fade needs it
+        if (!m.transparent) c.userData.vmOpaque = true
+        clones.set(m, c)
+      }
+      return c
+    }
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
+  })
+  return Array.from(clones.values())
+}
+
+const _parentInv = new THREE.Matrix4()
+const _local = new THREE.Matrix4()
+
+function createGlb(input: ViewmodelInput): ViewmodelInstance {
+  const keys = glbViewmodelKeys(input.classId, input.weaponDef)
+  const armsHandle = keys ? holdLoaded(keys.arms) : null
+  const weaponHandle = keys ? holdLoaded(keys.weapon) : null
+  if (!keys || !armsHandle || !weaponHandle) {
+    // supports() said yes a moment ago; should the pair have gone since, draw nothing rather than throw
+    if (armsHandle && keys) unhold(keys.arms)
+    if (weaponHandle && keys) unhold(keys.weapon)
+    const object = new THREE.Group()
+    const muzzle = new THREE.Object3D()
+    object.add(muzzle)
+    return { object, muzzle, update: () => {}, dispose: () => object.removeFromParent() }
+  }
+  const armsInfo = armsHandle.info as ArmsItem
+  const weaponInfo = weaponHandle.info as WeaponItem
+  const team = input.team === 'red' ? 2 : 3
+  const arms = armsHandle.instantiate(packTeamSkin(armsInfo, team))
+  const weapon = weaponHandle.instantiate(packTeamSkin(weaponInfo, team))
+  arms.name = 'vmArms'
+  weapon.name = 'vmWeapon'
+  const materials = [...ownMaterials(arms), ...ownMaterials(weapon)]
+
+  const object = new THREE.Group()
+  object.name = 'vmPack'
+  const eye = new THREE.Group()
+  eye.quaternion.copy(EYE_FROM_SOURCE)
+  eye.add(arms, weapon)
+  object.add(eye)
+
+  // Bone merge pairs, parents first
+  const armsNodes = lowerNameMap(arms)
+  const weaponNodes = lowerNameMap(weapon)
+  const mergeNames = weaponInfo.viewmodel?.mergeBones?.[armsInfo.class] ?? []
+  const pairs: { from: THREE.Object3D; to: THREE.Object3D; depth: number }[] = []
+  for (const name of mergeNames) {
+    const from = armsNodes.get(name.toLowerCase())
+    const to = weaponNodes.get(name.toLowerCase())
+    if (from && to) pairs.push({ from, to, depth: depthOf(to) })
+  }
+  pairs.sort((a, b) => a.depth - b.depth)
+
+  // Muzzle: the weapon's attachment, else its root merge bone, else the arms' weapon_bone
+  const muzzle =
+    weaponNodes.get('attachment_muzzle') ?? pairs[0]?.to ?? armsNodes.get('weapon_bone') ?? eye
+  const flashMaterial = new THREE.SpriteMaterial({
+    map: flashTexture(),
+    color: '#ffd27a',
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+    transparent: true,
+    fog: false,
+    toneMapped: false,
+  })
+  const flash = new THREE.Sprite(flashMaterial)
+  flash.name = 'vmMuzzleFlash'
+  flash.scale.set(6, 6, 6)
+  flash.visible = false
+  flash.renderOrder = VM_GLOW_ORDER
+  muzzle.add(flash)
+
+  const mixer = new THREE.AnimationMixer(arms)
+  const clipsByName = new Map(armsHandle.clips.map(c => [c.name, c]))
+  let action: THREE.AnimationAction | null = null
+  let actionClip: string | null = null
+  const kind = resolveKind(input.kind, input.weaponClass)
+  const melee = MELEE_KINDS.has(kind)
+
+  const instance: GlbInstance = {
+    object,
+    muzzle,
+    keys,
+    lastChoice: null,
+    mergedBones: pairs.length,
+    update(next: ViewmodelInput) {
+      const choice = chooseSequence(next, keys.arms, armsInfo)
+      instance.lastChoice = choice
+      const clip = choice.clip ? clipsByName.get(choice.clip) ?? null : null
+      if (clip && actionClip !== clip.name) {
+        action?.stop()
+        action = mixer.clipAction(clip)
+        action.setLoop(THREE.LoopRepeat, Infinity)
+        action.play()
+        actionClip = clip.name
+      }
+      if (action) mixer.setTime(Math.min(choice.time, Math.max(0, (clip?.duration ?? 0) - 1e-4)))
+      object.visible = !next.vm0?.nodraw
+
+      // Bone merge: the weapon's merge bones take the arms bone's world transform
+      if (pairs.length) {
+        arms.updateWorldMatrix(true, true)
+        for (const { from, to } of pairs) {
+          const parent = to.parent!
+          parent.updateWorldMatrix(true, false)
+          _parentInv.copy(parent.matrixWorld).invert()
+          _local.multiplyMatrices(_parentInv, from.matrixWorld)
+          _local.decompose(to.position, to.quaternion, to.scale)
+          to.updateMatrixWorld(true)
+        }
+      }
+
+      // Muzzle flash at the attachment, timed like the placeholder's (a function of the tick)
+      const pose = computePose(next, kind, { kick: [1, 1], melee, reloads: true })
+      flash.visible = pose.muzzleFlash && !melee
+      if (flash.visible) flashMaterial.rotation = (Math.floor(next.tickF) * 0.7) % (Math.PI * 2)
+
+      // Cloak fade: the spy's own viewmodel fades with his invisibility
+      const opacity = 1 - 0.85 * (next.invis ?? 0)
+      for (const m of materials) {
+        m.opacity = opacity
+        if (m.userData.vmOpaque) m.blending = opacity < 1 ? THREE.NormalBlending : THREE.NoBlending
+      }
+    },
+    dispose() {
+      action?.stop()
+      mixer.stopAllAction()
+      mixer.uncacheRoot(arms)
+      flash.removeFromParent()
+      flashMaterial.dispose()
+      for (const m of materials) m.dispose()
+      armsHandle.release(arms)
+      weaponHandle.release(weapon)
+      object.removeFromParent()
+      unhold(keys.arms)
+      unhold(keys.weapon)
+    },
+  }
+  return instance
+}
+
+export const glbViewmodelProvider: ViewmodelProvider = {
+  id: GLB_PROVIDER_ID,
+  priority: 10,
+  supports: input => input.localTables === true && glbModelsReady(glbViewmodelKeys(input.classId, input.weaponDef)),
+  create: createGlb,
+}
+
+registerViewmodelProvider(glbViewmodelProvider)

@@ -1,6 +1,6 @@
 # Asset-phase contract
 
-Version 1.0, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
+Version 1.1, 2026-11-02. Branch `assets` starts at `highlander` `a06e4c7` (Highlander contract v2.5). This file binds
 every asset-phase task after C0. It extends `specs/highlander/contract.md`. Where the two disagree on game assets,
 this file wins; everything else in the Highlander contract and in `AGENTS.md` still holds (build, tsc, harness, lock,
 `/tmp` quota, GPU disposal, D12 determinism, the memory rule of Highlander contract 12.3, the settings reducer).
@@ -42,7 +42,9 @@ are fixed. A task may add optional fields and new files inside its own folders.
   of upstream textured maps and the 257 kill icons. Real TF2 content beyond them appears only from a local pack the
   user built. Data embedded in the BSPs (lightmaps, PAK props, PAK skies) stays allowed in `public/`, as before.
 - **D5, amended.** `koth_product_final` is excluded from map packs. It keeps its upstream `textured_compressed.glb`,
-  has no `mapNodes`, and with Highlander off it is the base viewer's map. The pack builder refuses it with exit 2.
+  has no `mapNodes`, and with Highlander off it is the base viewer's map. `--maps all` means the 10 bsp-to-glb
+  folders, those whose public `conversion.json` has `pipeline: 'bsp-to-glb'`, so it never includes it. The pack
+  builder exits 2 only when `koth_product_final` is named explicitly in `--maps`.
 - **D7, amended.** Stock static props draw from the pack (`props-stock.glb`). PAK props stay in `public/` `props.glb`.
 - **D8, amended.** A later GLB viewmodel provider at priority 10 reads the pack. The placeholder stays the fallback.
 - **D12, extended.** Everything drawn is a pure function of (extras, base caches, `renderTick`, `frameProgress`,
@@ -116,7 +118,7 @@ with forward slashes.
     "<folder>": {
       "mapName": "pl_vigil_rc10",          // equals public conversion.json mapName
       "bspSha256": "hex", "bspBytes": 0,
-      "publicProps": { "pak": 88, "stock": 1428, "stockSolid": 409 }, // copy of public conversion.json props
+      "publicProps": { "pak": 88, "stock": 1428, "stockSolid": 409 }, // verbatim copy of public conversion.json props
       "files": { "propsStock": "maps/pl_vigil_rc10/props-stock.glb" },
       "sizes": { "propsStock": 0 },
       "stats": { }                         // instances, models, excluded models, triangles, ms
@@ -129,6 +131,8 @@ with forward slashes.
 ```
 
 - No timestamps and no absolute paths, so equal inputs can give an equal manifest.
+- `publicProps` is a verbatim copy of the public `conversion.json` `props` object, every key included (`dynamic` on
+  pl_eruption_b15 and tow_tetsudo_b10c). The runtime compares the two deep-equal.
 - `version` other than 1, or `format` other than `"dribble-asset-pack"`, makes the runtime status `error`.
 - The VPK fingerprint uses file sizes, the directory tree CRC32, archive count and total archive bytes, never mtimes.
 - Every file the runtime may request appears in the manifest. The runtime requests nothing else.
@@ -234,7 +238,9 @@ interface AssetPackState {
   `not-found` or `html` logs one `console.info` line `[assets] no asset pack at <url>`; `not-configured` and
   `disabled` log nothing.
 - Resolution starts on the first call of `resolveAssetPack(): Promise<AssetPackState>` and runs once per page. It
-  reads `assets.enabled` and the URL flag at that moment. The manifest request has a 2000 ms timeout. A response after
+  reads `assets.enabled` and the URL flag at that moment. One exception: a `disabled` result caused by the setting
+  (not by `?assets=off`) is redone once when `assets.enabled` turns true. Every other settled state is final for the
+  page. The manifest request has a 2000 ms timeout. A response after
   the timeout is ignored for the page.
 - `getAssetPackState()` is the synchronous read; `useAssetPack()` the React hook. `assetPackFile(path)` returns the
   URL of a manifest-listed file or `null`.
@@ -249,7 +255,7 @@ interface AssetPackState {
 - A drawn world is never swapped. Map items that replace something (phase 2 textures) apply on the next map load.
   Additive items (stock props) may mount on the drawn map once their file has loaded.
 - Pack map entries are checked against the public folder before use: `mapName` must equal the public
-  `conversion.json` `mapName`, and `publicProps` must equal its `props`. A mismatch skips that map's pack items for
+  `conversion.json` `mapName`, and `publicProps` must deep-equal its `props` (2.3). A mismatch skips that map's pack items for
   the page with one `console.warn` (`[assets] maps/<folder> was built from another BSP; using public files`).
   Phase 2 adds `bspSha256` to the public `conversion.json` and compares that instead.
 
@@ -277,7 +283,7 @@ Saved settings merge as today (`merge(defaultSettings, settings)` in `loadSettin
 
 | key | default | effect |
 |---|---|---|
-| `assets.enabled` | true | Master switch. Read when the pack resolves. Turning it off later unmounts and disposes every pack item at once; turning it on mounts them again, resolving the pack first if it never ran. |
+| `assets.enabled` | true | Master switch. Read when the pack resolves. Turning it off later unmounts and disposes every pack item at once; turning it on mounts them again; if the pack settled `disabled` because of this setting, it resolves once more first (3.4). |
 | `assets.stockProps` | true | `props-stock.glb`. Applies at once. Also needs `map.staticProps` (the Highlander map setting), so that one switch still hides every static prop. |
 | `assets.mapTextures` | true | Phase 2. Applies on the next map load. |
 | `assets.models` | true | Phase 3 world models (buildings, projectiles, map items, cart). Applies at once. |
@@ -288,14 +294,15 @@ Saved settings merge as today (`merge(defaultSettings, settings)` in `loadSettin
   `SelectOption` rows of `UI/Shared/SettingsOptions.tsx`, which stays unchanged. `SettingsPanel.tsx` gets one import
   and one `<AssetSettingsSection />` line. The section renders nothing when `ASSET_PACK_URL` is null. It shows a
   status line ("TF2 asset pack: ready, N maps, M items", "not found at /tf2-assets/", the error) and only the rows
-  whose feature exists; later tasks add their row.
+  whose feature exists. A0-runtime ships the `assets.enabled` row and the `assets.stockProps` row, the latter shown
+  when the manifest has any `maps` entry. Phase 2 to 4 tasks own the line of their own row in that file.
 - The settings reducer rule of AGENTS.md applies: never memoise on the `settings.assets` reference.
 
 ### 3.8 Probes
 
 Registered through `registerHlProbe` (`@highlander/debug`) from `src/assetpack/probes.ts`, which `src/main.tsx`
-imports with one line. `hl.probes()` grows from 65 to 68. That changes the smoke sweep's eval output, which
-compare-runs reports only as a warning; it is an accepted difference.
+imports with one line. `hl.probes()` grows from 65 to 68. That adds three keys to the smoke sweep's eval result,
+which today's compare-runs counts as a manifest structure difference (exit 1); A0-harness changes that (5.1).
 
 - `assets.status()`: `{ status, reason, url, version, fingerprint, generatorVersion, maps: string[], itemCount,
   loading, failed }`.
@@ -312,7 +319,7 @@ compare-runs reports only as a warning; it is an accepted difference.
   holds unchanged.
 - Models and viewmodels feed only Highlander layers. With Highlander off, no request goes to `<pack>/models/` or to
   model textures.
-- The base player GLBs and the rocket, pipe and sticky models are unchanged in every mode (D13).
+- The base player GLBs and the rocket, pipe and sticky models are unchanged in every mode (D1 amended).
 - `koth_product_final` is unaffected in every mode (D5 amended).
 
 ### 3.10 GPU and memory rules
@@ -390,7 +397,16 @@ Use the harness of the task's checkout for both runs. `REF` is a run with `--roo
 | N3 | `--asset-pack PACK --query assets=off` | `compare-runs REF N3` exits 0; 0 requests under `/tf2-assets/` |
 | N4 | `--asset-pack PACK`, Highlander off (`settings` step) | 0 requests under `/tf2-assets/models/`; map items as 3.9 says |
 
-Eval differences from the 3 new probes are the only accepted warnings. A run on the 6v6 sample smoke plan repeats N1.
+Manifest structure rule (A0-harness implements it; the gate depends on it). Today `compare-runs.mjs` fails on any
+difference of JSON paths or value types between the two manifests, array indices and eval results included. The
+new manifest fields would break N1 to N3 under that rule, so compare-runs leaves these subtrees out of the structure
+check: `assetPack`, `requests`, `requestSummary`, every step's `assetsIdle` and every step's eval result. Requests are
+judged only by the request-set rule (unique same-origin paths, `--allow-request`), and evals stay warnings. The
+harness also writes fixed shapes: `assetPack` is always an object with nullable fields, and `assetsIdle` is `null`
+when the page has no `assets.waitIdle` probe.
+
+Eval differences, among them the 3 new probe keys of the smoke sweep, are the only accepted warnings. A run on the
+6v6 sample smoke plan repeats N1 under the same rule.
 
 ---
 
@@ -406,7 +422,7 @@ Measured on this machine (Radeon 680M, 1600x900, headless shell 1248, `egl`). Th
 | Pack not configured | section 5.1 N1 passes; main bundle growth at most 25 KB minified |
 | `props-stock.glb` per map | at most 12 MB; all 10 maps at most 80 MB; reported per map |
 | Pack build per map (props stage) | at most 60 s under the lock; all 10 maps at most 10 min |
-| RTS draw calls / triangles (`renderer.info.render`, the smoke RTS shots) | at most 450 calls and 1.2M triangles on every packed map |
+| RTS draw calls / triangles (`renderer.info.render`, the smoke RTS shots) | M3-props first measures the no-pack calls per map (only textured world plus stock props was measured: 259 to 474). Then at most 450 calls, or no-pack calls + 300 on a map that misses 450, and at most 1.2M triangles, on every packed map |
 | Frame time, uncapped, `--perf-play 50%:10:rts` and a POV run on 1434434 | p95 at most 13.3 ms; if the no-pack run already misses that, at most no-pack p95 + 3 ms |
 | Long tasks | none over 50 ms in the perf window, which starts after `assets.waitIdle()` resolved and 3 s of play warmed every player model (their first shader compile, 120 to 133 ms, predates this phase) |
 | Peak PSS 1434434 | at most 1.15 GB (no-pack measured 872 MB) |
@@ -506,6 +522,8 @@ Acceptance:
   `/tf2-assets/../package.json` answers 404.
 - A production build without `VITE_ASSET_PACK_URL` contains no `/tf2-assets/` string in the main bundle and no
   settings section.
+- The settings section shows the `assets.stockProps` row only with a manifest that has a `maps` entry, and the
+  `assets.enabled` row whenever `ASSET_PACK_URL` is set.
 - `assets.status`, `assets.items` and `assets.waitIdle` return the shapes of 3.8 in all four status cases (no URL,
   404, `index.html` answer, valid manifest), checked in the harness or the dev server.
 
@@ -517,19 +535,24 @@ Owns `scripts/hl/harness/**`.
   `VITE_ASSET_PACK_URL=/tf2-assets/`. `--asset-pack missing` builds the same way and answers 404 for every
   `/tf2-assets/` path. The build cache keys each entry by checkout path and `VITE_ASSET_PACK_URL`, so the two variants
   do not rebuild each other.
-- The manifest gains `assetPack: { dir, served, manifestSha256, fingerprint, generatorVersion } | null` and
+- The manifest gains `assetPack: { dir, served, manifestSha256, fingerprint, generatorVersion }` (always an object,
+  every field `null` without `--asset-pack`) and
   `requests: [{ path, status, type }]` for every same-origin request (query kept, sorted by first occurrence), plus
   `requestSummary: { total, failed, byPrefix }`.
 - Before each screenshot, when the page has the probe `assets.waitIdle`, the harness awaits it (30 s) and records
-  `assetsIdle` in the step. Pages without the probe (`a06e4c7`) skip it, so REF runs still work.
+  `assetsIdle` in the step. Pages without the probe (`a06e4c7`) get `assetsIdle: null`, so REF runs still work.
 - `--no-vsync` adds `--disable-gpu-vsync --disable-frame-rate-limit`; `perf.json` records it.
 - `compare-runs.mjs`: a difference in the set of unique same-origin request paths is a failure reason
   (`requests differ`, exit 1), except paths given with `--allow-request <path>` (repeatable). A different pack
-  fingerprint is a warning. `smoke-gen.mjs` adds `assets.status` and `assets.items` to the sweep.
+  fingerprint is a warning. The structure check skips the subtrees named in 5.1 (`assetPack`, `requests`,
+  `requestSummary`, each step's `assetsIdle` and eval result). `smoke-gen.mjs` adds `assets.status` and
+  `assets.items` to the sweep.
 - README and `--help` updated.
 
 Acceptance:
 - REF against itself (two runs of `a06e4c7`) exits 0, with equal request sets.
+- REF (the `a06e4c7` page) against N1 (the A0-harness checkout's page, new manifest fields present) exits 0 on the
+  baseline plan and on the 6v6 smoke plan, whose sweep differs by the new probe keys once A0-runtime is merged.
 - A deliberately extra request (a plan `eval` that fetches `/favicon.ico?x`) makes compare-runs exit 1 naming it.
 - `--asset-pack missing` against REF fails without `--allow-request` and passes with it, once A0-runtime is merged
   (before that, test against a branch that has it, or report as pending).
@@ -668,3 +691,8 @@ Third-person weapon models, KTX2 if hosting is ever chosen, overlays on displace
 
 The orchestrator appends accepted deviations, measured limits (6.2 draw calls, 2.4 tool nondeterminism) and
 decisions here, as numbered subsections, and bumps the version line.
+
+### 11.1 Length (v1.1)
+
+The task asked for about 300 to 500 lines. This file is longer, because the wave-1 acceptance lists of section 9 are
+kept here, where every task and reviewer reads the same text. Accepted.

@@ -15,6 +15,7 @@ import { toggleUIPanelAction, updateSettingsOptionAction } from '@zus/actions'
 import { cn } from '@utils/styling'
 import { useIsMobile } from '@utils/hooks'
 import { HighlanderSettingsSection } from '@highlander/settings/HighlanderSettingsSection'
+import { AssetSettingsSection } from '@pack/AssetSettingsSection'
 
 //
 // ─── SETTINGS PANEL ─────────────────────────────────────────────────────────────
@@ -318,6 +319,7 @@ export const SettingsPanel = () => {
           {/* ************************************************************* */}
 
           <HighlanderSettingsSection />
+          <AssetSettingsSection />
 
           {/* ************************************************************* */}
 

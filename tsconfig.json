@@ -25,6 +25,7 @@
       "@constants/*": ["src/constants/*"],
       "@highlander/*": ["src/highlander/*"],
       "@libs/*": ["src/libs/*"],
+      "@pack/*": ["src/assetpack/*"],
       "@pages/*": ["src/pages/*"],
       "@zus/*": ["src/zustand/*"],
       "@utils/*": ["src/utils/*"]

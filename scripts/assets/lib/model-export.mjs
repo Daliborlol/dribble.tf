@@ -168,6 +168,8 @@ const clipPredicate = keep => {
  * @param {boolean} [o.lod0=true]
  * @param {boolean|RegExp|string[]|Function} [o.keepClip=true]  which animations stay (by name)
  * @param {string} [o.restPoseClip]   animation whose frame 0 becomes the nodes' rest pose (before pruning)
+ * @param {boolean} [o.keepRefPose=false] record the reference (bind) pose of every node the rest pose moves
+ *                                   in its extras, `dribble.refPose` = [tx, ty, tz, qx, qy, qz, qw, sx, sy, sz]
  * @param {boolean} [o.dropTextures=true]
  * @param {boolean} [o.meshopt=true]
  * @param {'high'|'medium'} [o.level='high']
@@ -215,6 +217,11 @@ export async function postProcessModel(o) {
         const size = target === 'rotation' ? 4 : 3
         if (target === 'weights' || output.getCount() < 1) continue
         const value = output.getElement(0, new Array(size))
+        if (o.keepRefPose && !node.getExtras()?.dribble?.refPose) {
+          const extras = node.getExtras() ?? {}
+          const refPose = [...node.getTranslation(), ...node.getRotation(), ...node.getScale()]
+          node.setExtras({ ...extras, dribble: { ...(extras.dribble ?? {}), refPose } })
+        }
         if (target === 'translation') node.setTranslation(value)
         else if (target === 'rotation') node.setRotation(value)
         else if (target === 'scale') node.setScale(value)

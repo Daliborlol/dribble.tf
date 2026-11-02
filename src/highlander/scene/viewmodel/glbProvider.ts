@@ -92,13 +92,11 @@ export function packViewmodelsOn(): boolean {
 export interface VmKeys { arms: string; weapon: string }
 
 /**
- * Weapon kinds whose pack pose hides the weapon, so they keep the placeholder per weapon. The minigun family
- * (CTFMinigun): the export and the bone merge reproduce Source's pose, but TF2's own m_* clips hold the heavy's
- * left hand on the carry handle at the bottom centre with c_minigun below it, so at viewmodel FOV 54 to 70 the
- * hand covers the gun. The legacy v_minigun_heavy puts root and left hand at the same spot (within 0.5 units);
- * it is the pose, not a retargeting error. A view offset for this weapon would be a deliberate departure from TF2.
+ * Weapon kinds that keep the placeholder although the pack lists them (none now). The minigun family draws from
+ * the pack: TF2's own m_* clips hold the heavy's left hand on the carry handle at the bottom centre with the gun
+ * below it, which is how the game shows it (the legacy v_minigun_heavy has the same root and hand).
  */
-const PACK_POSE_EXCLUDED = new Set(['minigun'])
+const PACK_POSE_EXCLUDED = new Set<string>()
 
 /** The reason a weapon keeps the placeholder although the pack lists it, or null. */
 export function packPoseExcluded(kind: string, weaponClass?: string): string | null {

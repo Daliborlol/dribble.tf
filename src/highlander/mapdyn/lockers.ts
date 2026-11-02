@@ -27,6 +27,8 @@ export interface LockerBox {
   source: 'prop' | 'bounds'
   matrix: THREE.Matrix4
   color: THREE.Color
+  /** 'prop' boxes: the locker prop's model (manifest key form) and its origin transform, for a pack model (W-items) */
+  model?: { key: string; matrix: THREE.Matrix4 }
 }
 
 const PANEL_INSET = 6
@@ -101,7 +103,12 @@ export function buildLockers(meta: MapMeta | null, origin: { x: number; y: numbe
       const base = new THREE.Vector3(prop.origin[0] - origin.x, prop.origin[1] - origin.y, prop.origin[2] - origin.z)
       const { width, depth, height } = LOCKER_SIZE
       const center = base.clone().add(new THREE.Vector3(0, 0, height / 2))
+      const model = {
+        key: prop.model.replace(/\\/g, '/').toLowerCase(),
+        matrix: new THREE.Matrix4().compose(base, quat, new THREE.Vector3(1, 1, 1)),
+      }
       out.push({
+        model,
         team,
         name: prop.name ?? r.locker,
         source: 'prop',
@@ -111,6 +118,7 @@ export function buildLockers(meta: MapMeta | null, origin: { x: number; y: numbe
       const front = new THREE.Vector3(depth / 2 + 0.6, 0, 0).applyQuaternion(quat).add(center)
       out.push({
         team,
+        model,
         name: `${prop.name ?? r.locker}:front`,
         source: 'prop',
         matrix: new THREE.Matrix4().compose(

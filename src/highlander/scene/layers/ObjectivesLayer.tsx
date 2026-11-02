@@ -42,6 +42,8 @@ import {
   pointLockedAt,
   type ObjectiveMode,
 } from '@highlander/objectives/objectiveModel'
+import { useCartModelKey } from '@highlander/objectives/cartModel'
+import { usePackCopy } from '@highlander/mapdyn/packModels'
 
 const TRAIN_TO_CART_Z = 48
 const BLINK_TICKS = 20
@@ -170,6 +172,12 @@ const CartObject = ({ mode, meta }: { mode: ObjectiveMode; meta: MapMeta | null 
   const lightA = useRef<THREE.Group>(null)
   const lightB = useRef<THREE.Group>(null)
   const tow = mode === 'tow'
+  // W-items: the cart's pack model (cartModel.ts) replaces the slab, bomb and wheels while it is ready; the lights
+  // and the push zone stay, the lights above the model's bounds
+  const x = useExtras()
+  const redAttacks = useMemo(() => !!x && !tow && attackTeamAt(x, 1) === 2, [x, tow])
+  const packCart = usePackCopy(useCartModelKey(x, mode, redAttacks))
+  const lightZ = packCart ? Math.max(48, (packCart.info.bounds?.[1]?.[2] ?? 44) + 4) : 48
   const materials = useMemo(
     () => ({
       slab: new THREE.MeshLambertMaterial({ color: TEAM_DARK.blue }),
@@ -223,22 +231,28 @@ const CartObject = ({ mode, meta }: { mode: ObjectiveMode; meta: MapMeta | null 
   return (
     <>
       <group ref={group} name="hl-cart" visible={false}>
-        <mesh geometry={SLAB_GEOMETRY} material={tow ? NEUTRAL_MATERIAL : materials.slab} position={[0, 0, 6]} />
-        <mesh geometry={BOMB_GEOMETRY} material={body} position={[0, 0, 30]} />
-        {[
-          [22, 18],
-          [22, -18],
-          [-22, 18],
-          [-22, -18],
-        ].map(([wx, wy]) => (
-          <mesh key={`${wx}:${wy}`} geometry={WHEEL_GEOMETRY} material={WHEEL_MATERIAL} position={[wx, wy, 7]} />
-        ))}
-        <group ref={lightA} position={[tow ? -8 : 0, 0, 48]}>
+        {packCart ? (
+          <primitive object={packCart.copy} />
+        ) : (
+          <>
+            <mesh geometry={SLAB_GEOMETRY} material={tow ? NEUTRAL_MATERIAL : materials.slab} position={[0, 0, 6]} />
+            <mesh geometry={BOMB_GEOMETRY} material={body} position={[0, 0, 30]} />
+            {[
+              [22, 18],
+              [22, -18],
+              [-22, 18],
+              [-22, -18],
+            ].map(([wx, wy]) => (
+              <mesh key={`${wx}:${wy}`} geometry={WHEEL_GEOMETRY} material={WHEEL_MATERIAL} position={[wx, wy, 7]} />
+            ))}
+          </>
+        )}
+        <group ref={lightA} position={[tow ? -8 : 0, 0, lightZ]}>
           <mesh geometry={LIGHT_GEOMETRY} material={materials.lightA} />
           <mesh geometry={HALO_GEOMETRY} material={materials.haloA} />
         </group>
         {tow && (
-          <group ref={lightB} position={[8, 0, 48]}>
+          <group ref={lightB} position={[8, 0, lightZ]}>
             <mesh geometry={LIGHT_GEOMETRY} material={materials.lightB} />
             <mesh geometry={HALO_GEOMETRY} material={materials.haloB} />
           </group>

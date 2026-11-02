@@ -1,7 +1,7 @@
 // Static resupply cabinets (see lockers.ts). Only on bsp-to-glb maps: the old textured GLB of
 // koth_product_final already contains the lockers.
 
-import React, { useLayoutEffect, useMemo } from 'react'
+import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react'
 
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { useMapMeta } from '@highlander/map/mapMeta'
@@ -10,6 +10,7 @@ import { useInstance, useStore } from '@zus/store'
 import { drawn, useInstancedMesh } from './frame'
 import { MATERIALS, UNIT_BOX } from './geometry'
 import { buildLockers, type LockerBox } from './lockers'
+import { PackInstances, slotKey, type PackSlots } from './packModels'
 
 let activeLockers: LockerBox[] = []
 export const getActiveLockers = () => activeLockers
@@ -28,15 +29,34 @@ export const ResupplyLockers = React.memo(() => {
     [x, enabled, bsp, meta, origin]
   )
   const mesh = useInstancedMesh(UNIT_BOX, MATERIALS.locker, lockers.length, { name: 'mapdyn-lockers' })
+  // W-items: locker props drawn from the pack model of their model string; the boxes stay for the rest
+  const models = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const box of lockers) if (box.model && !box.name.endsWith(':front')) counts.set(box.model.key, (counts.get(box.model.key) ?? 0) + 1)
+    return Array.from(counts.entries())
+  }, [lockers])
+  const slots = useMemo<PackSlots>(() => new Map(), [])
+  const [slotVersion, setSlotVersion] = useState(0)
+  const onSlots = useCallback(() => setSlotVersion(v => v + 1), [])
 
   useLayoutEffect(() => {
     activeLockers = lockers
+    slots.forEach(slot => slot.begin())
+    let n = 0
+    for (const box of lockers) {
+      const slot = box.model ? slots.get(slotKey(box.model.key)) : undefined
+      if (slot) {
+        if (!box.name.endsWith(':front')) slot.add(box.model!.matrix)
+        continue
+      }
+      if (!mesh) continue
+      mesh.setMatrixAt(n, box.matrix)
+      mesh.setColorAt(n, box.color)
+      n++
+    }
+    slots.forEach(slot => slot.finish())
     if (mesh) {
-      lockers.forEach((box, i) => {
-        mesh.setMatrixAt(i, box.matrix)
-        mesh.setColorAt(i, box.color)
-      })
-      mesh.count = lockers.length
+      mesh.count = n
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }
@@ -45,8 +65,15 @@ export const ResupplyLockers = React.memo(() => {
       if (activeLockers === lockers) activeLockers = []
       drawn.lockers = 0
     }
-  }, [lockers, mesh])
+  }, [lockers, mesh, slots, slotVersion])
 
   if (!mesh) return null
-  return <primitive object={mesh} />
+  return (
+    <>
+      <primitive object={mesh} />
+      {models.map(([key, count]) => (
+        <PackInstances key={key} modelKey={key} capacity={count} slots={slots} onChange={onSlots} />
+      ))}
+    </>
+  )
 })

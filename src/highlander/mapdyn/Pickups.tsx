@@ -12,7 +12,7 @@
 // so they draw on every map pipeline. Through the eyes of a POV player (the actor whose own povCamera renders
 // the scene) an item within POV_HIDE_DISTANCE of his camera is not drawn: a throw starts inside his head.
 
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 
@@ -42,11 +42,13 @@ import {
   newMovingSample,
   newPickupSample,
   pickupBoxSize,
+  pickupModel,
   sampleKitSpot,
   sampleMovingPickup,
   type KitEntries,
   type KitEntry,
 } from './pickups'
+import { PackInstances, slotKey, type PackInstancer, type PackSlots } from './packModels'
 import type { SpotSurface, SurfaceOptions } from './surface'
 import { useMapSurface } from './useMapSurface'
 
@@ -77,6 +79,9 @@ const _eye = new THREE.Vector3()
 /** Moving pickups (thrown and dropped items) drawn in the last frame, and those hidden near the POV camera. */
 let movingDrawn = 0
 let movingNearPov = 0
+/** Items drawn from pack models in the last frame (kit spots, moving items), by model key. */
+let packDrawn: Record<string, number> = {}
+export const getPackPickupsDrawn = () => packDrawn
 export const getMovingDrawn = () => movingDrawn
 export const getMovingNearPov = () => movingNearPov
 
@@ -91,6 +96,11 @@ export function povEyePosition(out: THREE.Vector3): THREE.Vector3 | null {
   const camera = getActor(owner)?.aim.getObjectByName('povCamera')
   return camera ? camera.getWorldPosition(out) : null
 }
+
+const SIZE_NAMES = ['small', 'medium', 'large']
+/** The stock kit model of a map-meta item (no model string). */
+const kitModelOf = (kind: number, size: number) =>
+  `models/items/${kind === 1 ? 'ammopack' : 'medkit'}_${SIZE_NAMES[size] ?? 'medium'}.mdl`
 
 export const ringRadius = (width: number) => width * 0.75 + 6
 
@@ -131,6 +141,18 @@ export const Pickups = React.memo(() => {
   const entries = kits.entries
   const moving = kits.moving
   const spotCount = entries.length
+  // pack model key per kit spot and per moving item, and the copies each model needs
+  const models = useMemo(() => {
+    const spot = entries.map(e => (x && e.instances.length > 0 ? pickupModel(x, e.instances[0]) : '') || kitModelOf(e.kind, e.size))
+    const move = x ? moving.map(m => pickupModel(x, m.instance)) : []
+    const counts = new Map<string, number>()
+    for (const k of [...spot, ...move]) if (k.endsWith('.mdl')) counts.set(k, (counts.get(k) ?? 0) + 1)
+    return { spot, move, counts: Array.from(counts.entries()).sort(([a], [b]) => (a < b ? -1 : 1)) }
+  }, [x, entries, moving])
+  const slots = useMemo<PackSlots>(() => new Map(), [])
+  const redraw = useCallback(() => {
+    lastTickF.current = NaN
+  }, [])
   // kit bodies hold the spots and the moving items; wires and rings only the spots
   const capacity = spotCount + moving.length
   const spotCapacity = Math.max(1, spotCount)
@@ -180,6 +202,10 @@ export const Pickups = React.memo(() => {
     const bob = PICKUP_BOB + PICKUP_BOB * Math.sin(tickF * PICKUP_BOB_RATE)
     _q.setFromAxisAngle(Z_AXIS, (tickF * PICKUP_YAW_RATE) % (Math.PI * 2))
     let hb = 0, hc = 0, ab = 0, an = 0, w = 0, r = 0
+    let packSpots = 0
+    let mvPack = 0
+    slots.forEach(slot => slot.begin())
+    const packFor = (key: string): PackInstancer | undefined => (slots.size > 0 ? slots.get(slotKey(key)) : undefined)
     const progress = ring?.geometry.getAttribute('aProgress') as THREE.InstancedBufferAttribute | undefined
 
     for (let k = 0; k < entries.length; k++) {
@@ -202,6 +228,15 @@ export const Pickups = React.memo(() => {
       const [width, height] = (kind === 0 ? HEALTH_SIZE : AMMO_SIZE)[size] ?? HEALTH_SIZE[1]
       if (visible) {
         if (baked) continue
+        const slot = packFor(models.spot[k])
+        if (slot) {
+          // TF2 kits rest on the floor and do not bob or turn
+          _p.set(e.x, e.y, floorZ + slot.bottomLift)
+          if (slot.add(_m.compose(_p, NO_ROTATION, _s.set(1, 1, 1)))) {
+            packSpots++
+            continue
+          }
+        }
         const base = floorZ + bob
         _p.set(e.x, e.y, base + height / 2)
         _m.compose(_p, _q, _s.set(width, width, height))
@@ -252,6 +287,15 @@ export const Pickups = React.memo(() => {
         near++
         continue
       }
+      const slot = packFor(models.move[k])
+      if (slot) {
+        _p.set(s.x, s.y, s.bottomZ + slot.bottomLift)
+        if (slot.add(_m.compose(_p, NO_ROTATION, _s.set(1, 1, 1)))) {
+          mv++
+          mvPack++
+          continue
+        }
+      }
       const [width, height] = pickupBoxSize(m.kind, m.size)
       _p.set(s.x, s.y, s.bottomZ + height / 2)
       _m.compose(_p, NO_ROTATION, _s.set(width, width, height))
@@ -287,7 +331,16 @@ export const Pickups = React.memo(() => {
     finish(wire, w)
     finish(ring, r)
     if (progress) progress.needsUpdate = true
-    drawn.kits = hb + ab - mv
+    if (slots.size > 0) {
+      const counts: Record<string, number> = {}
+      slots.forEach(slot => {
+        slot.finish()
+        counts[slot.key] = slot.count
+      })
+      packDrawn = counts
+    } else packDrawn = {}
+    // pack copies count like placeholders: drawn.kits is the kit spots drawn, moving items apart
+    drawn.kits = hb + ab - (mv - mvPack) + packSpots
     drawn.wires = w
     drawn.rings = r
     drawn.tickF = tickF
@@ -302,6 +355,9 @@ export const Pickups = React.memo(() => {
       <primitive object={ammoBand} />
       <primitive object={wire} />
       <primitive object={ring} />
+      {models.counts.map(([key, count]) => (
+        <PackInstances key={key} modelKey={key} capacity={count} slots={slots} onChange={redraw} />
+      ))}
     </group>
   )
 })

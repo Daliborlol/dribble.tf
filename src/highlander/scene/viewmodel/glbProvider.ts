@@ -293,6 +293,24 @@ function depthOf(node: THREE.Object3D): number {
   return d
 }
 
+/**
+ * An opaque pack material's texture alpha holds VMT masks (phong, envmap), not coverage. The layer draws viewmodels in
+ * the transparent pass, so once the cloak fade switches on blending that mask would show the world through the
+ * weapon. The alpha becomes the material opacity alone.
+ */
+function ignoreTextureAlpha(material: THREE.Material): void {
+  const previous = material.onBeforeCompile
+  const previousKey = material.customProgramCacheKey.bind(material)
+  material.onBeforeCompile = (shader, renderer) => {
+    previous.call(material, shader, renderer)
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      '#include <map_fragment>\n\tdiffuseColor.a = opacity;'
+    )
+  }
+  material.customProgramCacheKey = () => previousKey() + '|vmOpaqueAlpha'
+}
+
 /** Per-copy materials, so the layer's viewmodel flags and the cloak fade never touch the shared pack materials. */
 function ownMaterials(root: THREE.Object3D): THREE.Material[] {
   const clones = new Map<THREE.Material, THREE.Material>()
@@ -306,7 +324,10 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
         // The layer draws every viewmodel mesh in the transparent pass; an opaque pack material must not start
         // blending its texture's alpha, which holds the VMT's masks (phong, envmap), so it draws without blending
         // until the cloak fade needs it
-        if (!m.transparent) c.userData.vmOpaque = true
+        if (!m.transparent) {
+          c.userData.vmOpaque = true
+          ignoreTextureAlpha(c)
+        }
         clones.set(m, c)
       }
       return c
@@ -426,7 +447,9 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
       if (flash.visible) flashMaterial.rotation = (Math.floor(next.tickF) * 0.7) % (Math.PI * 2)
 
       // Cloak fade: the spy's own viewmodel fades with his invisibility
-      const opacity = 1 - 0.85 * (next.invis ?? 0)
+      // (only from a visible cloak: tiny invisibility values must not start blending the viewmodel)
+      const invis = next.invis ?? 0
+      const opacity = invis > 0.02 ? 1 - 0.85 * invis : 1
       for (const m of materials) {
         m.opacity = opacity
         if (m.userData.vmOpaque) m.blending = opacity < 1 ? THREE.NormalBlending : THREE.NoBlending

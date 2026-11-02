@@ -243,6 +243,10 @@ export async function postProcessModel(o) {
   }
   // keepLeaves keeps attachment and bone leaf nodes; keepExtras keeps nodes that only carry extras.
   await doc.transform(prune({ keepLeaves: true, keepExtras: true, keepAttributes: true, keepIndices: true }))
+  // Winding: the studio export keeps Source's clockwise front faces, the reverse of glTF, so every triangle is
+  // reversed (as scripts/lib/static-props.mjs does for props). Without it three culls the outside of each model
+  // and draws its inside, which looks hollow and see-through.
+  const trianglesReversed = o.reverseWinding === false ? 0 : reverseWinding(doc)
   if (o.transform) await o.transform(doc)
   const info = studioInfo(o.studioManifest)
   if (info || o.extras) {
@@ -258,8 +262,37 @@ export async function postProcessModel(o) {
   return {
     bytes: glb.length,
     sha256: sha256(glb),
-    stats: { before, after: countDoc(doc), restPose, lodsRemoved, clipsKept, clipsRemoved, emptyWeights, zeroWeightsRemoved: zeroWeights },
+    stats: { before, after: countDoc(doc), restPose, lodsRemoved, clipsKept, clipsRemoved, emptyWeights, zeroWeightsRemoved: zeroWeights, trianglesReversed },
   }
+}
+
+/** Swaps the second and third index of every triangle; index buffers shared by primitives are reversed once. */
+function reverseWinding(doc) {
+  const done = new Set()
+  let triangles = 0
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      if (prim.getMode() !== 4) continue // TRIANGLES
+      let indices = prim.getIndices()
+      if (!indices) {
+        const count = prim.getAttribute('POSITION')?.getCount() ?? 0
+        const array = count > 65535 ? new Uint32Array(count) : new Uint16Array(count)
+        for (let i = 0; i < count; i++) array[i] = i
+        indices = doc.createAccessor().setType('SCALAR').setArray(array).setBuffer(doc.getRoot().listBuffers()[0])
+        prim.setIndices(indices)
+      }
+      if (done.has(indices)) continue
+      done.add(indices)
+      const array = indices.getArray()
+      for (let i = 0; i + 2 < array.length; i += 3) {
+        const t = array[i + 1]
+        array[i + 1] = array[i + 2]
+        array[i + 2] = t
+        triangles++
+      }
+    }
+  }
+  return triangles
 }
 
 function countDoc(doc) {

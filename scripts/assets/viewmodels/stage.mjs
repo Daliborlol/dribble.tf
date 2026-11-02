@@ -28,7 +28,7 @@ import { exportVtf } from '../models/texture-export.mjs'
 import { ARMS, WEAPON_DEFS } from './list.mjs'
 
 const TEXTURE_EXPORT_VERSION = 1
-const VIEWMODEL_EXPORT_VERSION = 1
+const VIEWMODEL_EXPORT_VERSION = 2 // 2: triangle winding reversed
 const STUDIO_LOOPING = 0x1
 const STUDIO_DELTA = 0x4
 const STUDIO_OVERRIDE = 0x800 // $declaresequence: a forward declaration an include replaces

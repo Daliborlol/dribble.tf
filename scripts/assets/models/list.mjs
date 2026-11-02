@@ -6,6 +6,10 @@
 const building = (model, extra = {}) => ({ model: `models/buildables/${model}.mdl`, role: 'building', clips: 'sequences', ...extra })
 const projectile = (model, kind) => ({ model, role: `projectile:${kind}`, clips: 'none' })
 const pickup = (model, kind) => ({ model, role: `pickup:${kind}`, clips: 'none' })
+// Skinned prop_dynamic models that the older textured map GLBs (koth_product_final and the other
+// textured_compressed.glb maps) bake in their reference pose. `refPose` keeps that pose in the node extras,
+// so the runtime can turn those baked props into their default-sequence pose (src/assetpack/mapPropPoses.ts).
+const mapProp = model => ({ model: `models/${model}.mdl`, role: 'mapprop', clips: 'none', refPose: true })
 
 export const MODEL_LIST = [
   building('sentry1', { variants: { mini: { skins: [2, 3] } } }),
@@ -60,7 +64,17 @@ export const MODEL_LIST = [
   pickup('models/workshop/weapons/c_models/c_fishcake/plate_fishcake.mdl', 'health:small'),
   pickup('models/workshop/weapons/c_models/c_buffalo_steak/plate_buffalo_steak.mdl', 'health:medium'),
 
-  { model: 'models/props_gameplay/resupply_locker.mdl', role: 'locker', clips: 'sequences' },
+  { model: 'models/props_gameplay/resupply_locker.mdl', role: 'locker', clips: 'sequences', refPose: true },
+
+  mapProp('props_gameplay/door_slide_large_dynamic'),
+  mapProp('props_gameplay/door_slide_small_dynamic'),
+  mapProp('props_well/main_entrance_door'),
+  mapProp('props_2fort/lantern001'),
+  mapProp('props_2fort/chimney007'),
+  mapProp('props_ui/bannerflag_comp_l'),
+  mapProp('props_ui/bannerflag_comp_r'),
+  mapProp('props_ui/comp_win_banner'),
+  mapProp('props_manor/spooky_eyes_01'),
 
   { model: 'models/props_trainyard/bomb_cart.mdl', role: 'cart', clips: 'none' },
   { model: 'models/props_trainyard/bomb_cart_red.mdl', role: 'cart', clips: 'none' },

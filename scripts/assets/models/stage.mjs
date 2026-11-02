@@ -149,6 +149,7 @@ export async function run(ctx) {
         const restPoseClip = anims[firstSeq?.animationIndices?.[0]]?.name ?? null
         const result = await postProcessModel({
           restPoseClip,
+          keepRefPose: entry.refPose === true,
           input: exported.glbPath,
           output: ctx.stagePath(file),
           keepClip: name => clipNames.has(name),

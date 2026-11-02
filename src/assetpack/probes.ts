@@ -3,6 +3,7 @@
 
 import { registerHlProbe } from '@highlander/debug'
 
+import { mapPropPoseRows } from './mapPropPoses'
 import { failedAssetItems, listAssetItems, loadingAssetItems, subscribeAssetItems } from './items'
 import {
   getAssetPackState,
@@ -75,6 +76,7 @@ registerHlProbe('assets.items', (filter?: string) =>
   listAssetItems(typeof filter === 'string' ? filter : undefined)
 )
 registerHlProbe('assets.waitIdle', waitIdle)
+registerHlProbe('assets.mapProps', () => mapPropPoseRows())
 
 const MB = 1048576
 

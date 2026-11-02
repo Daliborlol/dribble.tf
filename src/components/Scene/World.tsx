@@ -33,6 +33,7 @@ import '@highlander/map/probes'
 import { StaticProps, usePackPakProps, useStockProps } from '@highlander/map/StaticProps'
 import { getAssetSetting } from '@pack/hooks'
 import { getAssetItem, loadPackItem, subscribeAssetItems } from '@pack/items'
+import { useMapPropPoses } from '@pack/mapPropPoses'
 import { loadPackGltf, warmUpObject } from '@pack/loaders'
 import { assetPackFile, getAssetPackState, isAssetPackSettled, resolveAssetPack } from '@pack/pack'
 import { acquirePackTexture, releasePackTexture, setPackWorldInfo } from '@pack/textures'
@@ -101,6 +102,8 @@ export const World = (props: WorldProps) => {
   const visibilityRequestIdRef = useRef(0)
   const bspMaterialsRef = useRef<BspMaterials | null>(null)
   const [loadedMap, setLoadedMap] = useState<LoadedMap | null>(null)
+  // Skinned props baked in their reference pose (older textured GLBs) take their default-sequence pose from the pack.
+  useMapPropPoses(loadedMap?.root ?? null)
   const [mapOverlay, setMapOverlay] = useState<THREE.Group | null>()
   const [mapVisibility, setMapVisibility] = useState<MapVisibilityMetadata | null>(null)
   const { map, mode } = props

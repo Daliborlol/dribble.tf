@@ -102,6 +102,16 @@ Put timings in the stage's return value or in `reports/<stage>/`, not in the man
 compares the manifest byte for byte. Contract 2.3 still lists `ms` among the map `stats`, which would break that;
 the orchestrator was asked to amend it so map timings go to `reports/<stage>/`.
 
+## Viewmodels stage
+
+`viewmodels/stage.mjs` (contract 13) builds the c_arms model of each class and the c_model weapons that TF2
+bone-merges onto them, from `viewmodels/list.mjs` (arms paths and item def indices). Weapons are resolved through
+the item schema, `--set itemsGame=<items_game.txt>` (default `<tf dir>/scripts/items/items_game.txt`); without one
+only the arms are built. The arms sequences follow Source's virtual-model order, so `sequences[i]` is the
+networked sequence index. `reports/viewmodels/summary.json` lists skipped defs, unsupported textures and the
+bytes per class. Other options: `viewmodelClasses=[...]`, `textureMaxSize` (arms, 1024), `weaponTextureMaxSize`
+(512).
+
 ## Libraries
 
 - `lib/vpk.mjs`: VPK v1 and v2 directory files, split archives, data embedded in `_dir.vpk`, preload bytes, CRC32

@@ -45,7 +45,7 @@ function extractPak(ctx, bspToGlb, folder) {
   return folderReader(dir)
 }
 
-const readFirst = (sources, p) => {
+export const readFirst = (sources, p) => {
   for (const s of sources) {
     const d = s.read(p)
     if (d) return d
@@ -54,7 +54,7 @@ const readFirst = (sources, p) => {
 }
 
 /** Rotation matrix (row major 3x3) to quaternion [x, y, z, w]. */
-function quatOf(m) {
+export function quatOf(m) {
   const [a, b, c, d, e, f, g, h, i] = m
   const tr = a + e + i
   let x, y, z, w
@@ -74,10 +74,10 @@ function quatOf(m) {
   return [x, y, z, w].map(round)
 }
 
-const textureKeyOf = vtfPath => vtfPath.replace(/^materials\//, '').replace(/\.vtf$/, '')
+export const textureKeyOf = vtfPath => vtfPath.replace(/^materials\//, '').replace(/\.vtf$/, '')
 
 /** Material facts of one studio model: per studio material { key, alpha, cutoff, albedo }. */
-function studioMaterials(sources, manifest) {
+export function studioMaterials(sources, manifest) {
   return (manifest.materials ?? []).map(m => {
     const vmt = resolveMaterial(sources, m.name, m.searchPaths ?? [])
     const vtf = vmt ? vmtBaseTexture(vmt.params) : null

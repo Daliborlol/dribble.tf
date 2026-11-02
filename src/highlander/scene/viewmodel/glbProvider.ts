@@ -506,7 +506,9 @@ function createGlb(input: ViewmodelInput): ViewmodelInstance {
     const ms = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     if (ms.some(m => ROCKET_MATERIAL.test(m.name))) rockets.push(mesh)
   })
-  const rocketVisible = rockets.length ? itemInfo(input.weaponDef)?.slot === 'primary' : null
+  // An item missing from items.json keeps the rocket: hide it only for a known non-primary slot
+  const slot = itemInfo(input.weaponDef)?.slot
+  const rocketVisible = rockets.length ? slot === undefined || slot === 'primary' : null
   for (const r of rockets) r.visible = !!rocketVisible
 
   let watch: WatchSub | null = null

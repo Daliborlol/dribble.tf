@@ -82,10 +82,24 @@ if (missingPatches.length) {
   console.log(`Already on patched branch 'dribble' (${head.slice(0, 10)}), all ${patches.length} patches applied`)
 }
 
+// Every patch must now be on the branch, whatever state the checkout started in.
+const appliedNow = new Set(git(['log', '--format=%s', `${PINNED_COMMIT}..HEAD`], { capture: true }).stdout.split('\n').map(line => line.trim()).filter(Boolean))
+const stillMissing = patches.filter(patch => !appliedNow.has(patchSubject(patch))).map(patch => path.basename(patch))
+if (stillMissing.length) throw new Error(`patches missing from branch 'dribble' after applying: ${stillMissing.join(', ')}`)
+
+const exe = name => path.join(dir, 'target', 'release', process.platform === 'win32' ? `${name}.exe` : name)
 if (!skipBuild) {
   sh('cargo', ['build', '--release', '--locked'], { cwd: dir, env: jobs ? { CARGO_BUILD_JOBS: jobs } : {} })
+} else if (!fs.existsSync(exe('bsp-to-glb'))) {
+  console.log(`Patches applied; --skip-build true and no binary at ${exe('bsp-to-glb')}, so nothing was checked. Run again without --skip-build to build it.`)
+  process.exit(0)
+} else {
+  // A binary older than the newest commit was built before the last patch reached the branch.
+  const headTime = Number(git(['log', '-1', '--format=%ct'], { capture: true }).stdout.trim()) * 1000
+  if (fs.statSync(exe('bsp-to-glb')).mtimeMs < headTime) {
+    console.warn(`warning: --skip-build true: ${exe('bsp-to-glb')} is older than HEAD and may lack the newest patches; run again without --skip-build`)
+  }
 }
-const exe = name => path.join(dir, 'target', 'release', process.platform === 'win32' ? `${name}.exe` : name)
 const version = sh(exe('bsp-to-glb'), ['--version-json'], { capture: true }).stdout.trim()
 const usage = sh(exe('bsp-to-glb'), [], { capture: true, allowFail: true }).stderr
 if (!usage.includes('--lightmap-styles') || !usage.includes('--allow-unresolved-patch-includes')) {

@@ -47,6 +47,7 @@ import {
 import { buildingDraw, DISPENSER, LABEL_GAP, SAPPER, sapperOffset, SENTRY, TELEPORTER, type BuildingDraw } from './render'
 import { MINI_SCALE, SENTRY_PIVOT } from './sentryAim'
 import { enemyCentreResolver, povLabelContext, type PovLabelContext } from './scene'
+import { muzzleInBuilding, setPackMuzzle, usePackBuilding } from './pack'
 
 const DEG = Math.PI / 180
 /** Sentry range ring opacity (contract 0.12, raised: see the ring mesh). */
@@ -59,6 +60,15 @@ export interface BuildingObjectProps {
 }
 
 const _time: FrameTime = { tick: 0, tickF: 0 }
+const _packPoint = new THREE.Vector3()
+const _scaleZ = new THREE.Vector3()
+
+/** Shows or hides the placeholder's part meshes (userData.part) while a pack model draws the building. */
+function setParts(root: THREE.Object3D, visible: boolean) {
+  root.traverse(node => {
+    if ((node as THREE.Mesh).isMesh && node.userData?.part) node.visible = visible
+  })
+}
 
 /** Swap the materials of every part mesh (userData.part) between the solid and the construction variant. */
 function applyGhost(root: THREE.Object3D, ghost: boolean) {
@@ -397,6 +407,28 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
 
   const enemyCentre = useMemo(() => enemyCentreResolver(), [])
 
+  // TF2 models from the asset pack, per item: the placeholder draws whenever the pack has no model for the state
+  const pack = usePackBuilding(type, mini, team)
+  const partsHidden = useRef(false)
+  const lastPose = useRef<{ d: BuildingDraw | null; tickF: number }>({ d: null, tickF: 0 })
+  React.useEffect(() => () => {
+    if (x) setPackMuzzle(x, instance, null)
+  }, [x, instance])
+
+  // sentryMuzzleAt's pack path: the drawn copy's muzzle at any tickF, then the copy goes back to the drawn pose
+  const packMuzzle = useMemo(
+    () => (tickF: number, barrel: number, out: THREE.Vector3) => {
+      if (!x) return false
+      const d = buildingDraw(x, instance, tickF, { enemyCentre })
+      const pf = pack.update(x, d, tickF)
+      const ok = !!pf.body && muzzleInBuilding(pack, pf.body, barrel, out, d.scaleZ)
+      const last = lastPose.current
+      if (last.d) pack.update(x, last.d, last.tickF)
+      return ok
+    },
+    [x, instance, enemyCentre, pack]
+  )
+
   useFrame(({ camera, size }) => {
     const g = root.current
     if (!x || !g || !body.current) return
@@ -406,8 +438,19 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
     // the transform follows the data even while hidden (carried), so the scene never keeps a stale pose
     if (Number.isFinite(d.pos.x)) g.position.copy(d.pos)
     g.rotation.set(0, 0, d.yaw * DEG)
+    const pf = pack.update(x, d, tickF)
+    const packOn = !!pf.body
+    if (packOn) g.userData.source = 'pack'
+    else delete g.userData.source
+    if (type === BUILDING_TYPE.SENTRY) setPackMuzzle(x, instance, packOn ? packMuzzle : null)
+    lastPose.current.d = d
+    lastPose.current.tickF = tickF
     if (!d.drawn) return
     body.current.scale.set(1, 1, d.scaleZ)
+    if (!packOn && partsHidden.current) {
+      setParts(body.current, true)
+      partsHidden.current = false
+    }
     if (ghostApplied.current !== d.ghost) {
       ghostApplied.current = d.ghost
       applyGhost(body.current, d.ghost)
@@ -424,6 +467,19 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
         const [ox, oy, oz] = sapperOffset(d.type, d.level, d.mini)
         sapper.current.position.set(ox, oy, oz * d.scaleZ)
         sparkMaterial.opacity = d.sapper.opacity
+        // a pack sapper sits on the model's build point; the spark follows it
+        const box = sapper.current.children[0]
+        if (box) box.visible = !pf.sapper
+        if (pf.sapper) sapper.current.position.copy(pf.sapper.object.position).multiply(pack.group.scale).multiply(_scaleZ.set(1, 1, d.scaleZ))
+      }
+    }
+    if (packOn) {
+      setParts(body.current, false)
+      partsHidden.current = true
+      const muzzle = sentryRefs.current.muzzle
+      if (muzzle && muzzle.visible && pf.body && muzzle.parent && muzzleInBuilding(pack, pf.body, d.muzzle, _packPoint, d.scaleZ)) {
+        g.updateMatrixWorld(true)
+        muzzle.position.copy(muzzle.parent.worldToLocal(g.localToWorld(_packPoint)))
       }
     }
     if (shield.current) {
@@ -448,6 +504,7 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
         {type === BUILDING_TYPE.SENTRY && <SentryModel team={team} mini={mini} refs={sentryRefs} />}
         {type === BUILDING_TYPE.DISPENSER && <DispenserModel team={team} refs={dispenserRefs} />}
         {type === BUILDING_TYPE.TELEPORTER && <TeleporterModel team={team} mode={mode} refs={teleRefs} />}
+        <primitive object={pack.group} />
       </group>
       {/* the spy's sapper, outside the construction-scaled and ghosted body: a solid box at half the drawn height */}
       <group ref={sapper} name="sapper" visible={false}>

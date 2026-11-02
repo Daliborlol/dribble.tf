@@ -8,6 +8,7 @@ import type { HighlanderExtras } from '@highlander/extras/types'
 import * as THREE from 'three'
 
 import { buildingAliveAt, buildingInstancesAt, rechargeLeftAt } from './model'
+import { packMuzzleOf } from './pack'
 import { MINI_SCALE, sentryAimAt, sentryPivotHeight, yawOfQuat, type EnemyCentre, type SentryAim } from './sentryAim'
 
 // ─── placeholder dimensions (contract section 5 F2 table, Hammer units) ────────
@@ -297,6 +298,9 @@ export function tracerBarrel(x: HighlanderExtras, row: number): number {
 
 const _mq = new THREE.Quaternion()
 
+const _packLocal = new THREE.Vector3()
+const _zAxis = new THREE.Vector3(0, 0, 1)
+
 /**
  * The barrel tip of sentry j at tickF in scene space, where BuildingObject draws the muzzle flash: the turret pivot
  * above the building's origin, turned by the build yaw plus the drawn aim (sentryAimAt), then the barrel's reach and
@@ -315,6 +319,13 @@ export function sentryMuzzleAt(x: HighlanderExtras, j: number, tickF: number, ba
   const mini = b.mini[j] !== 0
   const level = mini ? 1 : si < 0 ? 1 : Math.max(1, Math.min(3, b.state.level[si]))
   const buildYaw = yawOfQuat(_mq.x, _mq.y, _mq.z, _mq.w)
+  // a drawn pack sentry: its own muzzle attachment, posed at tickF (asset contract 4.1, 12.5)
+  const pack = packMuzzleOf(x, j)
+  if (pack && pack(tickF, barrel, _packLocal)) {
+    _packLocal.applyAxisAngle(_zAxis, (buildYaw * Math.PI) / 180)
+    out.add(_packLocal)
+    return true
+  }
   const pivot = sentryPivotHeight(level, mini)
   const aim = sentryAimAt(x, j, tickF, buildYaw, { x: out.x, y: out.y, z: out.z + pivot }, enemyCentre)
   const s = mini ? MINI_SCALE : 1

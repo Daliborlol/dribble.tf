@@ -35,9 +35,32 @@ const ONE = new THREE.Vector3(1, 1, 1)
 /** Kinds this layer draws from pack models when the pack has them (syringes are CombatFxLayer's). */
 const PACK_KINDS = [PROJ.CANNONBALL, PROJ.FLARE, PROJ.ARROW, PROJ.REPAIR_BOLT, PROJ.HEALING_BOLT, PROJ.JARATE, PROJ.MILK, PROJ.CLEAVER, PROJ.STUN_BALL, PROJ.ORNAMENT]
 
+/**
+ * Pack models that tumble in flight, in degrees per second about their side axis (+Y): the cleaver turns end over
+ * end and the ornament rolls. The data has no projectile angles, so the angle runs from the creation tick (D12);
+ * placeholders stay unspun (contract 4.1).
+ */
+const PACK_SPIN_DEG_PER_S: Readonly<Record<number, number>> = { [PROJ.CLEAVER]: 1080, [PROJ.ORNAMENT]: 540 }
+const _spin = new THREE.Matrix4()
+const _spun = new THREE.Matrix4()
+
+/** `matrix` turned by kind's spin at `seconds` of flight (a reused matrix), or `matrix` itself for other kinds. */
+function packSpin(matrix: THREE.Matrix4, kind: number, seconds: number, phase: number): THREE.Matrix4 {
+  const rate = PACK_SPIN_DEG_PER_S[kind]
+  if (!rate) return matrix
+  return _spun.multiplyMatrices(matrix, _spin.makeRotationY(((seconds * rate + phase) * Math.PI) / 180))
+}
+
 /** The pack model when it is loaded (plus the parts kept with it, such as the flare glow), else the placeholder parts. */
-function pushProjectile(set: PackProjectileSet | null | undefined, kindParts: ProjectilePart[], matrix: THREE.Matrix4, kind: number, team: number) {
-  const pack = !!set && set.push(matrix, team)
+function pushProjectile(
+  set: PackProjectileSet | null | undefined,
+  kindParts: ProjectilePart[],
+  matrix: THREE.Matrix4,
+  kind: number,
+  team: number,
+  packMatrix: THREE.Matrix4 = matrix
+) {
+  const pack = !!set && set.push(packMatrix, team)
   for (const part of kindParts) if (!pack || part.def.keepWithPack) part.instances.push(matrix, partColor(part, kind, team))
 }
 
@@ -109,7 +132,8 @@ const ExtrasProjectiles = React.memo(({ x, demo }: { x: HighlanderExtras; demo: 
       s.matrix.compose(s.pos, s.quat, ONE)
       const kind = pj.kind[j]
       const team = projectileTeamAt(x, j, tick)
-      pushProjectile(packSets[kind], partsForKind(byKind, kind), s.matrix, kind, team)
+      const flight = Math.max(0, tickF - pj.created[j]) * (x.meta.intervalPerTick || 0.015)
+      pushProjectile(packSets[kind], partsForKind(byKind, kind), s.matrix, kind, team, packSpin(s.matrix, kind, flight, (j * 137) % 360))
 
       const count = trailPoints(x, j, tickF, TRAIL_SAMPLES, s.points)
       const style = trailStyle(x, j, tick, s.style)

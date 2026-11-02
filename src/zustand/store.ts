@@ -11,6 +11,7 @@ import { getMapBoundaries } from '@components/Analyse/MapBoundaries'
 import { parseMapBoundaries } from '@utils/scene'
 import { DEFAULT_HIGHLANDER_SETTINGS, HighlanderSettings } from '@highlander/settings'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import { AssetSettings, DEFAULT_ASSET_SETTINGS } from '@pack/settings'
 
 import {
   ControlsMode,
@@ -256,6 +257,7 @@ export type StoreState = {
       killfeedSeekBuffer: number
     }
     highlander: HighlanderSettings
+    assets: AssetSettings
   }
   bookmarks: number[]
   ui: {
@@ -349,6 +351,7 @@ export const initialState: StoreState = {
     },
     // Deep clone: the settings reducer shallow-clones and mutates nested objects in place.
     highlander: cloneDeep(DEFAULT_HIGHLANDER_SETTINGS),
+    assets: cloneDeep(DEFAULT_ASSET_SETTINGS),
   },
 
   bookmarks: [],

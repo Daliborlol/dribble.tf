@@ -5,6 +5,7 @@ import App from './App'
 
 import './index.scss'
 import '@utils/debugBridge'
+import '@pack/probes'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -99,6 +99,9 @@ const withProps = bool('props', 'true')
 const materialMountPlan = flag('material-mount-plan') ? path.resolve(flag('material-mount-plan')) : null
 const textureUvs = bool('texture-uvs', 'false')
 const texturePakPrefix = flag('texture-pak-prefix', `pak/${mapName.toLowerCase()}/`)
+// --overlays true (textured pack worlds only): info_overlay and infodecal geometry clipped to the faces they
+// list, drawn with the pack textures (asset contract 12.5, as/mapfx). Needs --texture-uvs true.
+const withOverlays = bool('overlays', 'false') && textureUvs
 const tempDir = fs.mkdtempSync(path.join(flag('temp-dir', os.tmpdir()), `dribble-bsp-${mapName}-`))
 // Every output is written into stageDir first and moved into outDir (and the skybox folder) only after
 // the last step that can fail, conversion.json last (see commitOutputs). A failure therefore leaves the
@@ -268,6 +271,7 @@ const exportRun = run(
     '--material-manifest', path.join(tempDir, 'materials.json'),
     '--props-out', path.join(tempDir, 'props.json'), // static prop lump for the props pass (M2)
     ...(materialMountPlan ? ['--material-mount-plan', materialMountPlan] : []),
+    ...(withOverlays ? ['--decal-overlays-out', path.join(tempDir, 'overlays.json')] : []),
   ],
   'render export'
 )
@@ -319,6 +323,17 @@ const textureInfoFor = (material, kind) => {
       textureKeys.set(t.key, known)
     }
     info = { key: base.key, key2: base2?.key ?? null, alpha, cutoff }
+    // $detail (as/mapfx): drawn by the runtime over the base texture (mode 0 mod2x, 1 additive, 7, 8 multiply).
+    const detail = role('detail')
+    const input = name => Object.entries(inputs).find(([k]) => k.toLowerCase() === name)?.[1]
+    const mode = Number(input('$detailblendmode')) || 0
+    if (detail && [0, 1, 7, 8].includes(mode)) {
+      const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
+      const known = textureKeys.get(detail.key) ?? { lookup: detail.lookup, source: detail.source, alpha: 'opaque', cutoff: 0, materials: new Set() }
+      known.materials.add(material.getName())
+      textureKeys.set(detail.key, known)
+      info.detail = { key: detail.key, scale: num(input('$detailscale'), 4), factor: num(input('$detailblendfactor'), 1), mode }
+    }
   }
   textureInfoCache.set(index, info)
   return info
@@ -524,7 +539,7 @@ const getMaterial = (kind, lit, tex = null, flatAlpha = 1) => {
   const key = `${kind}:${lit}${tex ? `:${tex.key}:${tex.key2 ?? ''}:${flatAlpha}` : ''}`
   if (materialCache.has(key)) return materialCache.get(key)
   const texture = tex
-    ? { key: tex.key, uv: lit ? 1 : 0, alpha: tex.alpha, cutoff: tex.cutoff, flatAlpha, ...(tex.key2 ? { blend: { key: tex.key2, attribute: '_blend' } } : {}) }
+    ? { key: tex.key, uv: lit ? 1 : 0, alpha: tex.alpha, cutoff: tex.cutoff, flatAlpha, ...(tex.key2 ? { blend: { key: tex.key2, attribute: '_blend' } } : {}), ...(tex.detail ? { detail: tex.detail } : {}) }
     : null
   const material = doc.createMaterial(`dribble_${kind}${lit ? '_lit' : ''}${tex ? `:${tex.key}${tex.key2 ? `+${tex.key2}` : ''}` : ''}`)
     .setBaseColorFactor([1, 1, 1, 1])
@@ -614,6 +629,7 @@ if (skyGroup) {
 }
 
 const entityNodes = []
+const entityOutNodes = new Map() // bspModelIndex -> { out, matrix }: overlays on brush entities follow their node
 for (const { node, extras: e, startsHidden } of brushNodes) {
   if (e.bspModelIndex === 0) continue
   const name = node.getName()
@@ -646,7 +662,156 @@ for (const { node, extras: e, startsHidden } of brushNodes) {
     })
   if (mesh) out.addChild(meshChild(name, mesh))
   scene.addChild(out)
+  entityOutNodes.set(e.bspModelIndex, { out, matrix: node.getMatrix() })
   entityNodes.push({ name, classname: e.classname, targetname: e.targetname ?? null, hasGeometry: Boolean(mesh), initiallyVisible: !startsHidden })
+}
+
+// ─── overlays (--overlays) ───────────────────────────────────────────────────
+// bsp-to-glb clips every info_overlay (and infodecal) to the compiled faces it lists, displacements included
+// (patch 0004). Each fragment becomes geometry lifted OVERLAY_LIFT units off its surface (the runtime adds a
+// polygon offset), with the lightmap UV of the face below in TEXCOORD_0 and the overlay UV next. Overlays on
+// the world go to one `overlays` node, those in the 3D skybox under skybox_3d, those on a brush entity under
+// its node so they move with it. Materials say kind 'overlay'; without their pack texture they draw nothing.
+const OVERLAY_LIFT = 0.5
+const overlayStats = { records: 0, handled: 0, drawn: 0, fragments: 0, triangles: 0, materials: 0, noTexture: 0, hiddenTarget: 0 }
+if (withOverlays && !onlyMeta) {
+  const sidecar = JSON.parse(fs.readFileSync(path.join(tempDir, 'overlays.json'), 'utf8'))
+  overlayStats.records = sidecar.records.length
+  const skyNode = scene.listChildren().find(n => n.getName() === 'skybox_3d') ?? null
+  const groupsOut = new Map() // target name -> { parent, inverse, buckets: Map }
+  const overlayMaterials = new Map()
+  const invert = m => {
+    // Column-major affine inverse (rotation/translation, possibly uniform scale).
+    const a = m
+    const det = a[0] * (a[5] * a[10] - a[9] * a[6]) - a[4] * (a[1] * a[10] - a[9] * a[2]) + a[8] * (a[1] * a[6] - a[5] * a[2])
+    const r = [
+      (a[5] * a[10] - a[9] * a[6]) / det, (a[9] * a[2] - a[1] * a[10]) / det, (a[1] * a[6] - a[5] * a[2]) / det, 0,
+      (a[8] * a[6] - a[4] * a[10]) / det, (a[0] * a[10] - a[8] * a[2]) / det, (a[4] * a[2] - a[0] * a[6]) / det, 0,
+      (a[4] * a[9] - a[8] * a[5]) / det, (a[8] * a[1] - a[0] * a[9]) / det, (a[0] * a[5] - a[4] * a[1]) / det, 0,
+      0, 0, 0, 1,
+    ]
+    r[12] = -(r[0] * a[12] + r[4] * a[13] + r[8] * a[14])
+    r[13] = -(r[1] * a[12] + r[5] * a[13] + r[9] * a[14])
+    r[14] = -(r[2] * a[12] + r[6] * a[13] + r[10] * a[14])
+    return r
+  }
+  const apply = (m, p, w = 1) => [m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12] * w, m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13] * w, m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14] * w]
+  const toGltf = p => [p[0], p[2], -p[1]]
+  const overlayMaterialInfo = record => {
+    if (overlayMaterials.has(record.materialIndex)) return overlayMaterials.get(record.materialIndex)
+    const entry = materialManifest[record.materialIndex]
+    const inputs = Object.fromEntries(Object.entries(entry?.metadata?.shader?.inputs ?? {}).map(([k, v]) => [k.toLowerCase(), v]))
+    const features = entry?.metadata?.features ?? {}
+    const family = entry?.metadata?.shader?.family ?? ''
+    const base = textureKeyOf((entry?.textures ?? []).find(t => t.role === 'baseTexture'))
+    let info = null
+    if (base && !features.additive) {
+      const modulate = /decalmodulate/i.test(family) || /decalmodulate/i.test(entry?.metadata?.shader?.name ?? '')
+      const alpha = features.alphaTest ? 'test' : features.translucent || modulate ? 'blend' : 'opaque'
+      const cutoffValue = Number(inputs.$alphatestreference)
+      const cutoff = alpha === 'test' ? (Number.isFinite(cutoffValue) && cutoffValue > 0 ? cutoffValue : 0.5) : 0
+      const opacity = Number.isFinite(Number(inputs.$alpha)) ? Math.min(1, Math.max(0, Number(inputs.$alpha))) : 1
+      const known = textureKeys.get(base.key) ?? { lookup: base.lookup, source: base.source, alpha, cutoff, materials: new Set() }
+      known.materials.add(entry.name)
+      textureKeys.set(base.key, known)
+      info = { key: base.key, alpha, cutoff, opacity, blend: modulate ? 'modulate' : 'alpha', unlit: !!features.unlit }
+      overlayStats.materials++
+    }
+    overlayMaterials.set(record.materialIndex, info)
+    return info
+  }
+  for (const record of sidecar.records) {
+    if (record.status !== 'handled' || !record.fragments?.length) continue
+    overlayStats.handled++
+    if (record.initialState && record.initialState.enabled === false) continue
+    const mat = overlayMaterialInfo(record)
+    if (!mat) {
+      overlayStats.noTexture++
+      continue
+    }
+    let drawn = false
+    for (const fragment of record.fragments) {
+      // Target: world (or its 3D skybox part) or a brush entity's node (model-local through its matrix).
+      let name, parent, inverse = null
+      if (fragment.bspModelIndex === 0) {
+        const c = fragment.positions.reduce((acc, p) => acc.map((v, i) => v + p[i] / fragment.positions.length), [0, 0, 0])
+        if (outsideWorld(c)) {
+          if (!skyNode) continue
+          name = 'skybox_3d'
+          parent = skyNode
+        } else {
+          name = 'worldspawn'
+          parent = worldNode
+        }
+      } else {
+        const target = entityOutNodes.get(fragment.bspModelIndex)
+        if (!target) {
+          overlayStats.hiddenTarget++
+          continue
+        }
+        name = target.out.getName()
+        parent = target.out
+        inverse = invert(target.matrix)
+      }
+      let group = groupsOut.get(name)
+      if (!group) groupsOut.set(name, (group = { parent, buckets: new Map() }))
+      const lit = !mat.unlit && fragment.lightmapUvs?.length === fragment.positions.length && fragment.lightmapUvs.some(uv => uv[0] !== 0 || uv[1] !== 0)
+      const bucketKey = `${record.materialIndex}:${lit}`
+      let bucket = group.buckets.get(bucketKey)
+      if (!bucket) group.buckets.set(bucketKey, (bucket = { mat, lit, order: record.renderOrder ?? 0, positions: [], normals: [], uvs: [], tuvs: [], indices: [], vertexCount: 0 }))
+      const lift = OVERLAY_LIFT * (1 + 0.25 * Math.min(3, record.renderOrder ?? 0))
+      const base = bucket.vertexCount
+      fragment.positions.forEach((p, v) => {
+        const n = fragment.normals[v] ?? [0, 0, 1]
+        let pos = toGltf([p[0] + n[0] * lift, p[1] + n[1] * lift, p[2] + n[2] * lift])
+        let nrm = toGltf(n)
+        if (inverse) {
+          pos = apply(inverse, pos)
+          nrm = apply(inverse, nrm, 0)
+        }
+        bucket.positions.push(...pos)
+        bucket.normals.push(...nrm)
+        bucket.tuvs.push(fragment.uvs[v][0], fragment.uvs[v][1])
+        if (lit) bucket.uvs.push(fragment.lightmapUvs[v][0], fragment.lightmapUvs[v][1])
+      })
+      for (const index of fragment.indices) bucket.indices.push(base + index)
+      bucket.vertexCount += fragment.positions.length
+      overlayStats.fragments++
+      overlayStats.triangles += fragment.indices.length / 3
+      drawn = true
+    }
+    if (drawn) overlayStats.drawn++
+  }
+  const overlayMaterialCache = new Map()
+  for (const [name, group] of groupsOut) {
+    const mesh = doc.createMesh(`${name}_overlays`)
+    for (const bucket of [...group.buckets.values()].sort((a, b) => a.order - b.order)) {
+      if (!bucket.indices.length) continue
+      const { mat, lit } = bucket
+      const materialKey = `${mat.key}:${lit}:${mat.alpha}:${mat.opacity}:${mat.blend}`
+      let material = overlayMaterialCache.get(materialKey)
+      if (!material) {
+        material = doc.createMaterial(`dribble_overlay${lit ? '_lit' : ''}:${mat.key}`)
+          .setBaseColorFactor([1, 1, 1, 1])
+          .setMetallicFactor(0)
+          .setRoughnessFactor(1)
+          .setAlphaMode('BLEND')
+          .setExtras({ dribble: { kind: 'overlay', lightmap: lit, overlay: { blend: mat.blend, order: bucket.order }, texture: { key: mat.key, uv: lit ? 1 : 0, alpha: mat.alpha, cutoff: mat.cutoff, flatAlpha: mat.opacity } } })
+        if (!lit) material.setExtension('KHR_materials_unlit', unlitExt.createUnlit())
+        overlayMaterialCache.set(materialKey, material)
+      }
+      const prim = doc.createPrimitive()
+        .setAttribute('POSITION', accessor(Float32Array.from(bucket.positions), 'VEC3'))
+        .setAttribute('NORMAL', accessor(Float32Array.from(bucket.normals), 'VEC3'))
+        .setIndices(accessor(Uint32Array.from(bucket.indices), 'SCALAR'))
+        .setMaterial(material)
+      if (lit) prim.setAttribute('TEXCOORD_0', accessor(Float32Array.from(bucket.uvs), 'VEC2'))
+      prim.setAttribute(lit ? 'TEXCOORD_1' : 'TEXCOORD_0', accessor(Float32Array.from(bucket.tuvs), 'VEC2'))
+      mesh.addPrimitive(prim)
+    }
+    if (!mesh.listPrimitives().length) continue
+    group.parent.addChild(doc.createNode(`${name}_overlays`).setMesh(mesh).setExtras({ dribble: { kind: 'overlays' } }))
+  }
 }
 
 const glbOutPath = path.join(stageDir, 'world.glb')
@@ -1111,6 +1276,7 @@ const conversion = {
   materials: Object.fromEntries([...materialStats].sort((a, b) => b[1].triangles - a[1].triangles).map(([name, s]) => [name, { kind: s.kind, triangles: s.triangles, albedo: s.albedo.map(v => +v.toFixed(4)) }])),
   success: true,
 }
+if (withOverlays) conversion.overlays = overlayStats
 if (textureUvs) {
   conversion.textures = { count: textureKeys.size, file: 'textures.json' }
   const list = Object.fromEntries([...textureKeys].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, t]) => [key, { lookup: t.lookup, source: t.source, alpha: t.alpha, cutoff: t.cutoff, materials: [...t.materials].sort() }]))

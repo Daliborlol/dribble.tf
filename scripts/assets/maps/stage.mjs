@@ -237,6 +237,7 @@ async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir,
     CONVERT_BSP, '--bsp', bspPath, '--out-dir', outDir, '--skybox-dir', path.join(tmp, 'sky'), '--temp-dir', convTmp,
     '--props', 'false', '--bsp-to-glb', bspToGlb, '--chunk-grid', String(options.chunkGrid),
     '--material-mount-plan', mountsPath, '--texture-uvs', 'true', '--texture-pak-prefix', `pak/${folder}/`,
+    '--overlays', String(options.overlays !== false),
   ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   if (result.status !== 0) throw new Error(`${folder}: textured world failed (${result.status}): ${(result.stderr || result.stdout || '').trim().split('\n').slice(-3).join(' / ')}`)
   const conversion = JSON.parse(fs.readFileSync(path.join(outDir, 'conversion.json'), 'utf8'))
@@ -256,6 +257,7 @@ async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir,
     lightmap: conversion.lightmap,
     chunking: conversion.chunking,
     textures: conversion.textures,
+    ...(conversion.overlays ? { overlays: conversion.overlays } : {}),
   }
   ctx.writeFile(files.conversion, `${JSON.stringify(packConversion, null, 1)}\n`)
 
@@ -263,7 +265,7 @@ async function buildTexturedWorld(ctx, { folder, bspPath, bspToGlb, tmp, pakDir,
   return {
     files,
     textures: exported.textures,
-    stats: { ...exported.stats, chunkGrid: options.chunkGrid },
+    stats: { ...exported.stats, chunkGrid: options.chunkGrid, ...(conversion.overlays ? { overlays: conversion.overlays.drawn } : {}) },
     report: { unsupported: exported.unsupported, glbBytes: conversion.stats?.glbBytes ?? null },
     // The full converter output's lighting, for folders whose public conversion.json has none (PACK_WORLD_ONLY_MAPS).
     lighting: { set: conversion.lightmap?.set ?? 'hdr', exposure: conversion.lightmap?.exposure ?? 1, floor: conversion.lightmap?.floor ?? 0 },
@@ -289,12 +291,15 @@ export async function run(ctx) {
     textureMax: Number.isFinite(set.propsTextureMax) ? set.propsTextureMax : 512,
     webp: set.mapWebp !== false,
     webpMax: Number.isFinite(set.propsWebpMax) ? set.propsWebpMax : 256,
+    sky: set.propsSky !== false,
   }
   const worldOptions = set.mapTextures === false ? null : {
     textureMax: Number.isFinite(set.mapTextureMax) ? set.mapTextureMax : 2048,
     webp: set.mapWebp !== false,
     webpMax: Number.isFinite(set.mapWebpMax) ? set.mapWebpMax : 512,
     chunkGrid: Number.isFinite(set.mapChunkGrid) ? set.mapChunkGrid : 1,
+    // as/mapfx: info_overlay geometry in world.glb (convert-bsp.mjs --overlays), drawn with the pack textures.
+    overlays: set.mapOverlays !== false,
   }
   ctx.setOptions({ propsStock: options, ...(worldOptions ? { world: worldOptions } : {}) })
 
@@ -394,8 +399,14 @@ export async function run(ctx) {
     const pakResult = options.pak && (worldOnly || Number(info.props?.pak) + Number(info.props?.dynamic ?? 0) > 0)
       ? await convertStaticProps({ ...propsCommon, select: 'pak', workDir: path.join(tmp, 'props-pak'), outPath: ctx.stagePath(pakFile), log: message => ctx.log(`${folder}: pak${message}`) })
       : null
+    // as/mapfx: the static props inside the 3D skybox (PAK and stock models), unscaled at their skybox positions,
+    // for pack worlds only (World draws them with the world's skybox_3d node). No far LODs: they are far anyway.
+    const skyFile = `maps/${folder}/props-sky.glb`
+    const skyResult = world && options.sky
+      ? await convertStaticProps({ ...propsCommon, select: 'skybox', lod: false, workDir: path.join(tmp, 'props-sky'), outPath: ctx.stagePath(skyFile), log: message => ctx.log(`${folder}: sky${message}`) })
+      : null
     // Prop textures after the world's, so a key both use keeps the world item (its larger cap).
-    const propTextureList = { ...(result.textures ?? {}), ...(pakResult?.textures ?? {}) }
+    const propTextureList = { ...(result.textures ?? {}), ...(pakResult?.textures ?? {}), ...(skyResult?.textures ?? {}) }
     const propTextures = options.textured && Object.keys(propTextureList).length
       ? await exportTextures(ctx, { folder, textureList: propTextureList, pakDir: path.join(tmp, 'pak'), options, written, reuseWritten: true, otherOptions: worldOptions })
       : null
@@ -415,13 +426,14 @@ export async function run(ctx) {
       bspBytes: fs.statSync(bspPath).size,
       // A world-only folder's public conversion.json has no props; the entry then has no publicProps (null at runtime).
       ...(worldOnly && info.props == null ? {} : { publicProps: info.props }),
-      files: { ...(result.file ? { propsStock: file } : {}), ...(pakResult?.file ? { propsPak: pakFile } : {}), ...(world?.files ?? {}) },
+      files: { ...(result.file ? { propsStock: file } : {}), ...(pakResult?.file ? { propsPak: pakFile } : {}), ...(skyResult?.file ? { propsSky: skyFile } : {}), ...(world?.files ?? {}) },
       ...(world ? { textures: world.textures } : {}),
       ...(propTextures ? { propTextures: propTextures.textures } : {}),
       stats: {
         inputKey,
         ...(result.file ? manifestStats(result) : {}),
         ...(pakResult?.file ? { propsPak: manifestStats(pakResult) } : {}),
+        ...(skyResult?.file ? { propsSky: manifestStats(skyResult) } : {}),
         ...(propTextures ? { propTextures: propTextures.stats } : {}),
         ...(world ? { world: world.stats } : {}),
       },

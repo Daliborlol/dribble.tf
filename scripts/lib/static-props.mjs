@@ -868,6 +868,23 @@ function createMaterialResolver({ pak, vtfToPng, workDir, warn, stock = null }) 
           alpha: alphaRule,
           cutoff: alphaRule === 'test' ? (Number.isFinite(cutoff) && cutoff > 0 ? cutoff : 0.5) : 0,
         }
+        // $detail (as/mapfx): the detail texture and its blend, drawn by the runtime over the base texture.
+        if (typeof p.$detail === 'string' && p.$detail.trim()) {
+          const detail = normalizePath(`materials/${p.$detail.trim().replace(/^materials[\\/]/i, '').replace(/\.vtf$/i, '')}.vtf`)
+          const mode = Number(p.$detailblendmode) || 0
+          if ((stock.pakIndex.has(detail) || stock.source.has(detail)) && (mode === 0 || mode === 1 || mode === 7 || mode === 8)) {
+            const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
+            info.texture.detail = {
+              lookup: detail,
+              name: detail.slice('materials/'.length, -'.vtf'.length).replace(/\/{2,}/g, '/').replace(/^\//, ''),
+              source: stock.pakIndex.has(detail) ? 'pak' : 'vpk',
+              scale: num(p.$detailscale, 4),
+              factor: num(p.$detailblendfactor, 1),
+              mode,
+              seamless: truthy(p.$seamless_detail) ? num(p.$seamless_scale, 0) : 0,
+            }
+          }
+        }
       }
       // See-through materials take their opacity and colour from the texture's alpha when it is in
       // the PAK: dense cutouts draw opaque, blends use the mean alpha.
@@ -1013,7 +1030,10 @@ export async function convertStaticProps(o) {
   // packMode: a VPK set is given (asset pack output). stockMode: the stock instances alone (props-stock.glb);
   // o.select 'pak' instead writes the PAK instances with VPK materials (props-pak.glb, M3-props2).
   const packMode = Boolean(o.stockSource)
-  const stockMode = packMode && o.select !== 'pak'
+  // o.select 'skybox' (as/mapfx): only the instances inside the 3D skybox, PAK and stock models alike, in their
+  // skybox positions (props-sky.glb; the runtime draws them around sky_camera with the world's skybox_3d node).
+  const skyMode = packMode && o.select === 'skybox'
+  const stockMode = packMode && o.select !== 'pak' && !skyMode
   // M3-props2 (pack output only): UVs and one material per texture (o.textured), VTX far LODs (o.lod).
   const textured = packMode && o.textured === true
   const lodMode = packMode && o.lod === true
@@ -1042,6 +1062,17 @@ export async function convertStaticProps(o) {
     byModel.get(files.key).instances.push(prop)
   }
   for (const prop of statics) {
+    if (skyMode) {
+      const files = modelFiles(pak, prop.modelPath)
+      if (!inSkybox(prop.sourceOrigin)) continue
+      if (!files) {
+        counts.stock++
+        continue
+      }
+      counts.skybox++
+      addInstance(files, { ...prop, id: `sp:${prop.staticPropIndex}`, order: prop.staticPropIndex, dynamic: false, scale: 1 })
+      continue
+    }
     if (stockMode) {
       // Stock mode: PAK models belong to props.glb; `pak` here also resolves VPK files.
       const inPak = modelFiles(pakIndex, prop.modelPath)
@@ -1085,7 +1116,8 @@ export async function convertStaticProps(o) {
   for (const entity of o.props.dynamicProps ?? []) {
     if (!/^prop_dynamic(_override)?$/i.test(entity.classname ?? '')) continue
     if (stockMode && modelFiles(pakIndex, entity.modelPath)) continue // a PAK model: props.glb's
-    const files = modelFiles(stockMode ? pak : pakOnly, entity.modelPath)
+    if (skyMode && !(Array.isArray(entity.sourceOrigin) && inSkybox(entity.sourceOrigin))) continue
+    const files = modelFiles(stockMode || skyMode ? pak : pakOnly, entity.modelPath)
     if (!files) continue
     const kv = {}
     for (const { key, value } of entity.keyValues ?? []) {
@@ -1103,7 +1135,7 @@ export async function convertStaticProps(o) {
       skipDynamic(reason)
       continue
     }
-    if (inSkybox(entity.sourceOrigin)) {
+    if (!skyMode && inSkybox(entity.sourceOrigin)) {
       counts.skybox++
       continue
     }
@@ -1570,6 +1602,13 @@ export async function convertStaticProps(o) {
     const key = (t.source === 'pak' ? `${o.texturePakPrefix ?? 'pak/'}${t.name}` : t.name).toLowerCase()
     textureList[key] ??= { lookup: t.lookup, source: t.source, alpha: t.alpha, cutoff: t.cutoff }
     const base = info.untinted ?? info.albedo
+    let detail = null
+    if (t.detail) {
+      const d = t.detail
+      const detailKey = (d.source === 'pak' ? `${o.texturePakPrefix ?? 'pak/'}${d.name}` : d.name).toLowerCase()
+      textureList[detailKey] ??= { lookup: d.lookup, source: d.source, alpha: 'opaque', cutoff: 0 }
+      detail = { key: detailKey, scale: d.scale, factor: d.factor, mode: d.mode, ...(d.seamless ? { seamless: d.seamless } : {}) }
+    }
     return {
       key,
       uv: 0,
@@ -1577,6 +1616,7 @@ export async function convertStaticProps(o) {
       cutoff: t.cutoff,
       colorScale: base.map(v => round(1 / Math.max(1e-3, v), 4)),
       vertexAlpha: kind !== 'opaque' ? round(info.alpha, 3) : 1,
+      ...(detail ? { detail } : {}),
     }
   }
   const materialKeyOf = (kind, info) => {
@@ -1954,8 +1994,8 @@ export async function convertStaticProps(o) {
   counts.dynamic = [...rendered.values()].filter(Boolean).length
 
   root.setExtras({
-    dribble: stockMode
-      ? { kind: 'staticPropsRoot', schema: 1, source: 'stock', stock: counts.pak, dynamic: counts.dynamic, models: stats.models, lighting: { set: vhvStats.set, exposure, floor } }
+    dribble: stockMode || skyMode
+      ? { kind: 'staticPropsRoot', schema: 1, source: skyMode ? 'skybox' : 'stock', stock: counts.pak, dynamic: counts.dynamic, models: stats.models, lighting: { set: vhvStats.set, exposure, floor } }
       : {
           kind: 'staticPropsRoot',
           schema: 1,

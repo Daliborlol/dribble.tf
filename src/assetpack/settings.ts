@@ -11,6 +11,8 @@ export interface AssetSettings {
   models: boolean
   /** Phase 4 viewmodels. Applies at once. */
   viewmodels: boolean
+  /** as/mapfx: the 3D skybox of pack worlds, drawn around sky_camera behind the map. Applies at once. */
+  skybox3d: boolean
 }
 
 export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
@@ -19,6 +21,7 @@ export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
   mapTextures: true,
   models: true,
   viewmodels: true,
+  skybox3d: true,
 }
 
 export type AssetSettingKey = keyof AssetSettings

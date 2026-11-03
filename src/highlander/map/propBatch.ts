@@ -140,6 +140,8 @@ function arrayTextureOf(
   const info = material.userData?.dribble
   const record = info?.texture
   if (!textures || !record?.key || info.kind !== 'opaque' || record.alpha === 'blend') return null
+  // A $detail material (as/mapfx) keeps its own mesh: the array shader samples no detail texture.
+  if (record.detail?.key && textures.get(String(record.detail.key).toLowerCase())) return null
   const texture = textures.get(String(record.key).toLowerCase()) as THREE.CompressedTexture | null | undefined
   if (!texture?.isCompressedTexture || !texture.mipmaps?.length) return null
   const mips = texture.mipmaps as { data: ArrayBufferView; width: number; height: number }[]

@@ -38,6 +38,7 @@ const AssetSettingsRows = () => {
   const enabled = useStore(s => s.settings.assets?.enabled ?? true)
   const stockProps = useStore(s => s.settings.assets?.stockProps ?? true)
   const mapTextures = useStore(s => s.settings.assets?.mapTextures ?? true)
+  const skybox3d = useStore(s => s.settings.assets?.skybox3d ?? true)
   const offByUrl = isAssetsOffByUrl()
 
   useEffect(() => {
@@ -74,6 +75,14 @@ const AssetSettingsRows = () => {
           label="Textured maps (applies on next map load)"
           checked={mapTextures}
           onChange={checked => updateSettingsOptionAction('assets.mapTextures', checked)}
+        />
+      )}
+
+      {hasWorlds && (
+        <ToggleOption
+          label="3D skybox (textured maps)"
+          checked={skybox3d}
+          onChange={checked => updateSettingsOptionAction('assets.skybox3d', checked)}
         />
       )}
     </>

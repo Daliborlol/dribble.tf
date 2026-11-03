@@ -111,3 +111,15 @@ input::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+// as/tflook view.autoHideControls: ControlsAutoHide sets data-hl-idle on .ui-layers while playing and idle
+.hl-autohide {
+  transition: opacity 0.4s ease;
+}
+[data-hl-idle] .hl-autohide {
+  opacity: 0;
+}
+[data-hl-idle] .hl-autohide,
+[data-hl-idle] .hl-autohide * {
+  pointer-events: none !important;
+}

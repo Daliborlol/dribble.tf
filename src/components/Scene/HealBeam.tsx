@@ -3,6 +3,8 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 
+import { getState } from '@zus/store'
+
 // ─── SHADERS ────────────────────────────────────────────────────────────────
 
 const vertexShader = /* glsl */ `
@@ -10,6 +12,7 @@ const vertexShader = /* glsl */ `
   uniform vec3  uOrigin;
   uniform vec3  uTarget;
   uniform float uWidth;
+  uniform float uWaveAmp;
 
   varying vec2 vUv;
 
@@ -41,7 +44,7 @@ const vertexShader = /* glsl */ `
 
     // Width with subtle pulsing — wave amplitude is fixed so uWidth only scales thickness
     float finalWidth = uWidth * (1.0 + 0.3 * sin(t * 8.0 - speed));
-    float waveAmp = 5.3;
+    float waveAmp = uWaveAmp;
     vec3 offset = right * s * finalWidth
                 + right * wave * waveAmp * 0.8
                 + up    * wave * waveAmp * 0.5;
@@ -118,6 +121,8 @@ export interface HealBeamProps {
 
 // Half player height (83 * 0.5) — beam connects at midsection
 const BEAM_HEIGHT_OFFSET = 41.5
+/** Wave amplitude of the beam (Hammer units), before view.healBeamScale. */
+const WAVE_AMP = 5.3
 
 // One strip for every beam: the vertex shader places it from uniforms, so the geometry never changes.
 const BEAM_GEOMETRY = new THREE.PlaneGeometry(1, 1, 100, 1)
@@ -134,6 +139,7 @@ export const HealBeam = ({ origin, target, color, width = 20 }: HealBeamProps) =
           uTarget: { value: new THREE.Vector3() },
           uColor: { value: new THREE.Color(color || '#ffffff') },
           uWidth: { value: width },
+          uWaveAmp: { value: WAVE_AMP },
         },
         vertexShader,
         fragmentShader,
@@ -152,6 +158,11 @@ export const HealBeam = ({ origin, target, color, width = 20 }: HealBeamProps) =
     u.uOrigin.value.set(origin.x, origin.y, origin.z + BEAM_HEIGHT_OFFSET)
     u.uTarget.value.set(target.x, target.y, target.z + BEAM_HEIGHT_OFFSET)
     u.uColor.value.set(color || '#ffffff')
+    // as/tflook view.healBeamScale (Highlander on only): thinner beam with a smaller wave
+    const settings = getState().settings
+    const scale = settings.highlander?.enabled ? settings.highlander.view?.healBeamScale ?? 1 : 1
+    u.uWidth.value = width * scale
+    u.uWaveAmp.value = WAVE_AMP * scale
   })
 
   return (

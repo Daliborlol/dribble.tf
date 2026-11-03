@@ -39,6 +39,7 @@ import { MapOffsetDebugPanel } from '@components/UI/MapOffsetDebugPanel'
 // Highlander roots (contract section 6.4)
 import { HighlanderScene } from '@highlander/scene/HighlanderScene'
 import { HighlanderHud } from '@highlander/hud/HighlanderHud'
+import { ControlsAutoHide } from '@highlander/view/AutoHide'
 import { HudLayout } from '@highlander/hud/HudLayout'
 
 import { motion } from 'framer-motion'
@@ -561,7 +562,7 @@ const PanelToolbar = memo(({ hasDemoLoaded }: { hasDemoLoaded: boolean }) => {
 
   if (isMobile) {
     return (
-      <div className="ui-layer m-3 items-start justify-start">
+      <div className="ui-layer hl-autohide m-3 items-start justify-start">
         <div className="flex items-center">
           <SettingsPanel />
           <AboutPanel />
@@ -575,26 +576,26 @@ const PanelToolbar = memo(({ hasDemoLoaded }: { hasDemoLoaded: boolean }) => {
 
   return (
     <>
-      <div className="ui-layer m-4 items-start justify-start">
+      <div className="ui-layer hl-autohide m-4 items-start justify-start">
         <SettingsPanel />
       </div>
 
-      <div className="ui-layer justift-start m-4 mt-16 items-start">
+      <div className="ui-layer hl-autohide justift-start m-4 mt-16 items-start">
         <AboutPanel />
       </div>
 
-      <div className="ui-layer justift-start m-4 mt-28 items-start">
+      <div className="ui-layer hl-autohide justift-start m-4 mt-28 items-start">
         <SetupsPanel />
       </div>
 
       {hasDemoLoaded && (
-        <div className="ui-layer m-4 mt-40 items-start justify-start">
+        <div className="ui-layer hl-autohide m-4 mt-40 items-start justify-start">
           <MatchKillfeedPanel />
         </div>
       )}
 
       {hasDemoLoaded && (
-        <div className="ui-layer m-4 mt-52 items-start justify-start">
+        <div className="ui-layer hl-autohide m-4 mt-52 items-start justify-start">
           <BookmarksPanel />
         </div>
       )}
@@ -883,7 +884,9 @@ class DemoViewer extends Component<DemoViewerProps> {
         <div className="ui-layers" ref={this.uiLayers}>
           <DoubleTapSeek />
 
-          <div className="ui-layer mb-4 items-end justify-center text-center">
+          <ControlsAutoHide target={this.uiLayers} />
+
+          <div className="ui-layer hl-autohide mb-4 items-end justify-center text-center">
             <MemoPlaybackPanel />
           </div>
 

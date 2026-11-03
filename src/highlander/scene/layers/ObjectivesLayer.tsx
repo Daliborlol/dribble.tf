@@ -51,6 +51,9 @@ const ROLLBACK_LIGHT = '#ff2020'
 const ARC_SEGMENTS = 64
 const TRACK_STEP = 16
 const TRACK_WIDTH = 3
+/** as/tflook view.objectiveMarkers 'subtle': control point disc scale and opacity */
+const SUBTLE_POINT_SCALE = 0.55
+const SUBTLE_DISC_OPACITY = 0.5
 
 const fxColor = (team: number) => (team === 2 ? TEAM_FX.red : team === 3 ? TEAM_FX.blue : NEUTRAL)
 const darkColor = (team: number) => (team === 2 ? TEAM_DARK.red : team === 3 ? TEAM_DARK.blue : NEUTRAL)
@@ -489,6 +492,15 @@ const ControlPointDisc = ({ index, pos }: { index: number; pos: THREE.Vector3 })
     []
   )
   const arcGeometry = useMemo(() => ARC_GEOMETRY.clone(), [])
+  // as/tflook view.objectiveMarkers 'subtle': a smaller, translucent disc
+  const subtle = useHlSetting<string>('view.objectiveMarkers') === 'subtle'
+  useEffect(() => {
+    materials.disc.transparent = subtle
+    materials.disc.opacity = subtle ? SUBTLE_DISC_OPACITY : 1
+    materials.disc.depthWrite = !subtle
+    materials.disc.needsUpdate = true
+  }, [materials, subtle])
+  const discScale = subtle ? SUBTLE_POINT_SCALE : 1
   useEffect(
     () => () => {
       materials.disc.dispose()
@@ -517,7 +529,7 @@ const ControlPointDisc = ({ index, pos }: { index: number; pos: THREE.Vector3 })
   })
 
   return (
-    <group position={pos} name={`hl-point-${index}`}>
+    <group position={pos} scale={[discScale, discScale, 1]} name={`hl-point-${index}`}>
       <mesh geometry={DISC_GEOMETRY} material={materials.disc} position={[0, 0, 1.5]} />
       <mesh ref={arc} geometry={arcGeometry} material={materials.arc} position={[0, 0, 6]} renderOrder={2} visible={false} />
       <mesh ref={dashed} geometry={DASHED_RING_GEOMETRY} material={LOCKED_RING_MATERIAL} position={[0, 0, 4]} visible={false} />

@@ -27,6 +27,7 @@ import { useEventListener } from '@utils/hooks'
 
 import { registerActor, unregisterActor, getActor } from '@highlander/scene/actorRegistry'
 import { useActorFx, type NameplateExtra } from '@highlander/scene/actorFx'
+import { filterPlateTags } from '@highlander/view/plateTags'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { getPovSubject } from '@highlander/pov/subject'
@@ -281,8 +282,12 @@ export const Actors = (props: ActorsProps) => {
     const enabled = getHlSetting<boolean>('enabled') !== false
     const focusedEntityId = (useInstance.getState().focusedObject?.userData?.entityId as number | undefined) ?? -1
     const subjectEntityId = enabled && focusedEntityId >= 0 ? getPovSubject(renderTick)?.entityId ?? -1 : -1
-    const playing = useStore.getState().playback.playing
-    declutterPlates(state.camera, state.size.width, state.size.height, { enabled, focusedEntityId, subjectEntityId, playing })
+    const { playback, scene } = useStore.getState()
+    const playing = playback.playing
+    // as/tflook: the TF2 look's plates (followed, hovered and, in POV, the subject's teammates)
+    const focusOnly = enabled && getHlSetting<string>('view.plates') === 'focus'
+    const pov = scene.controls.mode === 'pov'
+    declutterPlates(state.camera, state.size.width, state.size.height, { enabled, focusedEntityId, subjectEntityId, playing, focusOnly, pov })
   }, -1)
 
   // Focus re-resolution. Actors are keyed by entity id, so a player who leaves the drawn list (disconnect,
@@ -346,6 +351,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
   const hlEnabled = useHlSetting<boolean>('enabled')
   const povViewmodel = useHlSetting<boolean>('pov.viewmodel')
   const nameplateFadeDistance = useHlSetting<number>('players.nameplateFadeDistance')
+  const plateTags = useHlSetting<string>('view.plateTags')
 
   const { classId, health, team, user, healTarget, renderTick } = props
   const fx = useActorFx(user.entityId, renderTick, classId, team)
@@ -408,8 +414,10 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
   // it counts as not drawn: it takes none of the cap's slots and cannot be hovered.
   const showPlate = settings.ui.nameplate.enabled && !isFocusedPOV
   const plateOpacity = fx.nameplate?.opacity ?? 1
-  const plateState = useRef<PlateState>({ drawn: false, pinned: false })
-  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: !!fx.nameplate?.pinned }
+  const plateState = useRef<PlateState>({ drawn: false, pinned: false, team: '' })
+  // as/tflook: view.plateTags ('always' passes F1's extra through unchanged)
+  const plateExtra = filterPlateTags(fx.nameplate ?? undefined, plateTags, extras, user.entityId, renderTick)
+  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: !!fx.nameplate?.pinned, team }
   useEffect(() => {
     if (!actorRef.current) return
     return registerPlate(user.entityId, actorRef.current, nameplateRef, plateState)
@@ -584,7 +592,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
           showName={settings.ui.nameplate.showName}
           showHealth={settings.ui.nameplate.showHealth}
           showClass={settings.ui.nameplate.showClass}
-          extra={fx.nameplate ?? undefined}
+          extra={plateExtra}
         />
       )}
     </group>

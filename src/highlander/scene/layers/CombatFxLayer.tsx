@@ -33,6 +33,7 @@ import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
 import { usePackProjectileSets } from '@highlander/combat/packProjectiles'
 import { PROJ } from '@highlander/extras/enums'
+import { PackParticlesLayer, packParticlesDrawing } from '@highlander/combat/packParticles'
 
 const SYRINGE_KINDS = [PROJ.SYRINGE]
 
@@ -150,9 +151,11 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     fx.syringeTrails.begin(s.camera, pixelScale)
 
     const at = (v: [number, number, number]) => s.pos.set(v[0], v[1], v[2])
+    // with the pack's particle systems drawing, explosions and the cone flames of drawn pyros are theirs
+    const pack = packParticlesDrawing()
 
     // explosions: soft additive spheres
-    for (const e of effects.explosions) {
+    for (const e of pack ? [] : effects.explosions) {
       if (!(e.radius > 0)) continue
       s.matrix.compose(at(e.pos), s.quat.identity(), s.scale.setScalar(e.radius))
       m.explosions.push(s.matrix, s.color.set(e.color), e.opacity)
@@ -200,6 +203,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     // flames: outer and inner cone from the pyro's muzzle, or an ellipsoid filling the box
     for (const f of effects.flames) {
       if (f.cone) {
+        if (pack) continue
         const c = f.cone
         s.dir.set(c.axis[0], c.axis[1], c.axis[2])
         quatForwardX(s.dir, s.quat)
@@ -273,6 +277,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       ))}
       <primitive object={fx.tracers.mesh} />
       <primitive object={fx.syringeTrails.mesh} />
+      <PackParticlesLayer x={x} demo={demo} />
       {syringePack?.meshes.map(mesh => (
         <primitive key={mesh.name} object={mesh} />
       ))}

@@ -13,6 +13,8 @@ export interface AssetSettings {
   viewmodels: boolean
   /** as/mapfx: the 3D skybox of pack worlds, drawn around sky_camera behind the map. Applies at once. */
   skybox3d: boolean
+  /** as/particles: TF2 particle systems for explosions, flamethrower flames and projectile trails. Applies at once. */
+  particles: boolean
 }
 
 export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
@@ -22,6 +24,7 @@ export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
   models: true,
   viewmodels: true,
   skybox3d: true,
+  particles: true,
 }
 
 export type AssetSettingKey = keyof AssetSettings

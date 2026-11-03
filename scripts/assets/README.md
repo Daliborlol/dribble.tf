@@ -23,7 +23,7 @@ flock <lock> npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /ho
 | option | meaning |
 |---|---|
 | `--out <dir>` | pack directory, default `~/tf2-pack`. Refused inside any git work tree, under `/tmp`, and when the directory is not empty but holds no pack. |
-| `--stages maps,models,viewmodels` | stages to run, always in that order; `none` runs none. `--only` is the same option. Default: every stage that exists. |
+| `--stages maps,models,viewmodels,particles` | stages to run, always in that order; `none` runs none. `--only` is the same option. Default: every stage that exists. |
 | `--maps <folder,...>` / `all` | folders for the maps stage. `all` (default) is the bsp-to-glb folders under `public/models/maps/` (`conversion.json` `pipeline: 'bsp-to-glb'`) plus `koth_product_final` (`PACK_WORLD_ONLY_MAPS`: its public folder keeps the older textured GLB, its pack entry gets a bsp-to-glb world, lightmap, `conversion.json`, `props-stock.glb` and `props-pak.glb`, without `publicProps`). An unknown folder exits 2. |
 | `--bsp-dir <dir>` | map BSPs, default the Steam install's `tf/maps/`. |
 | `--tmp <dir>` | scratch dir, default `<out>/.tmp`, removed after the build. Never under `/tmp`. |
@@ -101,6 +101,16 @@ A stage is `scripts/assets/<stage>/stage.mjs` exporting `async run(ctx)`. It may
 Put timings in the stage's return value or in `reports/<stage>/`, not in the manifest: `check-determinism.mjs`
 compares the manifest byte for byte. Contract 2.3 still lists `ms` among the map `stats`, which would break that;
 the orchestrator was asked to amend it so map timings go to `reports/<stage>/`.
+
+## Particles stage
+
+`particles/stage.mjs` (as/particles) parses the .pcf files of `particles/list.mjs` with `particles/dmx.mjs` (binary
+DMX, encodings 2 to 5; the parser checks it consumed every byte) and writes `particles/systems.json` (item
+`particles/systems`, kind `particles`) with the root systems and their children, every operator kept as its DMX
+attributes plus `fn`, and the materials with their SpriteCard parameters and VTF sheet sequences (resource tag
+0x10). Each material's base texture becomes `particles/textures/<path>.webp` (item `particles/<path>`, kind
+`texture`, `srgb: false`). `--set particleTextureMaxSize=<px>` (1024) caps sheets of more than 16 frames, the others
+stay at 512. It rebuilds everything on every run (about 8 s) and needs no other stage.
 
 ## Viewmodels stage
 

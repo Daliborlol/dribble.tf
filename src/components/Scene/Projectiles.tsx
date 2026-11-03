@@ -16,6 +16,7 @@ import { getAsset } from '@utils/misc'
 import { NEUTRAL, TEAM_FX, teamKey } from '@highlander/constants'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
+import { packParticlesDrawing } from '@highlander/combat/packParticles'
 import { CRIT_GLOW_RADIUS, CRIT_GLOW_SOFTNESS, critGlowOpacity, DEFLECT_RING_RADIUS } from '@highlander/combat/combatData'
 import { FxInstances, makeFxMaterial, pixelScaleOf, RibbonBatch } from '@highlander/combat/fx'
 import { baseRecord, pointList, recordingEnabled, resetRecord } from '@highlander/combat/frameRecord'
@@ -1256,8 +1257,11 @@ const ExtrasProjectileTrails = React.memo(({ x, demo }: { x: HighlanderExtras; d
 
     camera.getWorldPosition(s.camera)
     ribbons.begin(s.camera, pixelScaleOf(camera, size.height))
+    // with the pack's particle systems drawing, base rockets, pipes and stickies get their TF2 trails there
+    const pack = packParticlesDrawing()
     for (const j of projectilesDrawnAt(x, tick, s.list)) {
       if (!source.servedByBase[j]) continue
+      if (pack && source.baseType[j] >= 1 && source.baseType[j] <= 3) continue
       const samples = source.baseType[j] === 1 ? ROCKET_TRAIL_SAMPLES : TRAIL_SAMPLES
       const count = trailPoints(x, j, tickF, samples, s.points)
       if (count < 2) continue
@@ -1268,7 +1272,7 @@ const ExtrasProjectileTrails = React.memo(({ x, demo }: { x: HighlanderExtras; d
     ribbons.end()
 
     smoke.begin()
-    for (const j of projectilesDrawnIn(x, tick - SMOKE_TICKS + 1, tick, s.list)) {
+    for (const j of pack ? [] : projectilesDrawnIn(x, tick - SMOKE_TICKS + 1, tick, s.list)) {
       if (!source.servedByBase[j] || source.baseType[j] !== 1) continue
       forEachSmokePuff(x, j, tickF, (px, py, pz, puffSize, opacity) => {
         s.matrix.compose(s.pos.set(px, py, pz), s.quat, s.scale.setScalar(puffSize))

@@ -39,6 +39,7 @@ const AssetSettingsRows = () => {
   const stockProps = useStore(s => s.settings.assets?.stockProps ?? true)
   const mapTextures = useStore(s => s.settings.assets?.mapTextures ?? true)
   const skybox3d = useStore(s => s.settings.assets?.skybox3d ?? true)
+  const particles = useStore(s => s.settings.assets?.particles ?? true)
   const offByUrl = isAssetsOffByUrl()
 
   useEffect(() => {
@@ -46,6 +47,7 @@ const AssetSettingsRows = () => {
   }, [])
 
   const hasMaps = Object.keys(pack.manifest?.maps ?? {}).length > 0
+  const hasParticles = !!pack.manifest?.items?.['particles/systems']
   const hasWorlds = Object.values(pack.manifest?.maps ?? {}).some(entry => !!entry?.files?.world)
 
   return (
@@ -83,6 +85,14 @@ const AssetSettingsRows = () => {
           label="3D skybox (textured maps)"
           checked={skybox3d}
           onChange={checked => updateSettingsOptionAction('assets.skybox3d', checked)}
+        />
+      )}
+
+      {hasParticles && (
+        <ToggleOption
+          label="TF2 particle effects (explosions, flames, trails)"
+          checked={particles}
+          onChange={checked => updateSettingsOptionAction('assets.particles', checked)}
         />
       )}
     </>

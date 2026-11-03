@@ -44,6 +44,8 @@ export interface DeclutterOptions {
   /** the focused player and the POV subject (entity ids, -1 for none): always shown */
   focusedEntityId: number
   subjectEntityId: number
+  /** playback is running (as/perf: the plates' wrappers get `will-change: transform`, see applyMoving) */
+  playing?: boolean
 }
 
 interface PlateEntry {
@@ -53,6 +55,8 @@ interface PlateEntry {
   state: { current: PlateState }
   /** what the pass last applied: true shown, false hidden, null untouched */
   applied: boolean | null
+  /** the wrapper element that last got will-change, and the value */
+  moving: { element: HTMLElement | null; on: boolean }
   /** last pass results, for the probe */
   distance: number
   rank: number
@@ -74,7 +78,7 @@ export function registerPlate(
   element: { current: HTMLElement | null },
   state: { current: PlateState }
 ): () => void {
-  const entry: PlateEntry = { entityId, group, element, state, applied: null, distance: 0, rank: -1, shown: true, reason: 'notDrawn' }
+  const entry: PlateEntry = { entityId, group, element, state, applied: null, moving: { element: null, on: false }, distance: 0, rank: -1, shown: true, reason: 'notDrawn' }
   entries.set(entityId, entry)
   return () => {
     if (entries.get(entityId) === entry) entries.delete(entityId)
@@ -143,8 +147,28 @@ function hoveredAt(camera: THREE.Camera, width: number, height: number): number 
  * One declutter pass: rank the drawn plates on screen by camera distance, show the NAMEPLATE_CAP nearest plus the
  * exempt ones, hide the rest. Writes the DOM only when a plate's state flips.
  */
+/**
+ * as/perf: drei's Html moves each plate by a translate3d on its wrapper every frame. Chrome rasterizes such a layer
+ * with the fractional part of its offset baked in (for crisp text), so a moving plate was rasterized again on every
+ * frame, about 11 tiles a frame in the GPU process for 18 plates. While playback runs, the wrappers carry
+ * `will-change: transform`: the compositor moves their raster instead. Paused, the hint goes and the plates
+ * rasterize at their exact offset as before, so still frames and screenshots are unchanged.
+ */
+function applyMoving(entry: PlateEntry, on: boolean) {
+  const wrapper = entry.element.current?.parentElement ?? null
+  const state = entry.moving
+  if (state.element === wrapper && state.on === on) return
+  if (state.element && state.element !== wrapper && state.on) state.element.style.removeProperty('will-change')
+  state.element = wrapper
+  state.on = on
+  if (!wrapper) return
+  if (on) wrapper.style.willChange = 'transform'
+  else wrapper.style.removeProperty('will-change')
+}
+
 export function declutterPlates(camera: THREE.Camera, width: number, height: number, opts: DeclutterOptions): void {
   passes++
+  for (const entry of entries.values()) applyMoving(entry, !!opts.playing)
   camera.updateMatrixWorld()
   _camera.setFromMatrixPosition(camera.matrixWorld)
   order.length = 0

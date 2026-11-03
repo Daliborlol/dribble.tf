@@ -321,6 +321,8 @@ export const Pickups = React.memo(() => {
     const finish = (mesh: THREE.InstancedMesh | null, count: number) => {
       if (!mesh) return
       mesh.count = count
+      // as/perf: an empty InstancedMesh is still a draw call
+      mesh.visible = count > 0
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }

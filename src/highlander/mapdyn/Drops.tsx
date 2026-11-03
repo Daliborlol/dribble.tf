@@ -90,6 +90,8 @@ export const Drops = React.memo(() => {
     meshes.forEach((mesh, k) => {
       if (!mesh) return
       mesh.count = counts[k]
+      // as/perf: an empty InstancedMesh is still a draw call
+      mesh.visible = counts[k] > 0
       mesh.instanceMatrix.needsUpdate = true
     })
     drawn.dropsAmmo = counts[0]

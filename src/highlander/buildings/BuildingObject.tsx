@@ -64,10 +64,15 @@ const _packPoint = new THREE.Vector3()
 const _scaleZ = new THREE.Vector3()
 
 /** Shows or hides the placeholder's part meshes (userData.part) while a pack model draws the building. */
-function setParts(root: THREE.Object3D, visible: boolean) {
-  root.traverse(node => {
+function setParts(root: THREE.Object3D, visible: boolean, skip?: THREE.Object3D) {
+  // as/perf: `skip` is the pack model's group, which holds no part mesh but most of the nodes (bones), and this
+  // runs every frame while the pack model draws
+  const walk = (node: THREE.Object3D) => {
+    if (node === skip) return
     if ((node as THREE.Mesh).isMesh && node.userData?.part) node.visible = visible
-  })
+    for (const child of node.children) walk(child)
+  }
+  walk(root)
 }
 
 /** Swap the materials of every part mesh (userData.part) between the solid and the construction variant. */
@@ -435,6 +440,9 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
     const { tick, tickF } = frameTime(_time)
     const d = buildingDraw(x, instance, tickF, { rangeRing: sentryRange, enemyCentre })
     g.visible = d.drawn
+    // as/perf: three's scene update walks hidden subtrees too (a pack building holds 100+ nodes); a hidden building
+    // updates its world matrices once it is drawn again (or when a caller updates them itself)
+    g.matrixWorldAutoUpdate = d.drawn
     // the transform follows the data even while hidden (carried), so the scene never keeps a stale pose
     if (Number.isFinite(d.pos.x)) g.position.copy(d.pos)
     g.rotation.set(0, 0, d.yaw * DEG)
@@ -448,7 +456,7 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
     if (!d.drawn) return
     body.current.scale.set(1, 1, d.scaleZ)
     if (!packOn && partsHidden.current) {
-      setParts(body.current, true)
+      setParts(body.current, true, pack.group)
       partsHidden.current = false
     }
     if (ghostApplied.current !== d.ghost) {
@@ -474,7 +482,7 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
       }
     }
     if (packOn) {
-      setParts(body.current, false)
+      setParts(body.current, false, pack.group)
       partsHidden.current = true
       const muzzle = sentryRefs.current.muzzle
       if (muzzle && muzzle.visible && pf.body && muzzle.parent && muzzleInBuilding(pack, pf.body, d.muzzle, _packPoint, d.scaleZ)) {

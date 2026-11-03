@@ -116,6 +116,8 @@ Perf
   --perf-play <spec>      tick:seconds[:mode[:player[:speed]]] e.g. 50%:10:rts or 21000:8:pov:medic@red:0
                           (speed 0 = paused) -> perf.json (fps, frame ms, ticks/s, long tasks, memory)
   --cpu-profile           with --perf-play: record a CDP CPU profile + top self-time table
+  --trace                 with --perf-play: record a Chromium trace (perf-trace.json) and write the busy time per
+                          thread and event (renderer main, compositor, GPU main) to perf-trace.txt
 Build
   --rebuild               force a rebuild;  --no-build  reuse the last build even if stale
   --no-minify             unminified build (separate cache) so --cpu-profile shows real function names
@@ -179,6 +181,7 @@ const FLAGS = {
   perf: 'bool',
   'perf-play': 'value',
   'cpu-profile': 'bool',
+  trace: 'bool',
   rebuild: 'bool',
   'no-build': 'bool',
   'no-minify': 'bool',
@@ -275,6 +278,7 @@ if (args['perf-play'] !== undefined) {
   }
 }
 if (args['cpu-profile'] && !args['perf-play']) usageProblems.push('--cpu-profile needs --perf-play')
+if (args.trace && !args['perf-play']) usageProblems.push('--trace needs --perf-play')
 if (usageProblems.length) {
   console.error(`[harness] ${usageProblems.join('\n[harness] ')}\n[harness] see --help`)
   process.exit(EXIT_USAGE)
@@ -1003,6 +1007,13 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
     await cdp.send('Profiler.start')
   }
 
+  const tracingBrowser = args.trace ? page.context().browser() : null
+  if (tracingBrowser) {
+    await tracingBrowser.startTracing(page, {
+      categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'gpu', 'toplevel', 'v8.execute', 'blink', 'cc', 'viz'],
+    })
+  }
+
   const memBefore = memory.sample()
   // Play, sample frame times and long tasks, and pause, all inside one evaluate so the
   // tick rate is measured over exactly the sampled wall time.
@@ -1056,6 +1067,13 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
     await cdp.detach().catch(() => {})
   }
 
+  if (tracingBrowser) {
+    const buffer = await tracingBrowser.stopTracing()
+    fs.writeFileSync(path.join(outDir, 'perf-trace.json'), buffer)
+    fs.writeFileSync(path.join(outDir, 'perf-trace.txt'), summarizeTrace(JSON.parse(buffer.toString()), run.elapsedMs, run.deltas.length))
+    log(`trace -> ${path.join(outDir, 'perf-trace.json')} (busy time per thread in perf-trace.txt)`)
+  }
+
   const sorted = [...run.deltas].sort((a, b) => a - b)
   const pct = p => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? 0
   const avg = sorted.reduce((sum, v) => sum + v, 0) / Math.max(1, sorted.length)
@@ -1077,7 +1095,32 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
       topFiles: profileSummary?.files?.slice(0, 15),
     },
     frames: run.deltas.length,
+    frameDeltas: run.deltas.map(round1),
   }
+}
+
+/** Busy time per thread (top-level task slices) and per event name, in ms per frame. */
+function summarizeTrace(trace, elapsedMs, frames) {
+  const events = trace.traceEvents ?? trace
+  const threadName = new Map()
+  for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') threadName.set(`${e.pid}:${e.tid}`, e.args?.name)
+  const keep = name => /^(CrRendererMain|CrGpuMain|Compositor|VizCompositorThread|CrBrowserMain)/.test(name ?? '')
+  const toplevel = new Map()
+  const byName = new Map()
+  for (const e of events) {
+    if (e.ph !== 'X' || !e.dur) continue
+    const t = threadName.get(`${e.pid}:${e.tid}`)
+    if (!keep(t)) continue
+    if (e.cat?.includes('toplevel')) toplevel.set(t, (toplevel.get(t) ?? 0) + e.dur)
+    const k = `${t} ${e.name}`
+    byName.set(k, (byName.get(k) ?? 0) + e.dur)
+  }
+  const perFrame = us => (us / 1000 / Math.max(1, frames)).toFixed(2).padStart(7)
+  const lines = [`# ${frames} frames in ${Math.round(elapsedMs)} ms; ms per frame (nested events overlap)`, '', '# busy (toplevel tasks) per thread']
+  for (const [t, us] of [...toplevel].sort((a, b) => b[1] - a[1])) lines.push(`${perFrame(us)}  ${t}`)
+  lines.push('', '# per event name')
+  for (const [k, us] of [...byName].sort((a, b) => b[1] - a[1]).slice(0, 80)) lines.push(`${perFrame(us)}  ${k}`)
+  return lines.join('\n') + '\n'
 }
 
 async function summarizeProfile(profile) {

@@ -13,7 +13,7 @@
 // loaded; otherwise, and without a pack, it draws the public GLB and PackWeapons exactly as before (D21).
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { useInstance } from '@zus/store'
@@ -25,6 +25,7 @@ import type { PlayerAnimInput, PlayerModelItem, PlayerPose, PlayerRigData } from
 import { measureThirdPersonAnchor, setThirdPersonAnchor } from '@highlander/combat/weaponAnchors'
 import { frameTime, readyExtras } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
+import { getActor } from '@highlander/scene/actorRegistry'
 import { createAnimInput, playerAnimInput } from './animState'
 
 export interface PackPlayerProps {
@@ -84,6 +85,30 @@ function applyLook(materials: THREE.Material[], opacity: number, tint: string | 
       lit.emissiveIntensity = tint ? emissive : 0
     }
   }
+}
+
+/**
+ * Hides every bone subtree that holds nothing drawable (as/perf). A player copy carries 80 to 140 bones and
+ * attachment nodes; three's render list walks every visible node each frame, while invisible nodes keep their
+ * matrices up to date (updateMatrixWorld ignores visibility), so the skeletons skin exactly as before. Nothing
+ * is attached to these copies' bones at run time.
+ */
+function hideBoneSubtrees(root: THREE.Object3D) {
+  const drawable = (node: THREE.Object3D) => {
+    let found = false
+    node.traverse(n => {
+      const o = n as THREE.Mesh & { isPoints?: boolean; isLine?: boolean; isSprite?: boolean; isCamera?: boolean; isLight?: boolean }
+      if (o.isMesh || o.isPoints || o.isLine || o.isSprite || o.isCamera || o.isLight) found = true
+    })
+    return found
+  }
+  const walk = (node: THREE.Object3D) => {
+    for (const child of node.children) {
+      if ((child as THREE.Bone).isBone && !drawable(child)) child.visible = false
+      else walk(child)
+    }
+  }
+  walk(root)
 }
 
 /** Bounds of a skinned copy in its current pose (measureThirdPersonAnchor reads them). */
@@ -162,6 +187,7 @@ const MergedPiece = React.memo((props: PieceProps) => {
       return null
     }
     const materials = ownMaterials(copy)
+    hideBoneSubtrees(copy)
     let meshes = 0
     copy.traverse(node => {
       if ((node as THREE.Mesh).isMesh && node.visible) meshes++
@@ -232,6 +258,10 @@ interface MountedPlayer {
   input: PlayerAnimInput
   body: BodyContext
   drawn: () => boolean
+  /** out of view (as/perf culling): the bones keep the pose of the last frame in view */
+  culled: () => boolean
+  /** evaluates the input and pose of the current frame without posing the bones (the probe, for culled players) */
+  refresh: () => void
 }
 
 const mountedPlayers = new Set<MountedPlayer>()
@@ -252,11 +282,15 @@ function registerProbe() {
     Array.from(mountedPlayers)
       .sort((a, b) => a.entityId - b.entityId)
       .map(m => {
+        // a culled player's input and pose are those of the current frame too, as when he is drawn
+        const culled = m.culled()
+        if (culled) m.refresh()
         const pelvis = m.body.bones[0]
         return {
           entityId: m.entityId,
           classKey: m.classKey,
           drawn: m.drawn(),
+          culled,
           slot: m.input.slot,
           deployed: m.input.deployed,
           crouch: +m.input.crouch.toFixed(3),
@@ -281,6 +315,49 @@ function registerProbe() {
 
 const _frame = { tick: 0, tickF: 0 }
 
+// ---- view culling (as/perf) ---------------------------------------------------------------------------------
+// The pack meshes are not frustum culled by three (frustumCulled false: the bind-pose bounds do not hold the pose),
+// so every player was posed, skinned and drawn every frame, on screen or not. A player whose bounding sphere (128
+// units around his centre, which holds every pose with the weapon) is outside the view frustum now skips the pose
+// and draws nothing. The frame callback decides with the camera it sees; the final check runs right before the
+// render with the camera of that render (scene.onBeforeRender, after three's matrix update): a player that turns
+// out to be in view is posed there, at the same tickF, so what is drawn never depends on the order of the frame
+// callbacks. The pose is a pure function of tickF, so culling changes nothing that is drawn (D12).
+
+const CULL_RADIUS = 128
+const CULL_LIFT = 41
+const _frustum = new THREE.Frustum()
+const _viewProj = new THREE.Matrix4()
+const _sphere = new THREE.Sphere()
+
+function inView(camera: THREE.Camera, center: THREE.Vector3): boolean {
+  _viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  _frustum.setFromProjectionMatrix(_viewProj)
+  _sphere.center.copy(center)
+  _sphere.radius = CULL_RADIUS
+  return _frustum.intersectsSphere(_sphere)
+}
+
+interface CullEntry {
+  /** before the render: hide when out of view, pose now when posing was skipped but the player is in view */
+  check(camera: THREE.Camera): void
+}
+const cullEntries = new Set<CullEntry>()
+const hookedScenes = new WeakSet<THREE.Scene>()
+
+function hookScene(scene: THREE.Scene) {
+  if (hookedScenes.has(scene)) return
+  hookedScenes.add(scene)
+  const previous = scene.onBeforeRender
+  // three calls a scene's onBeforeRender as (renderer, scene, camera, renderTarget)
+  scene.onBeforeRender = function (this: THREE.Scene, ...args: unknown[]) {
+    ;(previous as (...a: unknown[]) => void).apply(this, args)
+    const camera = args[2] as THREE.Camera
+    for (const entry of cullEntries) entry.check(camera)
+  } as THREE.Scene['onBeforeRender']
+}
+const _center = new THREE.Vector3()
+
 export const PackPlayer = React.memo((props: PackPlayerProps) => {
   const { handle, item, entityId, classKey, team, visible, opacity, tint, emissive, weaponDef, loadoutDefs, scaleZ } = props
   const visibleRef = useRef(visible)
@@ -292,6 +369,7 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
     const rig = playerRig(handle, item)
     const copy = handle.instantiate(packTeamSkin(item, team === 'blue' ? 3 : 2))
     const materials = ownMaterials(copy)
+    hideBoneSubtrees(copy)
     const bones = copyBones(copy, rig.bones)
     // bones are posed through position and quaternion only: drop the quaternion -> Euler sync three runs on every
     // write (nothing reads a bone's `rotation`)
@@ -315,7 +393,17 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
 
   useEffect(() => {
     registerProbe()
-    const row: MountedPlayer = { entityId, classKey, input: body.input, body, drawn: () => visibleRef.current }
+    const row: MountedPlayer = {
+      entityId,
+      classKey,
+      input: body.input,
+      body,
+      drawn: () => visibleRef.current,
+      culled: () => visibleRef.current && groupRef.current?.visible === false,
+      refresh: () => {
+        evaluate(frameTime(_frame).tickF)
+      },
+    }
     mountedPlayers.add(row)
     return () => {
       mountedPlayers.delete(row)
@@ -329,17 +417,89 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
     applyLook(body.materials, opacity, tint, emissive)
   }, [body, opacity, tint, emissive])
 
-  useFrame(() => {
-    if (!visibleRef.current) return
+  const groupRef = useRef<THREE.Group>(null)
+  const scene = useThree(state => state.scene)
+  // the tickF of this frame while the frame callback skipped the pose (out of view), else null
+  // drawnOnce: a copy is drawn at least once before it may be culled, so its materials get their programs while
+  // it mounts (as without culling), not in the frame it first comes into view
+  const posed = useRef<{ deferred: number | null; drawnOnce: boolean }>({ deferred: null, drawnOnce: false })
+
+  const evaluate = (tickF: number): boolean => {
     const demo = useInstance.getState().parsedDemo
-    if (!demo) return
+    if (!demo) return false
     const p = demo.playerIndexOfEntity(entityId)
-    if (p < 0) return
-    const { tickF } = frameTime(_frame)
+    if (p < 0) return false
     playerAnimInput({ demo, extras: readyExtras(), p, tickF, item, weaponDef: defRef.current }, body.input)
     evaluatePlayerPose(body.rig, body.input, body.pose)
+    return true
+  }
+
+  const pose = (tickF: number): boolean => {
+    if (!evaluate(tickF)) return false
     applyPlayerPose(body.bones, body.pose)
     for (const m of body.mergers) m.merge()
+    return true
+  }
+
+  const setDrawn = (group: THREE.Group, drawn: boolean) => {
+    group.visible = drawn
+    // hidden: three's scene update skips the copy's bones too
+    group.matrixWorldAutoUpdate = drawn
+  }
+
+  useEffect(() => {
+    hookScene(scene)
+    posed.current.drawnOnce = false
+    const entry: CullEntry = {
+      check(camera) {
+        const group = groupRef.current
+        if (!group || !visibleRef.current) return
+        const actor = getActor(entityId)?.group
+        if (!actor) return
+        _center.setFromMatrixPosition(actor.matrixWorld)
+        _center.z += CULL_LIFT
+        const seen = inView(camera, _center) || !posed.current.drawnOnce
+        if (seen && group.visible) posed.current.drawnOnce = true
+        if (!seen) {
+          if (group.visible) setDrawn(group, false)
+          return
+        }
+        if (posed.current.deferred !== null) {
+          // skipped by the frame callback, but in view of this render: pose it now, at the same tickF
+          const tickF = posed.current.deferred
+          posed.current.deferred = null
+          pose(tickF)
+          setDrawn(group, true)
+          group.updateMatrixWorld(true)
+        } else if (!group.visible) {
+          setDrawn(group, true)
+          group.updateMatrixWorld(true)
+        }
+      },
+    }
+    cullEntries.add(entry)
+    return () => {
+      cullEntries.delete(entry)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, body, entityId])
+
+  useFrame(({ camera }) => {
+    posed.current.deferred = null
+    if (!visibleRef.current) return
+    const { tickF } = frameTime(_frame)
+    const group = groupRef.current
+    const actor = getActor(entityId)?.group
+    if (group && actor) {
+      _center.copy(actor.position)
+      _center.z += CULL_LIFT
+      if (posed.current.drawnOnce && !inView(camera, _center)) {
+        posed.current.deferred = tickF
+        if (group.visible) setDrawn(group, false)
+        return
+      }
+    }
+    pose(tickF)
   })
 
   const held = thirdPersonModels(classKey, weaponDef)
@@ -357,7 +517,7 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
 
   const look = { classKey, team, opacity, tint, emissive, body }
   return (
-    <group name="packPlayer" scale={[1, 1, 1 / (scaleZ || 1)]}>
+    <group ref={groupRef} name="packPlayer" scale={[1, 1, 1 / (scaleZ || 1)]}>
       <primitive object={body.copy} />
       {held.weapon && <MergedPiece key={`w:${held.weapon}`} modelKey={held.weapon} kind="weapon" bodyOnly={false} anchorDef={weaponDef} {...look} />}
       {held.wearable && <MergedPiece key={`e:${held.wearable}`} modelKey={held.wearable} kind="wearable" bodyOnly={false} {...look} />}

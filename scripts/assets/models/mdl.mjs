@@ -25,3 +25,68 @@ export function mdlPoseParams(buf) {
   }
   return out
 }
+
+// Sequence facts for the player animation export (as/tpanim): the blend parameters, pose keys, per-bone weights and
+// fade times of every local sequence (mstudioseqdesc_t, 212 bytes), and each local animation's motion over one
+// loop (mstudioanimdesc_t, 100 bytes, its last mstudiomovement_t). Offsets are relative to each struct.
+//
+//   mdlSequences(buf)  -> [{ name, flags, groupSize, paramIndex, paramStart, paramEnd, poseKeys, weights, fadeIn, fadeOut }]
+//   mdlAnimMotion(buf) -> [{ name, frames, fps, motion: [x, y, z] | null }]
+
+function header(buf) {
+  if (!buf || buf.length < 308 || buf.toString('latin1', 0, 4) !== 'IDST') throw new Error('not an MDL file')
+  const version = buf.readInt32LE(4)
+  if (version < 44 || version > 49) throw new Error(`MDL version ${version} is not supported`)
+  return { bones: buf.readInt32LE(156) }
+}
+
+export function mdlSequences(buf) {
+  const { bones } = header(buf)
+  const count = buf.readInt32LE(188)
+  const index = buf.readInt32LE(192)
+  const out = []
+  for (let i = 0; i < count; i++) {
+    const at = index + i * 212
+    if (at + 212 > buf.length) break
+    const groupSize = [buf.readInt32LE(at + 68), buf.readInt32LE(at + 72)]
+    const posekey = buf.readInt32LE(at + 160)
+    const poseKeys = []
+    if (posekey > 0) for (let k = 0; k < groupSize[0] + groupSize[1]; k++) poseKeys.push(buf.readFloatLE(at + posekey + 4 * k))
+    const wl = buf.readInt32LE(at + 156)
+    const weights = []
+    if (wl > 0 && at + wl + bones * 4 <= buf.length) for (let b = 0; b < bones; b++) weights.push(buf.readFloatLE(at + wl + 4 * b))
+    out.push({
+      name: readName(buf, at + buf.readInt32LE(at + 4)),
+      flags: buf.readInt32LE(at + 12),
+      groupSize,
+      paramIndex: [buf.readInt32LE(at + 76), buf.readInt32LE(at + 80)],
+      paramStart: [buf.readFloatLE(at + 84), buf.readFloatLE(at + 88)],
+      paramEnd: [buf.readFloatLE(at + 92), buf.readFloatLE(at + 96)],
+      poseKeys,
+      weights,
+      fadeIn: buf.readFloatLE(at + 104),
+      fadeOut: buf.readFloatLE(at + 108),
+    })
+  }
+  return out
+}
+
+export function mdlAnimMotion(buf) {
+  header(buf)
+  const count = buf.readInt32LE(180)
+  const index = buf.readInt32LE(184)
+  const out = []
+  for (let i = 0; i < count; i++) {
+    const at = index + i * 100
+    if (at + 100 > buf.length) break
+    const moves = buf.readInt32LE(at + 20)
+    const mi = buf.readInt32LE(at + 24)
+    let motion = null
+    if (moves > 0 && mi > 0) {
+      const m = at + mi + (moves - 1) * 44
+      if (m + 44 <= buf.length) motion = [0, 1, 2].map(j => buf.readFloatLE(m + 32 + 4 * j))
+    }
+    out.push({ name: readName(buf, at + buf.readInt32LE(at + 4)), fps: buf.readFloatLE(at + 8), frames: buf.readInt32LE(at + 16), motion })
+  }
+  return out
+}

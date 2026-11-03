@@ -69,6 +69,20 @@ export function loadSchema(file) {
       if (def.attach_to_hands !== '1' && def.attach_to_hands_vm_only !== '1') return { skip: 'not attached to hands', model }
       return { model, name: def.name ?? null }
     },
+    /**
+     * The third-person anim slot TF2 plays for item `d` on `cls` (upper case: 'PRIMARY', 'MELEE_ALLCLASS', ...):
+     * `anim_slot` unless empty or FORCE_NOT_USED, else the class's loadout slot from used_by_classes, else
+     * item_slot. null when `cls` does not use the item.
+     */
+    animSlot(d, cls) {
+      const def = defOf(d)
+      if (!def || !usedBy(def, cls)) return null
+      const anim = typeof def.anim_slot === 'string' ? def.anim_slot.trim() : ''
+      if (anim && anim.toUpperCase() !== 'FORCE_NOT_USED') return anim.toUpperCase()
+      const perClass = Object.entries(def.used_by_classes ?? {}).find(([k]) => lower(k) === cls)?.[1]
+      if (typeof perClass === 'string' && perClass !== '1' && perClass) return perClass.toUpperCase()
+      return typeof def.item_slot === 'string' && def.item_slot ? def.item_slot.toUpperCase() : null
+    },
     resolveWorld(d, cls) {
       const def = defOf(d)
       if (!def) return { skip: 'not in the schema' }

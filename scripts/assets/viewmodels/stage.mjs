@@ -37,7 +37,7 @@ const SKIP_SEQUENCE = /inspect|^passtime_|taunt|^r_handposes$/i
 const round = v => Math.round(v * 1e5) / 1e5
 const lower = s => String(s).toLowerCase()
 
-function attachmentsOf(studio) {
+export function attachmentsOf(studio) {
   const bones = studio.bones ?? []
   const out = {}
   for (const a of studio.attachments ?? []) {
@@ -48,7 +48,7 @@ function attachmentsOf(studio) {
 }
 
 /** Texture keys of the first `skins` skin families (all by default); `materials` from studioMaterials. */
-function textureKeys(studio, materials, skins = Infinity) {
+export function textureKeys(studio, materials, skins = Infinity) {
   const families = (studio.skinFamilies ?? []).slice(0, skins).map(f => f.textureIndices)
   const keys = new Set()
   for (const f of families.length ? families : [materials.map((_, i) => i)]) for (const i of f) if (materials[i]?.key) keys.add(materials[i].key)
@@ -56,7 +56,7 @@ function textureKeys(studio, materials, skins = Infinity) {
 }
 
 /** The models stage's material hook: flat albedo plus `extras.dribble.texture` (contract 12.3). */
-function materialHook(studio, materials) {
+export function materialHook(studio, materials) {
   const families = (studio.skinFamilies ?? []).map(f => f.textureIndices)
   const byName = new Map(materials.map((m, i) => [m.name, i]))
   return doc => {
@@ -95,7 +95,7 @@ export function mergeSequences(groups) {
 }
 
 /** Exports `key` and its includes depth first: [{ key, studio, glbPath }], the model itself first. */
-function exportWithIncludes(ctx, bspToGlb, key, work, seen = new Set()) {
+export function exportWithIncludes(ctx, bspToGlb, key, work, seen = new Set()) {
   if (seen.has(key)) return []
   seen.add(key)
   const dir = path.join(work, String(seen.size))
@@ -111,7 +111,7 @@ function exportWithIncludes(ctx, bspToGlb, key, work, seen = new Set()) {
 }
 
 /** Copies one animation of `srcDoc` into `doc`, channels retargeted to `doc`'s nodes by name. */
-function copyAnimation(doc, src, name, nodeByName) {
+export function copyAnimation(doc, src, name, nodeByName) {
   const buffer = doc.getRoot().listBuffers()[0] ?? doc.createBuffer()
   const accessors = new Map()
   const copy = a => {
@@ -396,7 +396,7 @@ export async function run(ctx) {
 }
 
 /** Texture items for `keys`, as the models stage writes them (contract 12.3); reuses other stages' items. */
-async function exportTextures(ctx, keys, materials, wanted, stats, maxSize) {
+export async function exportTextures(ctx, keys, materials, wanted, stats, maxSize) {
   for (const tkey of keys) {
     if (wanted.has(tkey)) continue
     wanted.add(tkey)

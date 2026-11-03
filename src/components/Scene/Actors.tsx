@@ -31,6 +31,10 @@ import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { getPovSubject } from '@highlander/pov/subject'
 import { PackWeapons } from '@highlander/players/PackWeapon'
+import { PackPlayer } from '@highlander/players/PackPlayer'
+import { useAssetPack, useAssetPackActive } from '@pack/pack'
+import { usePackModel } from '@pack/models'
+import { playerModelItem, playerModelKey } from '@pack/playerAnim'
 import {
   declutterPlates,
   nameplateExtraEqual,
@@ -83,6 +87,9 @@ export interface PlayerModelProps {
   weaponDef?: number
   /** Loadout defs, comma separated, for the pack's extra wearables */
   loadoutDefs?: string
+  /** Entity id and playerBody crouch scale, for the pack's animated player (PackPlayer) */
+  entityId?: number
+  scaleZ?: number
 }
 
 type EmissiveMaterial = THREE.Material & { emissive?: THREE.Color; emissiveIntensity?: number }
@@ -115,7 +122,7 @@ const cloneModel = (source: THREE.Object3D) => {
 }
 
 export const PlayerModel = React.memo((props: PlayerModelProps) => {
-  const { team, classId, visible, opacity = 1, tint = null, emissive = 0, weaponDef = -1, loadoutDefs = '' } = props
+  const { team, classId, visible, opacity = 1, tint = null, emissive = 0, weaponDef = -1, loadoutDefs = '', entityId = -1, scaleZ = 1 } = props
 
   // Note: currently RED and BLU models are separate GLTF files.
   // It would be awesome if we could use a single GLTF and swap the material/textures.
@@ -150,6 +157,37 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
       }
     }
   }, [model, opacity, tint, emissive])
+
+  // With a pack (and Highlander on), the animated class model replaces the public GLB once it has loaded
+  const packActive = useAssetPackActive()
+  const pack = useAssetPack()
+  const hlEnabled = useHlSetting<boolean>('enabled')
+  const classKey = CLASS_MAP[classId] ?? ''
+  const packItem = packActive && hlEnabled && entityId >= 0 ? playerModelItem(pack.manifest?.items, classKey) : null
+  const packHandle = usePackModel(packItem ? playerModelKey(classKey) : null)
+
+  if (packHandle && packItem) {
+    return (
+      <group visible={visible}>
+        <Select enabled>
+          <PackPlayer
+            handle={packHandle}
+            item={packItem}
+            entityId={entityId}
+            classKey={classKey}
+            team={team}
+            visible={!!visible}
+            opacity={opacity}
+            tint={tint}
+            emissive={emissive}
+            weaponDef={weaponDef}
+            loadoutDefs={loadoutDefs}
+            scaleZ={scaleZ}
+          />
+        </Select>
+      </group>
+    )
+  }
 
   return (
     <group visible={visible} rotation={[Math.PI * 0.5, Math.PI * 0.5, 0]}>
@@ -499,6 +537,8 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
               emissive={fx.emissive}
               weaponDef={fx.weaponDef}
               loadoutDefs={fx.loadoutDefs}
+              entityId={user.entityId}
+              scaleZ={fx.scaleZ}
             />
           ) : null}
         </Suspense>

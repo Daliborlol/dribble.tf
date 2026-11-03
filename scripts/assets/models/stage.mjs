@@ -11,6 +11,9 @@
 // viewmodels stage) the stage adds the world models no other stage exports (role `weapon:world`, textures at 512
 // for skins 0 and 1) and one `thirdperson:<class>` pose item per class; without a schema it builds neither.
 //
+// Animated player models (players.mjs, as/tpanim): with the schema, one `models/player/<class>.mdl` item per class
+// (role `player:model`) with the third-person clips; --set playerModels=false skips them.
+//
 // Options (--set): modelsOnly=["models/...mdl", ...] limits the list (tests; no third-person items),
 // textureMaxSize=<px> (1024), itemsGame=<items_game.txt>.
 
@@ -26,6 +29,7 @@ import { mdlPoseParams } from './mdl.mjs'
 import { exportVtf } from './texture-export.mjs'
 import { loadSchema } from '../lib/schema.mjs'
 import { thirdPersonModels, worldWeaponEntries, thirdPersonPoses } from './thirdperson.mjs'
+import { buildPlayerModels } from './players.mjs'
 
 const TEXTURE_EXPORT_VERSION = 1
 const MODEL_EXPORT_VERSION = 3 // 2: rest pose from the default sequence; 3: triangle winding reversed
@@ -283,6 +287,16 @@ export async function run(ctx) {
     stats.thirdPersonCoverage = { defs: defs.size, pairs, worldModels: list.filter(e => e.role === 'weapon:world').length, skipped: thirdPerson.skipped }
     ctx.log(`third person: ${defs.size} defs, ${pairs} def/class pairs, ${stats.thirdPersonCoverage.worldModels} world-only models`)
     for (const [cls, s] of Object.entries(stats.thirdPerson)) ctx.log(s.error ? `pose ${cls} failed: ${s.error}` : `pose ${cls}: ${s.skipped ? 'unchanged' : `${s.clip}@${s.frame}, rms ${s.rms}, ${s.pairs} vertex pairs`}`)
+  }
+  // Animated player models (as/tpanim): need the schema for the anim slots, like the third-person weapons
+  if (thirdPerson && set.playerModels !== false) {
+    const players = await buildPlayerModels(ctx, { bspToGlb, tool, schema, wanted, textureMaxSize: Number(set.playerTextureMaxSize ?? 1024) })
+    stats.players = players.players
+    for (const [cls, s] of Object.entries(players.players)) ctx.log(s.error ? `player ${cls} failed: ${s.error}` : `player ${cls}: ${s.skipped ? 'unchanged' : `${s.slots.join(',')}; ${s.clips} clips, ${(s.bytes / 1e6).toFixed(2)} MB`}`)
+    stats.textures.built += players.textures.built
+    stats.textures.skipped += players.textures.skipped
+    stats.textures.reused += players.textures.reused
+    stats.textures.unsupported.push(...players.textures.unsupported)
   }
   for (const [k, item] of Object.entries(ctx.manifest.items)) if (item.stage === ctx.stage && !wanted.has(k)) ctx.removeItem(k)
   ctx.log(`${stats.built} models built, ${stats.skipped} unchanged, ${stats.failed.length} failed; textures ${stats.textures.built} built, ${stats.textures.skipped} unchanged, ${stats.textures.reused} reused, ${stats.textures.unsupported.length} unsupported`)

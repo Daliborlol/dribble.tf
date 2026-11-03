@@ -33,6 +33,11 @@ export interface PackTextureRecord {
   vertexAlpha?: number
   /** WorldVertexTransition: the second base texture, blended by the vertex attribute. */
   blend?: { key: string; attribute: string }
+  /**
+   * $detail (as/mapfx): the detail texture, its UV scale, blend factor and mode (0 mod2x, 1 additive, 7 mod2x,
+   * 8 multiply), and for $seamless_detail the world-space triplanar scale.
+   */
+  detail?: { key: string; scale: number; factor: number; mode: number; seamless?: number }
 }
 
 export interface PackTextureItem extends AssetPackManifestItem {

@@ -56,7 +56,7 @@ import {
   isSharedMapMaterial,
 } from '@highlander/map/bspMaterials'
 
-export type StaticPropsSource = 'pak' | 'stock'
+export type StaticPropsSource = 'pak' | 'stock' | 'sky'
 
 export interface StaticPropsProps {
   /** props.glb of the map folder (conversion.json files.props), or the pack's props-stock.glb; undefined when none. */
@@ -66,6 +66,11 @@ export interface StaticPropsProps {
   source?: StaticPropsSource
   /** Pack item key of a pack file (its pack path, maps/<folder>/props-stock.glb or props-pak.glb). */
   itemKey?: string
+  /**
+   * 'sky' (as/mapfx, props-sky.glb): called once the materials are applied, so the 3D skybox can give the props
+   * its render order and opaque materials; also turns their raycasts off.
+   */
+  onPrepared?: (root: THREE.Object3D) => void
 }
 
 /** A loaded file: its root, the pack textures it holds (released with it) and the materials made for its warm-up. */
@@ -109,11 +114,11 @@ const emptyCurrent = (): PropsCurrent => ({
 })
 
 /** What each copy shows right now, for the probes (one World, so one entry per source). */
-const currents: Record<StaticPropsSource, PropsCurrent> = { pak: emptyCurrent(), stock: emptyCurrent() }
+const currents: Record<StaticPropsSource, PropsCurrent> = { pak: emptyCurrent(), stock: emptyCurrent(), sky: emptyCurrent() }
 
 /** Loads one props file: public props.glb directly, a stock file through the pack item registry. */
 function loadPropsFile(source: StaticPropsSource, url: string, itemKey: string | undefined): Promise<THREE.Group> {
-  if (source === 'stock' || itemKey) {
+  if (source !== 'pak' || itemKey) {
     if (!itemKey) return Promise.reject(new Error('stock props need a pack item key'))
     return loadPackItem(itemKey, loadPackGltf).then(gltf => {
       // null: failed before or now (the registry warned once), or skipped. Nothing draws.
@@ -129,7 +134,7 @@ function loadPropsFile(source: StaticPropsSource, url: string, itemKey: string |
 
 class PackItemUnavailable extends Error {}
 
-export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: StaticPropsProps) => {
+export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey, onPrepared }: StaticPropsProps) => {
   const current = currents[source]
   const enabled = useHlSetting<boolean>('map.staticProps') ?? true
   const brightness = useHlSetting<number>('map.brightness') ?? 1
@@ -300,6 +305,7 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey }: S
     }
     materialsRef.current = materials
     setInstanceLight(loaded.root, materialMode !== 'wireframe')
+    onPrepared?.(loaded.root)
     current.materialMode = materialMode
     return () => {
       if (materialsRef.current === materials) materialsRef.current = null
@@ -381,6 +387,8 @@ function packTextureKeys(root: THREE.Object3D): string[] {
     for (const material of materials) {
       const key = material?.userData?.dribble?.texture?.key
       if (typeof key === 'string') keys.add(key.toLowerCase())
+      const detail = material?.userData?.dribble?.texture?.detail?.key
+      if (typeof detail === 'string') keys.add(detail.toLowerCase())
     }
   })
   return [...keys].sort()
@@ -670,14 +678,26 @@ export function usePackPakProps(
   return usePackPropsFile(folder, conversion, 'propsPak')
 }
 
+/**
+ * The pack's props-sky.glb (as/mapfx: the static props inside the 3D skybox) of a pack world, or null: as
+ * usePackPakProps, and also null while assets.skybox3d is off.
+ */
+export function usePackSkyProps(
+  folder: string | undefined,
+  conversion: MapConversion | null
+): { url: string; key: string } | null {
+  return usePackPropsFile(folder, conversion, 'propsSky')
+}
+
 function usePackPropsFile(
   folder: string | undefined,
   conversion: MapConversion | null,
-  which: 'propsStock' | 'propsPak'
+  which: 'propsStock' | 'propsPak' | 'propsSky'
 ): { url: string; key: string } | null {
   const pack = useAssetPack()
   const enabled = useAssetSetting('enabled')
   const stockProps = useAssetSetting(which === 'propsStock' ? 'stockProps' : 'mapTextures')
+  const sky = useAssetSetting('skybox3d')
   const entry = folder && pack.status === 'ready' ? pack.manifest?.maps?.[folder] : undefined
   const identity = entry ? publicMapIdentity(conversion) : null
   const stale =
@@ -693,7 +713,7 @@ function usePackPropsFile(
     for (const file of Object.values(entry.files ?? {})) skipAssetItem(file, 'stale map entry')
   }, [stale, folder, entry])
 
-  if (!folder || !entry || stale || !enabled || !stockProps) return null
+  if (!folder || !entry || stale || !enabled || !stockProps || (which === 'propsSky' && !sky)) return null
   const file = entry.files?.[which]
   const url = file ? assetPackFile(file) : null
   return file && url ? { url, key: file } : null

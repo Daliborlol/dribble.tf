@@ -31,7 +31,12 @@ export interface BspMaterialInfo {
   lightmap: boolean
   hiddenByDefault?: boolean // respawn-room visualizers: shown only with settings map.respawnVisualizers
   texture?: PackTextureRecord // textured pack worlds only
+  /** kind 'overlay' (pack worlds, convert-bsp.mjs --overlays): 'modulate' for DecalModulate materials. */
+  overlay?: { blend?: 'alpha' | 'modulate'; order?: number }
 }
+
+/** Overlays without their pack texture draw nothing (their flat albedo would be a coloured rectangle). */
+const BSP_OVERLAY_HIDDEN_MATERIAL = new THREE.MeshBasicMaterial({ visible: false })
 
 export const MAP_WIREFRAME_MATERIAL = new THREE.MeshStandardMaterial({
   color: '#333333',
@@ -50,6 +55,7 @@ const BSP_UNTEXTURED_TRANSLUCENT_MATERIAL = new THREE.MeshLambertMaterial({
 
 const MODULE_MATERIALS = new Set<THREE.Material>([
   MAP_WIREFRAME_MATERIAL,
+  BSP_OVERLAY_HIDDEN_MATERIAL,
   BSP_UNTEXTURED_MATERIAL,
   BSP_UNTEXTURED_TRANSLUCENT_MATERIAL,
 ])
@@ -120,6 +126,71 @@ function addVertexBlend(material: THREE.MeshBasicMaterial, map2: THREE.Texture, 
   material.customProgramCacheKey = () => `dribble-wvt-${name}`
 }
 
+/**
+ * $detail (as/mapfx): the detail texture over the base texture, as Source's TextureCombine: mode 0 and 7 mod2x
+ * (base x mix(1, 2 x detail, factor)), 1 additive, 8 multiply. Source reads mod2x details without the sRGB
+ * decode, so the shader re-encodes the hardware-decoded sample. UVs are the base UVs x scale, or with
+ * $seamless_detail a triplanar projection of the world position x the seamless scale. Chains any earlier
+ * onBeforeCompile (the WorldVertexTransition blend).
+ */
+function addDetail(material: THREE.MeshBasicMaterial, detail: THREE.Texture, record: NonNullable<PackTextureRecord['detail']>) {
+  const previous = material.onBeforeCompile
+  const previousKey = material.customProgramCacheKey()
+  const seamless = (record.seamless ?? 0) > 0
+  const mode = record.mode === 1 ? 1 : record.mode === 8 ? 8 : 0
+  detail.wrapS = detail.wrapT = THREE.RepeatWrapping
+  material.onBeforeCompile = (shader, renderer) => {
+    previous.call(material, shader, renderer)
+    shader.uniforms.dribbleDetail = { value: detail }
+    shader.uniforms.dribbleDetailParams = {
+      value: new THREE.Vector3(seamless ? record.seamless! : record.scale || 1, record.factor ?? 1, 0),
+    }
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>\n${seamless ? 'varying vec3 vDribbleDetailPos;\nvarying vec3 vDribbleDetailNormal;' : ''}`
+      )
+      .replace(
+        '#include <project_vertex>',
+        seamless
+          ? `#include <project_vertex>
+vec4 dribbleDetailPos = vec4(transformed, 1.0);
+vec3 dribbleDetailNormal = normal;
+#ifdef USE_INSTANCING
+dribbleDetailPos = instanceMatrix * dribbleDetailPos;
+dribbleDetailNormal = mat3(instanceMatrix) * dribbleDetailNormal;
+#endif
+vDribbleDetailPos = (modelMatrix * dribbleDetailPos).xyz;
+vDribbleDetailNormal = normalize(mat3(modelMatrix) * dribbleDetailNormal);`
+          : '#include <project_vertex>'
+      )
+    const sample = seamless
+      ? `vec3 dw = abs(vDribbleDetailNormal); dw = dw / max(dw.x + dw.y + dw.z, 1e-4);
+vec3 dp = vDribbleDetailPos * dribbleDetailParams.x;
+vec4 detailSample = texture2D(dribbleDetail, dp.yz) * dw.x + texture2D(dribbleDetail, dp.zx) * dw.y + texture2D(dribbleDetail, dp.xy) * dw.z;`
+      : 'vec4 detailSample = texture2D(dribbleDetail, vMapUv * dribbleDetailParams.x);'
+    const combine =
+      mode === 1
+        ? 'diffuseColor.rgb += detailRaw * dribbleDetailParams.y;'
+        : mode === 8
+          ? 'diffuseColor.rgb *= mix(vec3(1.0), detailSample.rgb, dribbleDetailParams.y);'
+          : 'diffuseColor.rgb *= mix(vec3(1.0), 2.0 * detailRaw, dribbleDetailParams.y);'
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>\nuniform sampler2D dribbleDetail;\nuniform vec3 dribbleDetailParams;\n${seamless ? 'varying vec3 vDribbleDetailPos;\nvarying vec3 vDribbleDetailNormal;' : ''}`
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+${sample}
+vec3 detailRaw = ${detail.colorSpace === THREE.SRGBColorSpace ? 'sRGBTransferOETF(vec4(detailSample.rgb, 1.0)).rgb' : 'detailSample.rgb'};
+${combine}`
+      )
+  }
+  material.customProgramCacheKey = () => `${previousKey}|dribble-detail-${mode}-${seamless ? 's' : 'u'}`
+}
+
 export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOptions): BspMaterials {
   const { mode, lightmap, lightmapRange } = options
   const created = new Map<string, THREE.MeshBasicMaterial>()
@@ -127,6 +198,9 @@ export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOpti
   const original = new Set<THREE.Material>()
 
   const materialFor = (info: BspMaterialInfo): THREE.Material => {
+    if (info.kind === 'overlay' && (mode !== 'textured' || !info.texture || !textures?.get(info.texture.key))) {
+      return BSP_OVERLAY_HIDDEN_MATERIAL
+    }
     if (mode === 'wireframe') return MAP_WIREFRAME_MATERIAL
     const transparent = info.kind !== 'opaque' && info.kind !== 'unlit'
     if (mode === 'untextured') {
@@ -157,9 +231,30 @@ export function applyBspMaterials(root: THREE.Object3D, options: BspMaterialOpti
           else if (transparent) material.opacity = 1
         }
         if (map2) addVertexBlend(material, packTextureForChannel(map2, record.uv ?? 0), record.blend!.attribute)
+        const detailMap = record.detail ? textures?.get(record.detail.key.toLowerCase()) ?? null : null
+        if (detailMap && record.detail) addDetail(material, packTextureForChannel(detailMap, record.uv ?? 0), record.detail)
+        if (info.kind === 'overlay') {
+          // info_overlay (as/mapfx): drawn over the face below without writing depth, pulled towards the camera
+          // by a polygon offset (the geometry is also lifted 0.5 units). $alpha scales the texture's alpha;
+          // DecalModulate multiplies the surface by 2 x the texture (Source's mod2x).
+          material.polygonOffset = true
+          material.polygonOffsetFactor = -1
+          material.polygonOffsetUnits = -4
+          material.depthWrite = false
+          if (record.alpha !== 'test') {
+            material.transparent = true
+            material.opacity = record.flatAlpha ?? 1
+          }
+          if (info.overlay?.blend === 'modulate') {
+            material.blending = THREE.CustomBlending
+            material.blendSrc = THREE.DstColorFactor
+            material.blendDst = THREE.SrcColorFactor
+            material.lightMap = null
+          }
+        }
         material.name = `dribble_${info.kind}${lit ? '_lit' : ''}:${record.key}`
         material.userData.dribbleLit = lit
-        material.userData.dribble = { kind: info.kind, lightmap: lit, texture: record }
+        material.userData.dribble = { kind: info.kind, lightmap: lit, texture: record, ...(info.overlay ? { overlay: info.overlay } : {}) }
         created.set(key, material)
       }
       return material

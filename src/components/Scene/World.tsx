@@ -30,8 +30,9 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import '@highlander/map/probes'
-import { StaticProps, usePackPakProps, useStockProps } from '@highlander/map/StaticProps'
-import { getAssetSetting } from '@pack/hooks'
+import { StaticProps, usePackPakProps, usePackSkyProps, useStockProps } from '@highlander/map/StaticProps'
+import { Skybox3D } from '@highlander/map/Skybox3D'
+import { getAssetSetting, useAssetSetting } from '@pack/hooks'
 import { getAssetItem, loadPackItem, subscribeAssetItems } from '@pack/items'
 import { useMapPropPoses } from '@pack/mapPropPoses'
 import { loadPackGltf, warmUpObject } from '@pack/loaders'
@@ -536,11 +537,19 @@ export const World = (props: WorldProps) => {
     return state === 'failed' || state === 'skipped'
   })
   const pakPropsDrawn = pakProps && !pakUnavailable ? pakProps : null
+  // The 3D skybox and its props (as/mapfx): pack worlds only, while assets.enabled and assets.skybox3d are on.
+  const skyboxSetting = useAssetSetting('skybox3d')
+  const assetsEnabled = useAssetSetting('enabled')
+  const skybox3d = skyboxSetting && assetsEnabled
+  const skyProps = usePackSkyProps(loadedMap?.pack ? loadedMap.folder : undefined, loadedMap?.conversion ?? null)
 
   return (
     // Account for valve maps using different axis system
     <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]}>
       {mapModel ? <primitive object={mapModel} /> : null}
+      {loadedMap?.pack && skybox3d && (mode ?? 'textured') === 'textured' ? (
+        <Skybox3D key={loadedMap.root.uuid} root={loadedMap.root} props={skyProps} mode={mode ?? 'textured'} />
+      ) : null}
       {mapOverlay ? <primitive object={mapOverlay} /> : null}
       {pakPropsDrawn ? (
         <StaticProps
@@ -863,10 +872,11 @@ async function loadPackWorld(
   gltf.scene.traverse(node => {
     const material = (node as THREE.Mesh).material as THREE.Material | undefined
     const record = (material && !Array.isArray(material) ? material.userData?.dribble?.texture : null) as
-      | { key?: string; blend?: { key?: string } }
+      | { key?: string; blend?: { key?: string }; detail?: { key?: string } }
       | null
     if (record?.key) keys.add(record.key)
     if (record?.blend?.key) keys.add(record.blend.key)
+    if (record?.detail?.key) keys.add(record.detail.key)
   })
   const textureKeys = [...keys].sort()
   const loaded = await Promise.all(textureKeys.map(key => acquirePackTexture(key, ctx.gl)))
@@ -877,6 +887,11 @@ async function loadPackWorld(
     lightmapRange: packConversion.lightmap.range ?? 1,
     brightness: ctx.brightness,
     textures,
+  })
+  // Overlays (as/mapfx) lie 0.5 units over their faces: they must not catch the world raycasts (RTS centre,
+  // stickers, floor probes), which would then report a surface that is not there.
+  gltf.scene.traverse(node => {
+    if (node.userData?.dribble?.kind === 'overlays') node.traverse(child => (child.raycast = () => {}))
   })
   await warmUpObject(ctx.gl, gltf.scene, ctx.camera, ctx.scene)
   const bound = loaded.filter(Boolean).length

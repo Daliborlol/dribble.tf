@@ -21,7 +21,7 @@ import path from 'node:path'
 import { exportStudioModel, postProcessModel, findBspToGlb, bspToGlbVersion, createModelIo } from '../lib/model-export.mjs'
 import { parseVtfHeader, VTF_FLAGS } from '../lib/vtf.mjs'
 import { sha256 } from '../lib/vpk.mjs'
-import { parseKeyValues, mergeDefinition } from '../../build-items.mjs'
+import { loadSchema } from '../lib/schema.mjs'
 import { readFirst, quatOf, studioMaterials } from '../models/stage.mjs'
 import { mdlPoseParams } from '../models/mdl.mjs'
 import { exportVtf } from '../models/texture-export.mjs'
@@ -130,54 +130,6 @@ function copyAnimation(doc, src, name, nodeByName) {
     channels++
   }
   return channels
-}
-
-/** items_game.txt -> (def, class) -> { model, attach } resolver, or null without a schema. */
-function loadSchema(file) {
-  if (!file || !fs.existsSync(file)) return null
-  const text = fs.readFileSync(file, 'utf8')
-  const schema = parseKeyValues(text).items_game
-  if (!schema?.items || !schema?.prefabs) throw new Error(`${file}: no items or prefabs`)
-  const cache = new Map()
-  const defOf = d => {
-    if (!cache.has(d)) cache.set(d, schema.items[String(d)] ? mergeDefinition(Object.create(null), schema.items[String(d)], schema.prefabs) : null)
-    return cache.get(d)
-  }
-  return {
-    sha256: sha256(Buffer.from(text)),
-    /** Spy watch viewmodels (drawn as viewmodel 1): every `v_models` watch model a spy item names, sorted. */
-    watchModels() {
-      const out = new Set()
-      for (const d of Object.keys(schema.items)) {
-        const def = defOf(d)
-        const model = typeof def?.model_player === 'string' ? lower(def.model_player).replace(/\\/g, '/') : ''
-        if (/\/v_models\/(.*\/)?v_[^/]*watch[^/]*\.mdl$/.test(model) && Object.keys(def.used_by_classes ?? {}).map(lower).includes('spy')) out.add(model)
-      }
-      return [...out].sort()
-    },
-    /** Defs of every item of `itemClass` that `cls` uses, sorted. */
-    defsOfClass(itemClass, cls) {
-      const out = []
-      for (const d of Object.keys(schema.items)) {
-        const def = defOf(d)
-        if (lower(def?.item_class ?? '') !== itemClass) continue
-        if (Object.keys(def.used_by_classes ?? {}).map(lower).includes(cls)) out.push(Number(d))
-      }
-      return out.filter(Number.isFinite).sort((a, b) => a - b)
-    },
-    resolve(d, cls) {
-      const def = defOf(d)
-      if (!def) return { skip: 'not in the schema' }
-      const used = def.used_by_classes ?? {}
-      if (!Object.keys(used).map(lower).includes(cls)) return null
-      const perClass = def.model_player_per_class && typeof def.model_player_per_class === 'object' ? def.model_player_per_class[cls] : undefined
-      let model = typeof perClass === 'string' ? perClass : def.model_player
-      if (typeof model !== 'string' || !model) return { skip: 'no model' }
-      model = lower(model.replace(/%s/g, cls)).replace(/\\/g, '/')
-      if (def.attach_to_hands !== '1' && def.attach_to_hands_vm_only !== '1') return { skip: 'not attached to hands', model }
-      return { model, name: def.name ?? null }
-    },
-  }
 }
 
 export async function run(ctx) {

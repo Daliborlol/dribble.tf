@@ -192,7 +192,7 @@ With a pack, the ten bsp-to-glb maps now draw textured world geometry and textur
 
 Experiment packs that can go once their reviews are closed: `/home/dalibor/tf2-pack-as-world`, `/home/dalibor/tf2-pack-as-props2`, and the wave-1 ones listed under "Open follow-ups".
 
-**Next: phase 4, viewmodels.** A `ViewmodelProvider` at priority 10 that reads pack viewmodels (the `viewmodels` stage and the reserved `assets.viewmodels` setting). The instance cache must take the model's ready state into its key, and old demos without local tables keep the placeholder. Still unscheduled: M3-blend texture scroll, M3-overlays and `map.skybox3d`, third-person weapon models, KTX2 hosting, light styles, other maps.
+**Next: phase 4, viewmodels.** A `ViewmodelProvider` at priority 10 that reads pack viewmodels (the `viewmodels` stage and the reserved `assets.viewmodels` setting). The instance cache must take the model's ready state into its key, and old demos without local tables keep the placeholder. Still unscheduled: M3-blend texture scroll, M3-overlays and `map.skybox3d`, KTX2 hosting, light styles, other maps.
 
 ## Wave 3 (viewmodels, contract v2.1 section 13)
 
@@ -250,7 +250,7 @@ Four polish leftovers, on `as/leftovers` from `highlander` `592ac0d`. tsc gave t
   - W-buildings: placeholder constants stay byte for byte, and the pack model's attachments are read at runtime.
   - W-projectiles, W-mapitems, and W-cart (the cart is a named or parented `prop_dynamic` that the props pass skips).
 - **Phase 4, viewmodels.** A GLB provider at priority 10 that reads the pack. The instance cache must take the model's ready state into its key. Old demos without local tables keep the placeholder.
-- **Not scheduled.** Third-person weapon models, KTX2 hosting, overlays on displacements, light styles, other maps.
+- **Not scheduled.** KTX2 hosting, overlays on displacements, light styles, other maps.
 
 ## koth_product_final in the pack (as/product)
 
@@ -259,3 +259,13 @@ Four polish leftovers, on `as/leftovers` from `highlander` `592ac0d`. tsc gave t
 - `/home/dalibor/tf2-pack` gained the entry with a maps-stage build of that map alone; the other ten entries and every other item are unchanged (checked against the previous manifest).
 - Gates: tsc 10 known errors, build passes, no-pack 1438891 baseline compare against `ref-a06e4c7` exits 0, pack run on test.dem 0 app errors and 0 failed requests. RTS at tick 1861: 225 draw calls and p95 17.7 ms with the pack world (no pack 290 and 17.9 ms).
 - Not done: the sky stays `sky_morningsnow_01` (map-meta names `sky_trainyard_01`), and lights still use the legacy `lightEnvironment`. The cliff props (`props_forest/cliff_wall_*`) look lavender-grey and low-contrast under VHV lighting.
+
+## Third-person weapons (as/tpweapons)
+
+Players hold their item's world model in third person when the pack has it. The models stage adds 28 world-only models (role `weapon:world`) and nine `thirdperson:<class>` pose items; the c_models of the viewmodels stage serve third person too. The public player GLBs have no skeleton, so the stage recovers each class's baked pose from the pack's player model by vertex pairing and a similarity fit (RMS 0.003 to 0.14 units), and the runtime bone-merges weapon copies onto it (`src/assetpack/thirdPerson.ts`, `src/highlander/players/PackWeapon.tsx`). AGENTS.md "Third-person weapons" has the details.
+
+- Coverage: 247 of 252 `WEAPON_DEFS` defs, 325 def/class pairs, all in the pack. Skipped: the invisibility watches (viewmodel only) and defs without a model.
+- Checks: tsc 10 known errors; build passes (+4.7 KB main bundle); no-pack 1438891 baseline against REF `a06e4c7` exits 0 (largest change 0.278 %, heal beam); pack runs on 1438891 with 0 app errors and 0 failed requests; RTS 284 calls and p95 19.8 ms against 272 and 18.3 ms with a pack without the items; GPU memory flat over an `assets.models` toggle and three reloads.
+- Fix on the way: `warmUpObject` no longer uses three's `compileAsync`, which threw in a timer when a model was released during its warm-up (seen on a demo reload).
+- Gaps: every weapon is held in the class's one baked stance (no per-slot or animated poses, no firing or reload motion); extra wearables of loadout items are a heuristic (on the body always, on `weapon_bone` only while held); while cloaked, opaque weapon materials blend with their texture alpha, which holds VMT masks and can thin parts of the weapon; the pose items record the public GLB's sha256 but the runtime does not compare it, so a changed public player GLB needs a pack rebuild; 1434434, 1422948 and test.dem were not shot (only 1438891); the Botkiller heads and backpacks were not seen in a shot (no local def in view).
+- Showcase pairs (before: the current pack, after: the experiment pack): `/home/dalibor/programming/personal/dribble.tf-wt/item3-showcase/tpweapons-*.png` (local only).

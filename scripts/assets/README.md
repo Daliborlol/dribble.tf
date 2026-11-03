@@ -23,7 +23,7 @@ flock <lock> npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /ho
 | option | meaning |
 |---|---|
 | `--out <dir>` | pack directory, default `~/tf2-pack`. Refused inside any git work tree, under `/tmp`, and when the directory is not empty but holds no pack. |
-| `--stages maps,models,viewmodels,particles` | stages to run, always in that order; `none` runs none. `--only` is the same option. Default: every stage that exists. |
+| `--stages maps,models,viewmodels,shading,particles` | stages to run, always in that order; `none` runs none. `--only` is the same option. Default: every stage that exists. |
 | `--maps <folder,...>` / `all` | folders for the maps stage. `all` (default) is the bsp-to-glb folders under `public/models/maps/` (`conversion.json` `pipeline: 'bsp-to-glb'`) plus `koth_product_final` (`PACK_WORLD_ONLY_MAPS`: its public folder keeps the older textured GLB, its pack entry gets a bsp-to-glb world, lightmap, `conversion.json`, `props-stock.glb` and `props-pak.glb`, without `publicProps`). An unknown folder exits 2. |
 | `--bsp-dir <dir>` | map BSPs, default the Steam install's `tf/maps/`. |
 | `--tmp <dir>` | scratch dir, default `<out>/.tmp`, removed after the build. Never under `/tmp`. |
@@ -103,6 +103,11 @@ compares the manifest byte for byte. Contract 2.3 still lists `ms` among the map
 the orchestrator was asked to amend it so map timings go to `reports/<stage>/`.
 
 ## Particles stage
+
+`shading/stage.mjs` (as/shading) reads the materials of every model item from its MDL, resolves their VMTs and
+writes `shading/materials.json` (item `shading/materials`, kind `shading`) with the VertexLitGeneric phong, rim light,
+light warp and bump parameters per base texture key, plus the bump, exponent and light-warp textures as texture items
+(srgb false; `--set shadingTextureMaxSize=<px>`, default 512). See the stage's header for the fields.
 
 `particles/stage.mjs` (as/particles) parses the .pcf files of `particles/list.mjs` with `particles/dmx.mjs` (binary
 DMX, encodings 2 to 5; the parser checks it consumed every byte) and writes `particles/systems.json` (item

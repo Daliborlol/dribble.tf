@@ -9,7 +9,7 @@ import { writeFileAtomic, sha256File } from './fsutil.mjs'
 export const MANIFEST_FORMAT = 'dribble-asset-pack'
 export const MANIFEST_VERSION = 1
 export const MANIFEST_FILE = 'manifest.json'
-export const ITEM_KINDS = ['model', 'texture', 'particles']
+export const ITEM_KINDS = ['model', 'texture', 'particles', 'shading']
 
 const TOP_ORDER = ['format', 'version', 'generator', 'builtFrom', 'options', 'maps', 'items']
 const GENERATOR_ORDER = ['version', 'commit']

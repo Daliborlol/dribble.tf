@@ -138,6 +138,11 @@ export const CanvasKeyHandler = () => {
             cycleDisguiseView()
             break
 
+          case 'x':
+            if (!highlanderOn() || event.repeat) break
+            toggleHighlanderSetting('players.xrayGlow', 'Player glow through walls')
+            break
+
           case '4':
             if (!highlanderOn() || event.repeat) break
             toggleHighlanderSetting('pov.chase', 'Chase camera')

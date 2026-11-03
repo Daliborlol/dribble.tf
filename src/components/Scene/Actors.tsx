@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useLayoutEffect, useMemo, Suspense, useState 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Select } from '@components/Scene/OutlineSelect'
+import { useXrayGlow } from '@highlander/players/xrayGlow'
 import { Html, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import { Vector } from '@components/Analyse/Data/Types'
@@ -166,9 +167,15 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
   const packItem = packActive && hlEnabled && entityId >= 0 ? playerModelItem(pack.manifest?.items, classKey) : null
   const packHandle = usePackModel(packItem ? playerModelKey(classKey) : null)
 
+  // as/shading: team-coloured glow through walls (highlander.players.xrayGlow, key X)
+  const glowRoot = useRef<THREE.Group>(null)
+  const xrayGlow = useHlSetting<boolean>('players.xrayGlow') === true && hlEnabled
+  const glowKey = packHandle && packItem ? 'pack' : 'public'
+  useXrayGlow(glowRoot, xrayGlow && entityId >= 0, team, opacity, glowKey)
+
   if (packHandle && packItem) {
     return (
-      <group visible={visible}>
+      <group ref={glowRoot} visible={visible}>
         <Select enabled>
           <PackPlayer
             handle={packHandle}
@@ -190,7 +197,7 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
   }
 
   return (
-    <group visible={visible} rotation={[Math.PI * 0.5, Math.PI * 0.5, 0]}>
+    <group ref={glowRoot} visible={visible} rotation={[Math.PI * 0.5, Math.PI * 0.5, 0]}>
       <Select enabled={!!gltf.scene}>
         <primitive object={model.object} />
         <PackWeapons

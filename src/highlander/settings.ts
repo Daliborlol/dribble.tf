@@ -5,6 +5,8 @@ export interface HighlanderSettings {
     conditions: boolean; fxUber: boolean; fxCrit: boolean; fxDebuffs: boolean; fxOverheal: boolean
     cloak: boolean; cloakFloor: number; disguiseView: 'auto' | 'true' | 'enemy' | 'pov'
     nameplateExtras: boolean; nameplateWeapon: boolean; nameplateFadeDistance: number
+    /** as/shading: team-coloured glow of players behind walls (key X) */
+    xrayGlow: boolean
   }
   buildings: { enabled: boolean; labels: boolean; sentryRange: boolean; blueprints: boolean }
   projectiles: { extraTypes: boolean; critGlow: boolean; explosions: boolean; tracers: boolean; flames: boolean; airblast: boolean }
@@ -25,6 +27,7 @@ export const DEFAULT_HIGHLANDER_SETTINGS: HighlanderSettings = {
     conditions: true, fxUber: true, fxCrit: true, fxDebuffs: true, fxOverheal: false,
     cloak: true, cloakFloor: 0.15, disguiseView: 'auto',
     nameplateExtras: true, nameplateWeapon: true, nameplateFadeDistance: 0,
+    xrayGlow: false,
   },
   buildings: { enabled: true, labels: true, sentryRange: false, blueprints: true },
   projectiles: { extraTypes: true, critGlow: true, explosions: true, tracers: true, flames: true, airblast: true },

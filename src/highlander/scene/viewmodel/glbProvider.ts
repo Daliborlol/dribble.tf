@@ -31,6 +31,7 @@ import type { Camera, Scene, WebGLRenderer } from 'three'
 
 import { CLASS_MAP } from '@constants/mappings'
 import { itemInfo } from '@highlander/items'
+import { copyCharacterShading } from '@pack/characterShading'
 import { getAssetSetting } from '@pack/hooks'
 import { acquirePackModel, packTeamSkin, releasePackModel, type PackModelHandle, type PackModelItem } from '@pack/models'
 import { getAssetPackState } from '@pack/pack'
@@ -399,6 +400,7 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
       let c = clones.get(m)
       if (!c) {
         c = m.clone()
+        copyCharacterShading(m, c)
         // The layer draws every viewmodel mesh in the transparent pass; an opaque pack material must not start
         // blending its texture's alpha, which holds the VMT's masks (phong, envmap), so it draws without blending
         // until the cloak fade needs it

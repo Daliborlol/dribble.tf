@@ -90,3 +90,19 @@ export function mdlAnimMotion(buf) {
   }
   return out
 }
+
+// Material names and $cdmaterials search dirs (studiohdr_t numtextures/textureindex at 204/208, mstudiotexture_t
+// 64 bytes with a struct-relative name, numcdtextures/cdtextureindex at 212/216 as header-relative offsets).
+//
+//   mdlMaterials(buf) -> { names: string[], dirs: string[] }
+export function mdlMaterials(buf) {
+  header(buf)
+  const at = (count, index, size) => count > 0 && count < 1024 && index > 0 && index + count * size <= buf.length
+  const names = []
+  const dirs = []
+  const nt = buf.readInt32LE(204), ti = buf.readInt32LE(208)
+  if (at(nt, ti, 64)) for (let i = 0; i < nt; i++) names.push(readName(buf, ti + i * 64 + buf.readInt32LE(ti + i * 64)))
+  const nc = buf.readInt32LE(212), ci = buf.readInt32LE(216)
+  if (at(nc, ci, 4)) for (let i = 0; i < nc; i++) dirs.push(readName(buf, buf.readInt32LE(ci + i * 4)))
+  return { names: names.filter(Boolean), dirs }
+}

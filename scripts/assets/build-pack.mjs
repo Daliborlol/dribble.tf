@@ -3,7 +3,7 @@
 // scripts/assets/README.md.
 //
 //   npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /home/dalibor/tf2-assets/hl2 --out <dir>
-//     [--stages maps,models,viewmodels,particles | none] [--maps <folder,...|all>] [--bsp-dir <dir>] [--tmp <dir on disk>]
+//     [--stages maps,models,viewmodels,shading,particles | none] [--maps <folder,...|all>] [--bsp-dir <dir>] [--tmp <dir on disk>]
 //     [--force] [--keep-tmp] [--prune] [--bsp-to-glb <binary>] [--set key=value ...] [--stage-dir <dir>]
 //
 // Stages are `scripts/assets/<stage>/stage.mjs` modules, run in the fixed order maps, models,
@@ -26,7 +26,7 @@ import { GENERATOR_VERSION } from './version.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CHECKOUT = path.resolve(HERE, '..', '..')
-export const STAGE_ORDER = ['maps', 'models', 'viewmodels', 'particles']
+export const STAGE_ORDER = ['maps', 'models', 'viewmodels', 'shading', 'particles']
 // Folders whose public files keep an older textured GLB (no bsp-to-glb conversion.json) but whose pack entry
 // carries a bsp-to-glb world, lightmap and props from the same BSP (as/product; replaces contract 1.1 D5's
 // exclusion). Without a pack, or with an entry the runtime rejects, they load their public GLB as before.
@@ -37,7 +37,7 @@ const DEFAULT_OUT = path.join(os.homedir(), 'tf2-pack')
 const DEFAULT_BSP_DIR = path.join(os.homedir(), '.local/share/Steam/steamapps/common/Team Fortress 2/tf/maps')
 
 const USAGE = `usage: build-pack.mjs --tf2 <tf dir | dir with tf/ and hl2/> [--hl2 <dir>] [--out <dir>]
-  [--stages maps,models,viewmodels,particles | none] [--only <stage,...>] [--maps <folder,...|all>]
+  [--stages maps,models,viewmodels,shading,particles | none] [--only <stage,...>] [--maps <folder,...|all>]
   [--bsp-dir <dir>] [--tmp <dir on disk>] [--force] [--keep-tmp] [--prune] [--bsp-to-glb <binary>]
   [--set key=value ...] [--stage-dir <dir>] [--help]
 

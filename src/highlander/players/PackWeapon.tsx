@@ -13,6 +13,7 @@ import React, { useEffect, useLayoutEffect, useMemo } from 'react'
 import * as THREE from 'three'
 
 import { useAssetPackActive } from '@pack/pack'
+import { copyCharacterShading } from '@pack/characterShading'
 import { packTeamSkin, usePackModel } from '@pack/models'
 import type { PackModelHandle } from '@pack/models'
 import {
@@ -59,6 +60,7 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
       let c = clones.get(m)
       if (!c) {
         c = m.clone()
+        copyCharacterShading(m, c)
         c.userData.packOpaque = !m.transparent
         clones.set(m, c)
       }

@@ -114,6 +114,7 @@ export const HighlanderSettingsSection = () => {
         onChange={value => update('players.disguiseView', value)}
       />
 
+      {toggle('Player glow through walls', 'players.xrayGlow', 'X')}
       {toggle('Nameplate extras', 'players.nameplateExtras')}
       {toggle('Weapon icon on nameplates', 'players.nameplateWeapon')}
 

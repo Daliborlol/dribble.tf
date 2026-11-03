@@ -287,6 +287,8 @@ export class SurfaceJob {
     this.world.updateMatrixWorld(true)
     const visit = (object: THREE.Object3D) => {
       if (!object.visible || this.exclude.has(object)) return
+      // as/perf: the merged copies of static brush entities (map/staticBatch.ts), which are brush-entity geometry
+      if (object.userData?.dribble?.kind === 'staticBrushBatch') return
       const mesh = object as THREE.Mesh
       if (mesh.isMesh) this.addMesh(mesh, overlapsSpot, detectBaked)
       for (const child of object.children) visit(child)

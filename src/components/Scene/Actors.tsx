@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useLayoutEffect, useMemo, Suspense, useState 
 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Select } from '@react-three/postprocessing'
+import { Select } from '@components/Scene/OutlineSelect'
 import { Html, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import { Vector } from '@components/Analyse/Data/Types'
@@ -281,7 +281,8 @@ export const Actors = (props: ActorsProps) => {
     const enabled = getHlSetting<boolean>('enabled') !== false
     const focusedEntityId = (useInstance.getState().focusedObject?.userData?.entityId as number | undefined) ?? -1
     const subjectEntityId = enabled && focusedEntityId >= 0 ? getPovSubject(renderTick)?.entityId ?? -1 : -1
-    declutterPlates(state.camera, state.size.width, state.size.height, { enabled, focusedEntityId, subjectEntityId })
+    const playing = useStore.getState().playback.playing
+    declutterPlates(state.camera, state.size.width, state.size.height, { enabled, focusedEntityId, subjectEntityId, playing })
   }, -1)
 
   // Focus re-resolution. Actors are keyed by entity id, so a player who leaves the drawn list (disconnect,
@@ -334,7 +335,9 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
   const staleGuard = useRef(createStaleFrameGuard(props.position))
   const [changing, setChanging] = useState<boolean>(false)
 
-  const playback = useStore(state => state.playback)
+  // Only the playing flag (as/perf): selecting the whole playback object re-rendered every actor in a commit of its
+  // own on each tick, before DemoViewer's render re-rendered them all again with the new tick's props
+  const playing = useStore(state => state.playback.playing)
   const settings = useStore(state => state.settings)
   const controlsMode = useStore(state => state.scene.controls.mode)
   const focusedObject = useInstance(state => state.focusedObject)
@@ -443,7 +446,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     const frameProgress = useInstance.getState().frameProgress
 
     // Skip interpolation when disabled or paused
-    if (settings.scene.interpolateFrames === false || playback.playing === false) {
+    if (settings.scene.interpolateFrames === false || playing === false) {
       actorRef.current.position.set(position.x, position.y, position.z)
       hasPositionInit.current = true
       bodyRef.current.quaternion.copy(yawQuaternionFromDegrees(yawDeg))
@@ -458,7 +461,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     playerAimRef.current.position.set(0, 0, getEyeHeight(user.entityId, classId, renderTick))
 
     const lerpProgress = guardedLerpProgress(
-      staleGuard.current, frameProgress, position, playback.playing
+      staleGuard.current, frameProgress, position, playing
     )
     const didTeleport = positionVec3.distanceTo(positionNextVec3) > TELEPORT_LERP_DISTANCE
     const wasInitialized = hasPositionInit.current
@@ -644,7 +647,9 @@ const ActorNameplate = React.memo((props: ActorNameplateProps) => {
 
 export interface POVCameraProps {}
 
-export const POVCamera = ({}: POVCameraProps) => {
+// Memoized (as/perf): it has no props and reads the settings itself, so the actor's per-tick render no longer
+// re-renders it (r3f applied no prop then anyway, as the values were unchanged)
+export const POVCamera = React.memo(({}: POVCameraProps) => {
   const ref = useRef<THREE.PerspectiveCamera>(null)
 
   const settings = useStore(state => state.settings)
@@ -667,4 +672,4 @@ export const POVCamera = ({}: POVCameraProps) => {
       rotation={[0, 0, 0]}
     />
   )
-}
+})

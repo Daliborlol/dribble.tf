@@ -39,6 +39,7 @@ export class PackInstancer {
       mesh.name = `pack:${key}`
       mesh.frustumCulled = false
       mesh.count = 0
+      mesh.visible = false
       mesh.castShadow = m.castShadow
       mesh.receiveShadow = m.receiveShadow
       mesh.renderOrder = m.renderOrder
@@ -96,6 +97,8 @@ export class PackInstancer {
   finish() {
     for (const part of this.parts) {
       part.mesh.count = this.count
+      // as/perf: three still binds and draws an empty InstancedMesh (a draw call of 0 instances)
+      part.mesh.visible = this.count > 0
       part.mesh.instanceMatrix.needsUpdate = true
       if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true
     }

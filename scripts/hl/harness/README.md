@@ -105,6 +105,7 @@ argument stops the run with a usage error before anything is built.
 | `--perf` | off | open with `?perf=true` so the app logs `[Perf]` lines |
 | `--perf-play <spec>` | | `tick:seconds[:mode[:player[:speed]]]`, e.g. `50%:10:rts`; speed 0 measures paused. Writes `perf.json` |
 | `--cpu-profile` | off | with `--perf-play`: CDP CPU profile, `perf.cpuprofile` and `perf-top.txt` |
+| `--trace` | off | with `--perf-play`: a Chromium trace of the measured seconds, `perf-trace.json`, and `perf-trace.txt` with the busy ms per frame of the renderer main thread, the compositor and the GPU process main thread, by event (WebGL, raster, layout, paint). A 5 s trace is about 60 MB |
 | `--rebuild` | off | build even when the cached build is fresh |
 | `--no-build` | off | reuse the cached build even when it is stale |
 | `--no-minify` | off | unminified build in its own cache entry, for readable profiles |
@@ -292,6 +293,7 @@ perf summary and the console's error lines, with the known noise counted apart. 
 | `build.log` | vite output, written when the run built |
 | `perf.json` | with `--perf-play` |
 | `perf.cpuprofile`, `perf-top.txt` | with `--cpu-profile`; open the profile in Chrome DevTools |
+| `perf-trace.json`, `perf-trace.txt` | with `--trace` |
 
 `manifest.json`:
 
@@ -323,7 +325,8 @@ shots[]                        one entry per step:
   players                      listPlayers() after settling
   file                         screenshot path (absent with screenshot: false)
   error                        why the step failed
-perf                           with --perf-play: { spec, summary, frames } (same as perf.json)
+perf                           with --perf-play: { spec, summary, frames, frameDeltas } (same as perf.json;
+                               frameDeltas: every frame's ms, for histograms of the uncapped frame pacing)
 memoryMB                       { peak, final } PSS of the browser process tree in MB, sampled every second
 warnings[]                     failed steps, unresolved players, network never idle, dialogs, a map that did not load,
                                a browser revision other than the one playwright-core expects

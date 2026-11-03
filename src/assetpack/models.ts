@@ -14,7 +14,7 @@ import type { AnimationClip, Camera, Material, Matrix4, Object3D, Scene, WebGLRe
 
 import { getAssetSetting, useAssetSetting } from './hooks'
 import { getAssetItem, loadPackItem, releaseAssetItem, subscribeAssetItems } from './items'
-import { loadPackModel, warmUpObject } from './loaders'
+import { loadPackModel, mergeSkinnedByMaterial, warmUpObject } from './loaders'
 import type { PackModel } from './loaders'
 import { bindPackTextures } from './modelTextures'
 import type { PackTextureBinding } from './modelTextures'
@@ -155,6 +155,8 @@ async function build(key: string, entry: Entry, renderer: WebGLRenderer, scene: 
     return null
   }
   entry.model = model
+  // as/perf: one draw per material for the player models (their meshes share one skeleton since shareSkins)
+  if (info.role === 'player:model') mergeSkinnedByMaterial(model.gltf.scene)
   prepareSource(model)
   const skins = Math.max(1, info.skins | 0)
   for (let skin = 0; skin < skins; skin++) {

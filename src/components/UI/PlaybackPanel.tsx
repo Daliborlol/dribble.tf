@@ -99,6 +99,268 @@ const PlaybackAction = (props: PlaybackActionProps) => {
   )
 }
 
+// The button row (as/perf): PlaybackPanel re-renders on every playback tick, and these nine Radix tooltip buttons
+// were most of that render. Memoized with primitive props, the row renders only when what it shows changes; the
+// tick readout subscribes to the tick itself, and the seek buttons read the tick when clicked.
+const currentTick = () => useStore.getState().playback.tick
+
+const TickText = () => <>{useStore(state => state.playback.tick)}</>
+
+interface PlaybackButtonsProps {
+  isMobile: boolean
+  playing: boolean
+  speed: number
+  maxTicks: number
+  forceShowPanel: boolean
+  stickersOpen: boolean
+  stickerDragActive: boolean
+  isBookmarked: boolean
+}
+
+const PlaybackButtons = React.memo((props: PlaybackButtonsProps) => {
+  const { isMobile, playing, speed, maxTicks, forceShowPanel, stickersOpen, stickerDragActive, isBookmarked } = props
+
+  const togglePlayback = () => {
+    togglePlaybackAction()
+    focusMainCanvas()
+  }
+
+  const changePlaySpeed = (speed: number) => {
+    changePlaySpeedAction(speed)
+    focusMainCanvas()
+  }
+
+  const goToTick = (tick: number) => {
+    goToTickAction(tick)
+    focusMainCanvas()
+  }
+
+  const toggleStickers = () => {
+    setStickersPanelOpenAction(!stickersOpen)
+  }
+
+  return (
+    <div
+      className={cn(
+        'z-20 flex items-center justify-center rounded-full px-5 py-3 transition-all duration-500',
+        isMobile ? 'gap-3' : 'gap-6',
+        playing && !forceShowPanel && !stickersOpen
+          ? 'scale-90 opacity-0 delay-700'
+          : 'bg-black/70 delay-0',
+        'group-hover:scale-100 group-hover:bg-black/70 group-hover:opacity-100 group-hover:delay-0'
+      )}
+    >
+      {/* Jump to tick action */}
+
+      {!isMobile && (
+        <PlaybackAction
+          mobileTooltipBypass
+          icon={
+            <div className="-mr-1 flex min-w-11 select-none flex-col items-center text-center">
+              <div className="text-xs leading-none">TICK</div>
+              <div className="font-bold leading-none">
+                <TickText />
+              </div>
+            </div>
+          }
+          content={
+            <div className="text-center">
+              <div>Jump to tick</div>
+              <form
+                className="relative mt-2 text-black"
+                onSubmit={(e: React.ChangeEvent<HTMLFormElement>) => {
+                  e.preventDefault()
+                  const tickEl = e.target.elements.namedItem('tick') as HTMLInputElement
+                  const newTick = Number(tickEl.value)
+                  if (isNaN(newTick)) return
+                  goToTick(Math.round(newTick))
+                }}
+              >
+                <input
+                  type="number"
+                  name="tick"
+                  className="w-28 rounded bg-white py-1 pl-2 pr-7"
+                  placeholder="0"
+                />
+                <button
+                  type="submit"
+                  className="absolute bottom-0 right-0 top-0 ml-2 flex aspect-square items-center justify-center"
+                >
+                  <IoArrowForwardSharpIcon />
+                </button>
+              </form>
+
+              <div className="mt-2 flex justify-between text-xs opacity-80">
+                <div>Total Ticks</div>
+                <div className="font-bold">{maxTicks}</div>
+              </div>
+            </div>
+          }
+        />
+      )}
+
+      {/* Jump to start action */}
+
+      <PlaybackAction
+        icon={<AiFillFastForwardIcon width="1.75rem" height="1.75rem" className="rotate-180" />}
+        content={<div>Jump to start</div>}
+        onClick={goToTick.bind(null, 1)}
+      />
+
+      {/* Seek back action */}
+
+      <PlaybackAction
+        icon={<AiFillStepForwardIcon width="1.75rem" height="1.75rem" className="rotate-180" />}
+        content={
+          <div className="grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
+            <div className="col-span-2 text-center">Seek back</div>
+            <div>1 tick</div>
+            <kbd>,</kbd>
+            <div>50 ticks</div>
+            <kbd>←</kbd>
+          </div>
+        }
+        onClick={() => goToTick(currentTick() - 50)}
+      />
+
+      {/* Toggle play / pause action */}
+
+      <PlaybackAction
+        icon={
+          playing ? (
+            <IoMdPauseIcon width="1.75rem" height="1.75rem" />
+          ) : (
+            <IoMdPlayIcon width="1.75rem" height="1.75rem" />
+          )
+        }
+        content={
+          <div>
+            Play / Pause <kbd className="ml-2">Space</kbd>
+          </div>
+        }
+        onClick={togglePlayback}
+      />
+
+      {/* Seek forward action */}
+
+      <PlaybackAction
+        icon={<AiFillStepForwardIcon width="1.75rem" height="1.75rem" />}
+        content={
+          <div className="grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
+            <div className="col-span-2 text-center">Seek forward</div>
+            <div>1 tick</div>
+            <kbd>.</kbd>
+            <div>50 ticks</div>
+            <kbd>→</kbd>
+          </div>
+        }
+        onClick={() => goToTick(currentTick() + 50)}
+      />
+
+      {/* Jump to end action */}
+
+      <PlaybackAction
+        icon={<AiFillFastForwardIcon width="1.75rem" height="1.75rem" />}
+        content={<div>Jump to end</div>}
+        onClick={goToTick.bind(null, maxTicks)}
+      />
+
+      {/* Change play speed action */}
+
+      {!isMobile && (
+        <PlaybackAction
+          mobileTooltipBypass
+          icon={
+            <div className="select-none rounded-3xl bg-white/90 px-2 text-sm text-black">
+              {speed}×
+            </div>
+          }
+          content={
+            <>
+              <div className="text-center">Playback speed</div>
+
+              <div
+                className="mt-2 grid gap-1"
+                style={{
+                  gridTemplateColumns: `repeat(${PLAYBACK_SPEED_OPTIONS.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {[...PLAYBACK_SPEED_OPTIONS].reverse().map(({ label, value }) => (
+                  <button
+                    key={`play-speed-option-${label}`}
+                    className={cn(
+                      'flex-1 rounded border border-transparent px-2 py-1 text-center',
+                      'hover:border-white',
+                      value === speed && 'bg-white text-black'
+                    )}
+                    onClick={() => changePlaySpeed(Number(value))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
+                <div className="flex justify-start">
+                  Increase <kbd className="ml-2">↑</kbd>
+                </div>
+
+                <div className="flex justify-end">
+                  Decrease <kbd className="ml-2">↓</kbd>
+                </div>
+              </div>
+            </>
+          }
+        />
+      )}
+
+      {/* Toggle bookmark action */}
+
+      <PlaybackAction
+        icon={
+          isBookmarked ? (
+            <BsBookmarkFillIcon width="1.25rem" height="1.25rem" className="text-amber-400" />
+          ) : (
+            <BsBookmarkIcon width="1.25rem" height="1.25rem" />
+          )
+        }
+        content={
+          <div>
+            Toggle bookmark <kbd className="ml-2">B</kbd>
+          </div>
+        }
+        onClick={() => {
+          toggleBookmarkAction()
+          focusMainCanvas()
+        }}
+      />
+
+      {/* Sticker toggle */}
+
+      {!isMobile && (
+        <PlaybackAction
+          icon={
+            <div
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-full transition-all',
+                (stickersOpen || stickerDragActive) && 'bg-white text-black opacity-100'
+              )}
+            >
+              <StickerToolIcon width="1.7rem" height="1.7rem" />
+            </div>
+          }
+          content={
+            <div>
+              Toggle stickers <kbd className="ml-2">G</kbd>
+            </div>
+          }
+          onClick={toggleStickers}
+        />
+      )}
+    </div>
+  )
+})
+
 export const PlaybackPanel = () => {
   const parsedDemo = useInstance(state => state.parsedDemo)
   const playback = useStore(state => state.playback)
@@ -136,23 +398,9 @@ export const PlaybackPanel = () => {
     focusMainCanvas()
   }
 
-  const togglePlayback = () => {
-    togglePlaybackAction()
-    focusMainCanvas()
-  }
-
-  const changePlaySpeed = (speed: number) => {
-    changePlaySpeedAction(speed)
-    focusMainCanvas()
-  }
-
   const goToTick = (tick: number) => {
     goToTickAction(tick)
     focusMainCanvas()
-  }
-
-  const toggleStickers = () => {
-    setStickersPanelOpenAction(!stickersOpen)
   }
 
   return (
@@ -187,222 +435,16 @@ export const PlaybackPanel = () => {
           </div>
         )}
 
-        <div
-          className={cn(
-            'z-20 flex items-center justify-center rounded-full px-5 py-3 transition-all duration-500',
-            isMobile ? 'gap-3' : 'gap-6',
-            playing && !forceShowPanel && !stickersOpen
-              ? 'scale-90 opacity-0 delay-700'
-              : 'bg-black/70 delay-0',
-            'group-hover:scale-100 group-hover:bg-black/70 group-hover:opacity-100 group-hover:delay-0'
-          )}
-        >
-          {/* Jump to tick action */}
-
-          {!isMobile && (
-            <PlaybackAction
-              mobileTooltipBypass
-              icon={
-                <div className="-mr-1 flex min-w-11 select-none flex-col items-center text-center">
-                  <div className="text-xs leading-none">TICK</div>
-                  <div className="font-bold leading-none">{tick}</div>
-                </div>
-              }
-              content={
-                <div className="text-center">
-                  <div>Jump to tick</div>
-                  <form
-                    className="relative mt-2 text-black"
-                    onSubmit={(e: React.ChangeEvent<HTMLFormElement>) => {
-                      e.preventDefault()
-                      const tickEl = e.target.elements.namedItem('tick') as HTMLInputElement
-                      const newTick = Number(tickEl.value)
-                      if (isNaN(newTick)) return
-                      goToTick(Math.round(newTick))
-                    }}
-                  >
-                    <input
-                      type="number"
-                      name="tick"
-                      className="w-28 rounded bg-white py-1 pl-2 pr-7"
-                      placeholder="0"
-                    />
-                    <button
-                      type="submit"
-                      className="absolute bottom-0 right-0 top-0 ml-2 flex aspect-square items-center justify-center"
-                    >
-                      <IoArrowForwardSharpIcon />
-                    </button>
-                  </form>
-
-                  <div className="mt-2 flex justify-between text-xs opacity-80">
-                    <div>Total Ticks</div>
-                    <div className="font-bold">{maxTicks}</div>
-                  </div>
-                </div>
-              }
-            />
-          )}
-
-          {/* Jump to start action */}
-
-          <PlaybackAction
-            icon={<AiFillFastForwardIcon width="1.75rem" height="1.75rem" className="rotate-180" />}
-            content={<div>Jump to start</div>}
-            onClick={goToTick.bind(null, 1)}
-          />
-
-          {/* Seek back action */}
-
-          <PlaybackAction
-            icon={<AiFillStepForwardIcon width="1.75rem" height="1.75rem" className="rotate-180" />}
-            content={
-              <div className="grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
-                <div className="col-span-2 text-center">Seek back</div>
-                <div>1 tick</div>
-                <kbd>,</kbd>
-                <div>50 ticks</div>
-                <kbd>←</kbd>
-              </div>
-            }
-            onClick={goToTick.bind(null, tick - 50)}
-          />
-
-          {/* Toggle play / pause action */}
-
-          <PlaybackAction
-            icon={
-              playing ? (
-                <IoMdPauseIcon width="1.75rem" height="1.75rem" />
-              ) : (
-                <IoMdPlayIcon width="1.75rem" height="1.75rem" />
-              )
-            }
-            content={
-              <div>
-                Play / Pause <kbd className="ml-2">Space</kbd>
-              </div>
-            }
-            onClick={togglePlayback}
-          />
-
-          {/* Seek forward action */}
-
-          <PlaybackAction
-            icon={<AiFillStepForwardIcon width="1.75rem" height="1.75rem" />}
-            content={
-              <div className="grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
-                <div className="col-span-2 text-center">Seek forward</div>
-                <div>1 tick</div>
-                <kbd>.</kbd>
-                <div>50 ticks</div>
-                <kbd>→</kbd>
-              </div>
-            }
-            onClick={goToTick.bind(null, tick + 50)}
-          />
-
-          {/* Jump to end action */}
-
-          <PlaybackAction
-            icon={<AiFillFastForwardIcon width="1.75rem" height="1.75rem" />}
-            content={<div>Jump to end</div>}
-            onClick={goToTick.bind(null, maxTicks)}
-          />
-
-          {/* Change play speed action */}
-
-          {!isMobile && (
-            <PlaybackAction
-              mobileTooltipBypass
-              icon={
-                <div className="select-none rounded-3xl bg-white/90 px-2 text-sm text-black">
-                  {speed}×
-                </div>
-              }
-              content={
-                <>
-                  <div className="text-center">Playback speed</div>
-
-                  <div
-                    className="mt-2 grid gap-1"
-                    style={{
-                      gridTemplateColumns: `repeat(${PLAYBACK_SPEED_OPTIONS.length}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {[...PLAYBACK_SPEED_OPTIONS].reverse().map(({ label, value }) => (
-                      <button
-                        key={`play-speed-option-${label}`}
-                        className={cn(
-                          'flex-1 rounded border border-transparent px-2 py-1 text-center',
-                          'hover:border-white',
-                          value === speed && 'bg-white text-black'
-                        )}
-                        onClick={() => changePlaySpeed(Number(value))}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-[auto,auto] gap-x-4 gap-y-1">
-                    <div className="flex justify-start">
-                      Increase <kbd className="ml-2">↑</kbd>
-                    </div>
-
-                    <div className="flex justify-end">
-                      Decrease <kbd className="ml-2">↓</kbd>
-                    </div>
-                  </div>
-                </>
-              }
-            />
-          )}
-
-          {/* Toggle bookmark action */}
-
-          <PlaybackAction
-            icon={
-              isBookmarked ? (
-                <BsBookmarkFillIcon width="1.25rem" height="1.25rem" className="text-amber-400" />
-              ) : (
-                <BsBookmarkIcon width="1.25rem" height="1.25rem" />
-              )
-            }
-            content={
-              <div>
-                Toggle bookmark <kbd className="ml-2">B</kbd>
-              </div>
-            }
-            onClick={() => {
-              toggleBookmarkAction()
-              focusMainCanvas()
-            }}
-          />
-
-          {/* Sticker toggle */}
-
-          {!isMobile && (
-            <PlaybackAction
-              icon={
-                <div
-                  className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-full transition-all',
-                    (stickersOpen || stickerDragActive) && 'bg-white text-black opacity-100'
-                  )}
-                >
-                  <StickerToolIcon width="1.7rem" height="1.7rem" />
-                </div>
-              }
-              content={
-                <div>
-                  Toggle stickers <kbd className="ml-2">G</kbd>
-                </div>
-              }
-              onClick={toggleStickers}
-            />
-          )}
-        </div>
+        <PlaybackButtons
+          isMobile={isMobile}
+          playing={playing}
+          speed={speed}
+          maxTicks={maxTicks}
+          forceShowPanel={!!forceShowPanel}
+          stickersOpen={stickersOpen}
+          stickerDragActive={stickerDragActive}
+          isBookmarked={isBookmarked}
+        />
       </div>
 
       <div className="-ml-[5%] mt-3 w-[110%]">

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useSyncExternalStore } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -29,6 +29,7 @@ import {
   isSharedMapMaterial,
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
+import { batchStaticBrushes } from '@highlander/map/staticBatch'
 import '@highlander/map/probes'
 import { StaticProps, usePackPakProps, usePackSkyProps, useStockProps } from '@highlander/map/StaticProps'
 import { Skybox3D } from '@highlander/map/Skybox3D'
@@ -511,7 +512,15 @@ export const World = (props: WorldProps) => {
     const z = ActorDimensions.z * 0.5
 
     ref.current?.position.copy(bounds.center).add(new THREE.Vector3(x, y, z))
+    ref.current?.updateMatrix()
   }, [bounds])
+
+  // as/perf: the world group's matrix is composed here, not on every frame. A group that composes its matrix
+  // every frame marks its world matrix dirty every frame, which made three recompute the world matrix of every
+  // node of the (frozen) map, its props and overlays on every frame.
+  useLayoutEffect(() => {
+    ref.current?.updateMatrix()
+  }, [])
 
   // PAK static props (task M2): props.glb shares the world group's transform and material rules. The
   // URL comes from the loaded map's own folder, so a render between a map change and the reset above
@@ -545,7 +554,7 @@ export const World = (props: WorldProps) => {
 
   return (
     // Account for valve maps using different axis system
-    <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]}>
+    <group ref={ref} name="world" rotation={[Math.PI / 2, 0, 0]} matrixAutoUpdate={false}>
       {mapModel ? <primitive object={mapModel} /> : null}
       {loadedMap?.pack && skybox3d && (mode ?? 'textured') === 'textured' ? (
         <Skybox3D key={loadedMap.root.uuid} root={loadedMap.root} props={skyProps} mode={mode ?? 'textured'} />
@@ -640,6 +649,9 @@ function applyBspInitialVisibility(root: THREE.Object3D) {
 function freezeStaticMapSubtree(root: THREE.Object3D) {
   root.traverse(node => {
     node.matrixAutoUpdate = false
+    // as/perf: a frozen leaf never changes its own matrix, so three's per-frame scene update skips it; whenever an
+    // ancestor moves (doors, trains, the 3D skybox) the update reaches it forced, as before
+    if (node.children.length === 0) node.matrixWorldAutoUpdate = false
 
     if (node.type !== 'Mesh') return
 
@@ -888,6 +900,8 @@ async function loadPackWorld(
     brightness: ctx.brightness,
     textures,
   })
+  // as/perf: one draw per material for the static brush entities (func_illusionary, unnamed func_brush)
+  batchStaticBrushes(gltf.scene)
   // Overlays (as/mapfx) lie 0.5 units over their faces: they must not catch the world raycasts (RTS centre,
   // stickers, floor probes), which would then report a surface that is not there.
   gltf.scene.traverse(node => {

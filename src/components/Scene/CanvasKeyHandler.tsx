@@ -20,6 +20,7 @@ import {
 
 import { useEventListener } from '@utils/hooks'
 import { jumpToTimelineMarker } from '@highlander/hud/timeline'
+import { toggleViewStyle } from '@highlander/view/viewStyle'
 import type { HighlanderSettings } from '@highlander/settings'
 
 type DisguiseView = HighlanderSettings['players']['disguiseView']
@@ -141,6 +142,11 @@ export const CanvasKeyHandler = () => {
           case '4':
             if (!highlanderOn() || event.repeat) break
             toggleHighlanderSetting('pov.chase', 'Chase camera')
+            break
+
+          case 'h':
+            if (!highlanderOn() || event.repeat) break
+            toggleViewStyle()
             break
 
           case '[':

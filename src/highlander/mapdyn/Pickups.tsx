@@ -130,6 +130,13 @@ export const Pickups = React.memo(() => {
   const wantMeta = !!x && (!x.meta.available.pickups || (mapState === 'ready' && pipeline === 'bsp-to-glb'))
   const meta = useMapMeta(wantMeta ? map : '')
   const lastTickF = useRef(NaN)
+  const rings = useHlSetting<boolean>('view.respawnRings') !== false
+  const ringsOn = useRef(rings)
+  useEffect(() => {
+    if (ringsOn.current === rings) return
+    ringsOn.current = rings
+    lastTickF.current = NaN
+  }, [rings])
   // POV camera position of the last drawn frame (NaN: no POV camera): moving items near it are hidden, so a camera
   // change redraws them even while the tick stands still (paused, switching between RTS and POV or between players)
   const lastEye = useRef(new THREE.Vector3(NaN, NaN, NaN))
@@ -256,7 +263,8 @@ export const Pickups = React.memo(() => {
         }
         continue
       }
-      // Taken: a ghost of the kit where it rests plus the respawn ring on the floor.
+      // Taken: a ghost of the kit where it rests plus the respawn ring on the floor (as/tflook: view.respawnRings).
+      if (!ringsOn.current) continue
       _p.set(e.x, e.y, floorZ + PICKUP_BOB + height / 2)
       _m.compose(_p, NO_ROTATION, _s.set(width + 2, width + 2, height + 2))
       if (wire) {

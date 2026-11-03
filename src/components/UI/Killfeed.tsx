@@ -181,6 +181,8 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   const narrow = useIsMobile(HUD_LAYOUT.killfeedNarrowBelow)
   const medicPanels = useHlSetting<boolean>('hud.medicPanel')
   const compactStatuses = useHlSetting<boolean>('hud.compactStatuses')
+  // as/tflook: without player columns the killfeed takes the top right corner, as in TF2
+  const noColumns = useHlSetting<boolean>('view.playerColumns') === false
   const vp = useViewport()
   const snap = useHudSnapshot(renderTick)
 
@@ -190,7 +192,7 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   )
   // 768 to 943 px wide: below the columns when there is room for every line, else 3 compact lines between them
   // only next to the compact columns (hud.compactStatuses off shows the old player list, whose geometry differs)
-  const squeezed = !isMobile && !!compactStatuses && vp.w < KILLFEED_SQUEEZE_BELOW
+  const squeezed = !isMobile && !noColumns && !!compactStatuses && vp.w < KILLFEED_SQUEEZE_BELOW
   const desktopLines = Math.max(1, maxLines)
   const belowTop = squeezed ? columnsBottom(snap, !!medicPanels) + 8 : 0
   const below = squeezed && vp.h - BOTTOM_CONTROLS_CLEARANCE - belowTop >= desktopLines * (HUD_LAYOUT.killfeedLineHeight + HUD_LAYOUT.killfeedLineGap)
@@ -215,6 +217,8 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
     ? { right: 8, top: bannerShown ? HUD_LAYOUT.mobileKillfeedBelowBanner : HUD_LAYOUT.mobileKillfeedTop, maxWidth: 'calc(100vw - 16px)' }
     : below
       ? { top: belowTop, left: '50%', transform: 'translateX(-50%)', width: 'max-content', maxWidth: 'calc(100vw - 16px)' }
+    : noColumns
+      ? { top, right: 16, maxWidth: 'calc(100vw - 32px)' }
     : narrow
       ? { top, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100vw - ${2 * (HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8)}px)` }
       : { top, right: HUD_LAYOUT.killfeedRight, maxWidth: `calc(100vw - ${HUD_LAYOUT.killfeedRight + HUD_LAYOUT.bluLeft + HUD_LAYOUT.rowWidth + 8}px)` }
@@ -222,7 +226,7 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   return (
     <div
       data-hl-layout="killfeed"
-      className={cn('absolute flex select-none flex-col', narrow && !isMobile ? 'items-center' : 'items-end', (isMobile || compactFeed) && 'text-xs')}
+      className={cn('absolute flex select-none flex-col', narrow && !isMobile && !noColumns ? 'items-center' : 'items-end', (isMobile || compactFeed) && 'text-xs')}
       style={{ ...style, gap: HUD_LAYOUT.killfeedLineGap }}
     >
       {lines.map(line => (

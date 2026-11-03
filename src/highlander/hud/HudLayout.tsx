@@ -27,6 +27,8 @@ export const HudLayout = (props: HudLayoutProps) => {
   const { demo, tick, renderTick, players, intervalPerTick } = props
   const enabled = useHlSetting<boolean>('enabled')
   const compact = useHlSetting<boolean>('hud.compactStatuses')
+  // as/tflook view.playerColumns off hides the player columns (or the old list) with Highlander on
+  const playerColumns = useHlSetting<boolean>('view.playerColumns') !== false
   const isMobile = useIsMobile()
 
   if (!enabled) {
@@ -57,7 +59,7 @@ export const HudLayout = (props: HudLayoutProps) => {
         </div>
       )}
 
-      {columns ? (
+      {!playerColumns ? null : columns ? (
         <div className="ui-layer pointer-events-none">
           <HlPlayerColumns renderTick={renderTick} />
         </div>

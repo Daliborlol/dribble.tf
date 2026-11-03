@@ -6,7 +6,8 @@ import { get } from 'lodash'
 import { SelectOption, SliderOption, ToggleOption } from '@components/UI/Shared/SettingsOptions'
 import { useStore } from '@zus/store'
 import { updateSettingsOptionAction } from '@zus/actions'
-import { EFFECT_PRESETS, HighlanderSettings } from '@highlander/settings'
+import { EFFECT_PRESETS, HighlanderSettings, type ViewStyle } from '@highlander/settings'
+import { applyViewStyle, currentViewStyle, VIEW_STYLE_LABELS } from '@highlander/view/viewStyle'
 
 type PresetKey = keyof typeof EFFECT_PRESETS
 
@@ -29,6 +30,32 @@ const DISGUISE_VIEW_OPTIONS: {
 const DEAD_POV_OPTIONS: { label: string; value: HighlanderSettings['pov']['deadPov'] }[] = [
   { label: 'Follow spectated player', value: 'spectated' },
   { label: 'Stay', value: 'stay' },
+]
+
+const VIEW_STYLE_OPTIONS: { label: string; value: ViewStyle }[] = [
+  { label: VIEW_STYLE_LABELS.analysis, value: 'analysis' },
+  { label: VIEW_STYLE_LABELS.tf2, value: 'tf2' },
+]
+
+const PLATES_OPTIONS: { label: string; value: HighlanderSettings['view']['plates'] }[] = [
+  { label: 'Nearest 12 and pinned', value: 'all' },
+  { label: 'Followed, hovered, POV team', value: 'focus' },
+]
+
+const PLATE_TAGS_OPTIONS: { label: string; value: HighlanderSettings['view']['plateTags'] }[] = [
+  { label: 'Always', value: 'always' },
+  { label: 'For 2 s when they start', value: 'brief' },
+  { label: 'Off', value: 'off' },
+]
+
+const BUILDING_LABEL_OPTIONS: { label: string; value: HighlanderSettings['view']['buildingLabels'] }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Followed engineer and hover', value: 'focus' },
+]
+
+const OBJECTIVE_MARKER_OPTIONS: { label: string; value: HighlanderSettings['view']['objectiveMarkers'] }[] = [
+  { label: 'Full', value: 'full' },
+  { label: 'Subtle', value: 'subtle' },
 ]
 
 const update = (path: string, value: unknown) =>
@@ -62,12 +89,64 @@ export const HighlanderSettingsSection = () => {
   )
 
   const preset = currentPreset(hl)
+  const viewStyle = currentViewStyle(settings)
+  const view = hl.view
 
   return (
     <>
       <div className="mb-4 mt-16 text-xs font-black uppercase opacity-60">Highlander</div>
 
       {toggle('Highlander features (applies on next demo load)', 'enabled')}
+
+      <SelectOption<ViewStyle | 'custom'>
+        label="View style"
+        keyCode="H"
+        value={viewStyle}
+        options={viewStyle === 'custom' ? [...VIEW_STYLE_OPTIONS, { label: 'Custom', value: 'custom' }] : VIEW_STYLE_OPTIONS}
+        onChange={value => {
+          if (value !== 'custom') applyViewStyle(value)
+        }}
+      />
+
+      {view && (
+        <div className="ml-3">
+          <SelectOption
+            label="- Nameplates for"
+            value={view.plates}
+            options={PLATES_OPTIONS}
+            onChange={value => update('view.plates', value)}
+          />
+          <SelectOption
+            label="- Nameplate tags"
+            value={view.plateTags}
+            options={PLATE_TAGS_OPTIONS}
+            onChange={value => update('view.plateTags', value)}
+          />
+          <SelectOption
+            label="- Building labels"
+            value={view.buildingLabels}
+            options={BUILDING_LABEL_OPTIONS}
+            onChange={value => update('view.buildingLabels', value)}
+          />
+          <SliderOption
+            label="- Heal beam width"
+            min={0.25}
+            max={1}
+            step={0.05}
+            value={view.healBeamScale}
+            onChange={value => update('view.healBeamScale', value)}
+          />
+          <SelectOption
+            label="- Control point markers"
+            value={view.objectiveMarkers}
+            options={OBJECTIVE_MARKER_OPTIONS}
+            onChange={value => update('view.objectiveMarkers', value)}
+          />
+          {toggle('- Kit respawn rings', 'view.respawnRings')}
+          {toggle('- Player columns', 'view.playerColumns')}
+          {toggle('- Hide controls while playing', 'view.autoHideControls')}
+        </div>
+      )}
 
       <SelectOption<PresetKey | 'custom'>
         label="Effects preset"

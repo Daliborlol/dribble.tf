@@ -48,6 +48,12 @@ import { buildingDraw, DISPENSER, LABEL_GAP, SAPPER, sapperOffset, SENTRY, TELEP
 import { MINI_SCALE, SENTRY_PIVOT } from './sentryAim'
 import { enemyCentreResolver, povLabelContext, type PovLabelContext } from './scene'
 import { muzzleInBuilding, setPackMuzzle, usePackBuilding } from './pack'
+import { pointerOverBox } from '@highlander/perf/nameplates'
+import { isFollowedPlayer } from '@highlander/view/focus'
+
+/** The TF2 look's hover box of a building (as/tflook): half width and the height above the label anchor. */
+const LABEL_HOVER_HALF_WIDTH = 40
+const LABEL_HOVER_LIFT = 20
 
 const DEG = Math.PI / 180
 /** Sentry range ring opacity (contract 0.12, raised: see the ring mesh). */
@@ -150,7 +156,7 @@ function StatusLabel({ refs, label }: { refs: MutableRefObject<LabelRefs>; label
  * Why a drawn building shows no label: in POV, the subject's own building while F4's weapon HUD lists it
  * ('povOwn'), or a camera closer than POV_LABEL_FADE.near ('povNear').
  */
-export type LabelHidden = 'povOwn' | 'povNear' | null
+export type LabelHidden = 'povOwn' | 'povNear' | 'view' | null
 
 const _labelWorld = new THREE.Vector3()
 const _cameraWorld = new THREE.Vector3()
@@ -163,14 +169,18 @@ function updateLabel(
   frames: { sapped: THREE.MeshBasicMaterial; wrangled: THREE.MeshBasicMaterial },
   camera: THREE.Camera,
   viewportHeight: number,
-  pov: PovLabelContext | null
+  pov: PovLabelContext | null,
+  allowed = true
 ) {
   const group = refs.group
   if (!group) return
   group.position.set(0, 0, d.labelZ)
   let opacity = 1
   let hidden: LabelHidden = null
-  if (pov && pov.ownHidden && builder === pov.p) {
+  if (!allowed) {
+    opacity = 0
+    hidden = 'view'
+  } else if (pov && pov.ownHidden && builder === pov.p) {
     opacity = 0
     hidden = 'povOwn'
   } else if (pov) {
@@ -371,6 +381,7 @@ function updateTeleporter(refs: TeleporterRefs, d: BuildingDraw) {
 export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => {
   const x = useExtras()
   const labels = useHlSetting<boolean>('buildings.labels')
+  const labelsView = useHlSetting<string>('view.buildingLabels')
   const sentryRange = useHlSetting<boolean>('buildings.sentryRange')
 
   const root = useRef<THREE.Group>(null)
@@ -500,7 +511,13 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
     }
     if (range.current) range.current.visible = d.rangeRing
     if (labelCanvas && label.current.group) {
-      updateLabel(label.current, labelCanvas, d, x.buildings.builder[instance], frames, camera, size.height, povLabelContext(x, tick))
+      const builder = x.buildings.builder[instance]
+      // as/tflook view.buildingLabels 'focus': the followed engineer's buildings and the one under the pointer
+      const allowed =
+        labelsView !== 'focus' ||
+        isFollowedPlayer(x, builder, tick) ||
+        pointerOverBox(camera, size.width, size.height, g.position, LABEL_HOVER_HALF_WIDTH, d.labelZ + LABEL_HOVER_LIFT)
+      updateLabel(label.current, labelCanvas, d, builder, frames, camera, size.height, povLabelContext(x, tick), allowed)
     }
   })
 

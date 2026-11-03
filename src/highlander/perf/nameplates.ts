@@ -35,6 +35,8 @@ export interface PlateState {
   drawn: boolean
   /** F1: exempt from the cap and the distance fade */
   pinned: boolean
+  /** the player's team ('red', 'blue'), for the TF2 look's POV teammates (as/tflook) */
+  team?: string
 }
 
 /** Per-pass inputs besides the camera. */
@@ -46,6 +48,12 @@ export interface DeclutterOptions {
   subjectEntityId: number
   /** playback is running (as/perf: the plates' wrappers get `will-change: transform`, see applyMoving) */
   playing?: boolean
+  /**
+   * as/tflook `view.plates` 'focus': only the followed and hovered players' plates show, plus in POV (`pov`) the
+   * POV subject's teammates, as TF2's target ID; pinned plates get no exemption
+   */
+  focusOnly?: boolean
+  pov?: boolean
 }
 
 interface PlateEntry {
@@ -61,7 +69,7 @@ interface PlateEntry {
   distance: number
   rank: number
   shown: boolean
-  reason: 'near' | 'pinned' | 'followed' | 'hovered' | 'capped' | 'offscreen' | 'notDrawn'
+  reason: 'near' | 'pinned' | 'followed' | 'hovered' | 'teammate' | 'filtered' | 'capped' | 'offscreen' | 'notDrawn'
 }
 
 const entries = new Map<number, PlateEntry>()
@@ -143,6 +151,30 @@ function hoveredAt(camera: THREE.Camera, width: number, height: number): number 
   return best
 }
 
+const _a = new THREE.Vector3()
+const _b = new THREE.Vector3()
+const _r = new THREE.Vector3()
+
+/**
+ * as/tflook: true when the canvas pointer is inside the screen rectangle of an upright box at `pos` (world space),
+ * `halfWidth` wide to each side along the camera's right axis and `top` units tall: the hover test of the TF2 look's
+ * building labels, the same projection as the player hover above.
+ */
+export function pointerOverBox(camera: THREE.Camera, width: number, height: number, pos: THREE.Vector3, halfWidth: number, top: number): boolean {
+  if (!pointer.inside || width <= 0 || height <= 0) return false
+  _r.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+  _a.copy(pos).addScaledVector(_r, -halfWidth).project(camera)
+  _b.copy(pos).addScaledVector(_r, halfWidth)
+  _b.z += top
+  _b.project(camera)
+  if (_a.z > 1 || _b.z > 1 || _a.z < -1 || _b.z < -1) return false
+  const x0 = ((Math.min(_a.x, _b.x) + 1) / 2) * width
+  const x1 = ((Math.max(_a.x, _b.x) + 1) / 2) * width
+  const y0 = ((1 - Math.max(_a.y, _b.y)) / 2) * height
+  const y1 = ((1 - Math.min(_a.y, _b.y)) / 2) * height
+  return pointer.x >= x0 && pointer.x <= x1 && pointer.y >= y0 && pointer.y <= y1
+}
+
 /**
  * One declutter pass: rank the drawn plates on screen by camera distance, show the NAMEPLATE_CAP nearest plus the
  * exempt ones, hide the rest. Writes the DOM only when a plate's state flips.
@@ -195,9 +227,19 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
   hoveredEntityId = hoveredAt(camera, width, height)
 
   const capped = capEnabled && opts.enabled
+  const focusOnly = !!opts.focusOnly && opts.enabled
+  const povTeam = focusOnly && opts.pov && opts.subjectEntityId >= 0 ? entries.get(opts.subjectEntityId)?.state.current.team || null : null
   for (let i = 0; i < order.length; i++) {
     const entry = order[i]
     entry.rank = i
+    if (focusOnly) {
+      if (entry.entityId === opts.focusedEntityId || entry.entityId === opts.subjectEntityId) entry.reason = 'followed'
+      else if (entry.entityId === hoveredEntityId) entry.reason = 'hovered'
+      else if (povTeam && entry.state.current.team === povTeam) entry.reason = 'teammate'
+      else entry.reason = 'filtered'
+      entry.shown = entry.reason !== 'filtered'
+      continue
+    }
     if (!capped || i < NAMEPLATE_CAP) entry.reason = 'near'
     else if (entry.state.current.pinned) entry.reason = 'pinned'
     else if (entry.entityId === opts.focusedEntityId || entry.entityId === opts.subjectEntityId) entry.reason = 'followed'
@@ -208,6 +250,8 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
   lastOptions.enabled = opts.enabled
   lastOptions.focusedEntityId = opts.focusedEntityId
   lastOptions.subjectEntityId = opts.subjectEntityId
+  if (focusOnly) lastOptions.focusOnly = true
+  else delete lastOptions.focusOnly
   order.length = 0
 
   for (const entry of entries.values()) {
@@ -287,6 +331,7 @@ registerHlProbe('nameplates.declutter', () => {
     shown: rows.filter(r => r.drawn && r.shown).length,
     offscreen: rows.filter(r => r.reason === 'offscreen').length,
     capped: rows.filter(r => r.reason === 'capped').length,
+    ...(lastOptions.focusOnly ? { focusOnly: true, filtered: rows.filter(r => r.reason === 'filtered').length } : {}),
     rows,
   }
 })

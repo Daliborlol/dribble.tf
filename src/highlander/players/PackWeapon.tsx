@@ -25,6 +25,7 @@ import {
   thirdPersonPoseKey,
 } from '@pack/thirdPerson'
 import type { ThirdPersonPose } from '@pack/thirdPerson'
+import { measureThirdPersonAnchor, setThirdPersonAnchor } from '@highlander/combat/weaponAnchors'
 
 export interface PackWeaponsProps {
   /** CLASS_MAP name of the drawn model ('scout', 'demoman', ...) */
@@ -87,10 +88,12 @@ interface PieceProps extends Omit<PackWeaponsProps, 'classKey' | 'weaponDef' | '
   kind: 'weapon' | 'wearable' | 'loadout'
   /** Loadout wearables of an item not held: drawn only when they sit on the body (not on weapon_bone) */
   bodyOnly: boolean
+  /** The held weapon's item def: its muzzle and bounds anchor the pack particle effects (weaponAnchors.ts) */
+  anchorDef?: number
 }
 
 const PackPiece = React.memo((props: PieceProps) => {
-  const { modelKey, pose, team, bodyOnly, opacity, tint, emissive, classKey, kind } = props
+  const { modelKey, pose, team, bodyOnly, opacity, tint, emissive, classKey, kind, anchorDef } = props
   const handle = usePackModel(modelKey)
 
   const piece = useMemo<Piece | null>(() => {
@@ -121,6 +124,14 @@ const PackPiece = React.memo((props: PieceProps) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [piece])
+
+  // the held weapon's muzzle and bounds for the pack particle effects
+  useEffect(() => {
+    const measured = piece && anchorDef !== undefined ? measureThirdPersonAnchor(piece.copy, anchorDef) : null
+    if (!measured) return
+    setThirdPersonAnchor(measured.entityId, measured.anchor)
+    return () => setThirdPersonAnchor(measured.entityId, null, measured.anchor)
+  }, [piece, anchorDef])
 
   useLayoutEffect(() => {
     if (!piece) return
@@ -166,7 +177,7 @@ const Weapons = (props: PackWeaponsProps) => {
   if (!pose || !fit) return null
   return (
     <group name="packWeapons" matrix={fit} matrixAutoUpdate={false}>
-      {held.weapon && <PackPiece key={`w:${held.weapon}`} modelKey={held.weapon} pose={pose} classKey={classKey} kind="weapon" bodyOnly={false} {...look} />}
+      {held.weapon && <PackPiece key={`w:${held.weapon}`} modelKey={held.weapon} pose={pose} classKey={classKey} kind="weapon" bodyOnly={false} anchorDef={weaponDef} {...look} />}
       {held.wearable && <PackPiece key={`e:${held.wearable}`} modelKey={held.wearable} pose={pose} classKey={classKey} kind="wearable" bodyOnly={false} {...look} />}
       {wearables.map(key => (
         <PackPiece key={`l:${key}`} modelKey={key} pose={pose} classKey={classKey} kind="loadout" bodyOnly {...look} />

@@ -161,16 +161,16 @@ const _to = new THREE.Vector3()
  * same tick and attacker lies within 8 degrees of the centre pellet, else 1500 units (4000 for sniper rifles).
  * `ownEyes`: the entity id of the actor whose povCamera renders the scene; his tracers start at his gun muzzle.
  */
-export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number, ownEyes: number | null = null, resolve?: ViewResolver): TracerFx[] {
+export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number, ownEyes: number | null = null, resolve?: ViewResolver, lifetime = TRACER_TICKS): TracerFx[] {
   const b = x.tempents.bullets
   const out: TracerFx[] = []
   if (!x.meta.available.bullets) return out
-  const [from, to] = eventWindow(b.tick, tickF, TRACER_TICKS)
+  const [from, to] = eventWindow(b.tick, tickF, lifetime)
   const hurts = x.hurts
   for (let i = from; i < to; i++) {
     const tick = b.tick[i]
     const age = tickF - tick
-    if (age < 0 || age >= TRACER_TICKS) continue
+    if (age < 0 || age >= lifetime) continue
     const p = b.player[i]
     const weaponId = b.weaponId[i]
     const crit = b.crit[i] !== 0
@@ -227,7 +227,7 @@ export function hitscanAt(x: HighlanderExtras, demo: AsyncParser, tickF: number,
     const key = teamKey(p < 255 && demo.entityPlayerMap.has(p) ? demo.playerCache.metaCache.getMeta(p, Math.min(tick, demo.ticks - 1)).teamId : 0)
     out.push({
       row: i, tick, age, player: p, weaponId, crit, start: vec(startVec), ends, length: r2(length), victim,
-      opacity: 0.8 * (1 - age / TRACER_TICKS), color: crit && key ? TEAM_FX[key] : TRACER_COLOR, anglesFrom,
+      opacity: 0.8 * Math.max(0, 1 - age / TRACER_TICKS), color: crit && key ? TEAM_FX[key] : TRACER_COLOR, anglesFrom,
     })
   }
   return out
@@ -281,16 +281,16 @@ function tracerOrdinal(x: HighlanderExtras, row: number): number {
  * (0, 0, 32 / 40 / 46 by level), x0.75 for minis) 29 or 35 units toward the end point, to the side of the firing
  * barrel at levels 2 and 3.
  */
-export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTracerFx[] {
+export function sentryTracersAt(x: HighlanderExtras, tickF: number, lifetime = SENTRY_TRACER_TICKS): SentryTracerFx[] {
   const tr = x.tempents.tracers
   const out: SentryTracerFx[] = []
   if (!x.meta.available.tracers) return out
-  const [from, to] = eventWindow(tr.tick, tickF, SENTRY_TRACER_TICKS)
+  const [from, to] = eventWindow(tr.tick, tickF, lifetime)
   const bl = x.buildings
   for (let i = from; i < to; i++) {
     const tick = tr.tick[i]
     const age = tickF - tick
-    if (age < 0 || age >= SENTRY_TRACER_TICKS) continue
+    if (age < 0 || age >= lifetime) continue
     const j = tr.sentry[i]
     if (j === 65535 || j >= bl.count || !xformAt(bl.xform, j, tick, _pivot, _q)) continue
     const si = trackIndexAt(bl.state, j, tick)
@@ -320,7 +320,7 @@ export function sentryTracersAt(x: HighlanderExtras, tickF: number): SentryTrace
     }
     out.push({
       row: i, tick, age, sentry: j, pivot: vec(_pivot), start: vec(_start), end: [tr.ex[i], tr.ey[i], tr.ez[i]],
-      opacity: 0.8 * (1 - age / SENTRY_TRACER_TICKS), color: TRACER_COLOR, startFrom,
+      opacity: 0.8 * Math.max(0, 1 - age / SENTRY_TRACER_TICKS), color: TRACER_COLOR, startFrom,
     })
   }
   return out

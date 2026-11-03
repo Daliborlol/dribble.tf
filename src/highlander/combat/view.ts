@@ -143,6 +143,11 @@ export function setOwnMuzzleSource(source: OwnMuzzleSource | null): void {
   ownMuzzleSource = source
 }
 
+/** The registered viewmodel muzzle of `entityId` (world), false when none is drawn or registered. */
+export function viewmodelMuzzleAt(entityId: number, out: THREE.Vector3): boolean {
+  return !!ownMuzzleSource && ownMuzzleSource(entityId, out)
+}
+
 /** Where the own-eyes tracers start: the registered viewmodel muzzle, else gunMuzzle. */
 export function ownMuzzleAt(entityId: number, view: PlayerView, out: THREE.Vector3): THREE.Vector3 {
   if (ownMuzzleSource && ownMuzzleSource(entityId, out)) return out

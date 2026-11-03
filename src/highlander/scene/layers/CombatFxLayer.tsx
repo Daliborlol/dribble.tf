@@ -33,7 +33,8 @@ import { playerViewDrawn, povCameraOwner } from '@highlander/combat/view'
 import '@highlander/combat/probes'
 import { usePackProjectileSets } from '@highlander/combat/packProjectiles'
 import { PROJ } from '@highlander/extras/enums'
-import { PackParticlesLayer, packParticlesDrawing } from '@highlander/combat/packParticles'
+import { MUZZLE_SYSTEMS, PACK_TRACER_PROBE, PackParticlesLayer, packDraws, packParticlesDrawing } from '@highlander/combat/packParticles'
+import { itemKind } from '@highlander/items'
 
 const SYRINGE_KINDS = [PROJ.SYRINGE]
 
@@ -151,8 +152,11 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
     fx.syringeTrails.begin(s.camera, pixelScale)
 
     const at = (v: [number, number, number]) => s.pos.set(v[0], v[1], v[2])
-    // with the pack's particle systems drawing, explosions and the cone flames of drawn pyros are theirs
+    // with the pack's particle systems drawing, explosions and the cone flames of drawn pyros are theirs, and so are
+    // tracers and the muzzle flashes of weapons with a pack system when the pack holds those systems; the airblast
+    // cone stays, since pyro_blast's main element is a refraction warp the particle renderer does not draw
     const pack = packParticlesDrawing()
+    const packTracers = packDraws(PACK_TRACER_PROBE)
 
     // explosions: soft additive spheres
     for (const e of pack ? [] : effects.explosions) {
@@ -182,7 +186,7 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
       m.rings.push(s.matrix, s.color.set(r.color))
     }
     // hitscan tracers (one line per pellet) and sentry tracers
-    for (const t of effects.tracers) {
+    for (const t of packTracers ? [] : effects.tracers) {
       s.color.set(t.color)
       at(t.start)
       for (const end of t.ends) {
@@ -190,13 +194,14 @@ const CombatFx = React.memo(({ x, demo }: { x: HighlanderExtras; demo: AsyncPars
         fx.tracers.segment(s.pos, s.end, s.color, TRACER_WIDTH, t.opacity, t.opacity, TRACER_MIN_PIXELS)
       }
     }
-    for (const t of effects.sentryTracers) {
+    for (const t of packTracers ? [] : effects.sentryTracers) {
       s.color.set(t.color)
       s.end.set(t.end[0], t.end[1], t.end[2])
       fx.tracers.segment(at(t.start), s.end, s.color, TRACER_WIDTH, t.opacity, t.opacity, TRACER_MIN_PIXELS)
     }
     // muzzle flashes
     for (const f of effects.muzzle) {
+      if (pack && packDraws(MUZZLE_SYSTEMS[itemKind(f.weaponDef)])) continue
       s.matrix.compose(at(f.pos), s.quat.identity(), s.scale.setScalar(f.size / 2))
       m.muzzle.push(s.matrix, undefined, f.opacity)
     }

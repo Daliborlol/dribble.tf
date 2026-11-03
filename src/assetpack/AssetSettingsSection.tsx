@@ -40,6 +40,7 @@ const AssetSettingsRows = () => {
   const mapTextures = useStore(s => s.settings.assets?.mapTextures ?? true)
   const skybox3d = useStore(s => s.settings.assets?.skybox3d ?? true)
   const particles = useStore(s => s.settings.assets?.particles ?? true)
+  const characterShading = useStore(s => s.settings.assets?.characterShading ?? true)
   const offByUrl = isAssetsOffByUrl()
 
   useEffect(() => {
@@ -48,6 +49,7 @@ const AssetSettingsRows = () => {
 
   const hasMaps = Object.keys(pack.manifest?.maps ?? {}).length > 0
   const hasParticles = !!pack.manifest?.items?.['particles/systems']
+  const hasShading = pack.manifest?.items?.['shading/materials']?.kind === 'shading'
   const hasWorlds = Object.values(pack.manifest?.maps ?? {}).some(entry => !!entry?.files?.world)
 
   return (
@@ -93,6 +95,14 @@ const AssetSettingsRows = () => {
           label="TF2 particle effects (explosions, flames, trails)"
           checked={particles}
           onChange={checked => updateSettingsOptionAction('assets.particles', checked)}
+        />
+      )}
+
+      {hasShading && (
+        <ToggleOption
+          label="TF2 character shading (phong, rim light, normal maps)"
+          checked={characterShading}
+          onChange={checked => updateSettingsOptionAction('assets.characterShading', checked)}
         />
       )}
     </>

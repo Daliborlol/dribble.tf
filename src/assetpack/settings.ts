@@ -15,6 +15,8 @@ export interface AssetSettings {
   skybox3d: boolean
   /** as/particles: TF2 particle systems for explosions, flamethrower flames and projectile trails. Applies at once. */
   particles: boolean
+  /** as/shading: TF2's VertexLitGeneric look (phong, rim light, light warp, bump maps) on pack models. Applies at once. */
+  characterShading: boolean
 }
 
 export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
@@ -25,6 +27,7 @@ export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
   viewmodels: true,
   skybox3d: true,
   particles: true,
+  characterShading: true,
 }
 
 export type AssetSettingKey = keyof AssetSettings

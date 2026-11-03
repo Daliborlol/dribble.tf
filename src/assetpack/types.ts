@@ -20,7 +20,7 @@ export interface AssetPackMapEntry {
 }
 
 export interface AssetPackManifestItem {
-  kind: 'model' | 'texture'
+  kind: 'model' | 'texture' | 'particles' | 'shading'
   file: string
   bytes?: number
   sha256?: string

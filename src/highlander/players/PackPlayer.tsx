@@ -17,6 +17,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { useInstance } from '@zus/store'
+import { copyCharacterShading } from '@pack/characterShading'
 import { packTeamSkin, usePackModel } from '@pack/models'
 import type { PackModelHandle } from '@pack/models'
 import { followsWeapon, registerThirdPersonCopy, thirdPersonModels } from '@pack/thirdPerson'
@@ -60,6 +61,7 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
       let c = clones.get(m)
       if (!c) {
         c = m.clone()
+        copyCharacterShading(m, c)
         c.userData.packOpaque = !m.transparent
         clones.set(m, c)
       }

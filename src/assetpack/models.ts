@@ -17,6 +17,8 @@ import { getAssetItem, loadPackItem, releaseAssetItem, subscribeAssetItems } fro
 import { loadPackModel, mergeSkinnedByMaterial, warmUpObject } from './loaders'
 import type { PackModel } from './loaders'
 import { bindPackTextures } from './modelTextures'
+import { bindCharacterShading } from './characterShading'
+import type { CharacterShadingBinding } from './characterShading'
 import type { PackTextureBinding } from './modelTextures'
 import { getAssetPackState, subscribeAssetPack } from './pack'
 
@@ -79,6 +81,7 @@ interface Entry {
   model: PackModel | null
   templates: Object3D[]
   bindings: PackTextureBinding[]
+  shadings: CharacterShadingBinding[]
   disposed: boolean
 }
 
@@ -134,6 +137,7 @@ function disposeEntry(key: string, entry: Entry) {
   if (entry.disposed) return
   entry.disposed = true
   for (const binding of entry.bindings) binding.release()
+  for (const binding of entry.shadings) binding.release()
   for (const template of entry.templates) {
     for (const m of collectMaterials(template)) m.dispose()
     entry.model?.release(template)
@@ -141,6 +145,7 @@ function disposeEntry(key: string, entry: Entry) {
   entry.model?.dispose()
   entry.templates = []
   entry.bindings = []
+  entry.shadings = []
   entry.model = null
   releaseAssetItem(key)
 }
@@ -162,15 +167,18 @@ async function build(key: string, entry: Entry, renderer: WebGLRenderer, scene: 
   for (let skin = 0; skin < skins; skin++) {
     const template = skinTemplate(model)
     const binding = await bindPackTextures(template, renderer, { skin })
+    const shading = await bindCharacterShading(template, renderer, { skin })
     if (entry.disposed) {
       // Released while binding: disposeEntry already ran, so this template is freed here.
       binding.release()
+      shading.release()
       for (const m of collectMaterials(template)) m.dispose()
       model.release(template)
       return null
     }
     entry.templates.push(template)
     entry.bindings.push(binding)
+    entry.shadings.push(shading)
     await warmUpObject(renderer, template, camera, scene)
     if (entry.disposed) return null
   }
@@ -197,7 +205,7 @@ export function acquirePackModel(
 ): Promise<PackModelHandle | null> {
   let entry = cache.get(key)
   if (!entry) {
-    const created: Entry = { refs: 0, promise: Promise.resolve(null), model: null, templates: [], bindings: [], disposed: false }
+    const created: Entry = { refs: 0, promise: Promise.resolve(null), model: null, templates: [], bindings: [], shadings: [], disposed: false }
     created.promise = (packModelListed(key) ? build(key, created, renderer, scene, camera) : Promise.resolve(null)).catch(error => {
       console.warn(`[assets] ${key}: ${error instanceof Error ? error.message : String(error)}; using the fallback`)
       return null
@@ -291,6 +299,7 @@ export function listPackModels(filter?: string) {
       templates: entry.templates.length,
       bound: entry.bindings.reduce((n, b) => n + b.bound, 0),
       failed: entry.bindings.reduce((n, b) => n + b.failed, 0),
+      shaded: entry.shadings.reduce((n, b) => n + b.shaded, 0),
       clips: entry.model?.gltf.animations?.length ?? 0,
     }))
 }

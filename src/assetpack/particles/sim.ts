@@ -9,12 +9,16 @@
 //   initializers  Lifetime Random, lifetime from sequence, Radius Random, Alpha Random, Color Random,
 //                 Rotation Random, Rotation Speed Random, Sequence Random, Trail Length Random,
 //                 Position Within Sphere Random (distance, bias, speed, local speed), Position Within Box Random,
-//                 Position Modify Offset Random, Velocity Random
+//                 Position Modify Offset Random, Velocity Random, move particles between 2 control points
+//                 (control point 1 from EffectInstance.cp1), Position on Model Random (uniform in
+//                 EffectInstance.box, the stand-in for the model's hitboxes)
 //   operators     Movement Basic (gravity, drag per 1/30 s), Radius Scale, Color Fade, Alpha Fade and Decay,
 //                 Alpha Fade In Random, Alpha Fade Out Random, Rotation Spin Roll, Rotation Basic,
 //                 Movement Lock to Control Point (translation, followed until the middle of the fade window),
+//                 Movement Lock to Bone (translation, followed for the whole life),
 //                 Lifespan Decay
-//   forces        random force (a constant per-particle acceleration drawn from the range, scaled)
+//   forces        random force (Source draws a new force every frame, a random walk: here the range's mean plus a
+//                 constant per-particle deviation with the walk's spread at the end of the particle's life)
 //   renderers     render_animated_sprites (sheet sequences, fit-to-lifetime, FPS, frame blending),
 //                 render_sprite_trail (length = trail length x speed, min/max, length fade-in)
 //   constraints   Collision via traces: only against the surface an explosion hit (EffectInstance.surface)
@@ -26,8 +30,14 @@ import * as THREE from 'three'
 import type { PcfFile, PcfMaterial, PcfOperator, PcfSystem } from './types'
 
 const DEG = Math.PI / 180
-/** Share of a random force's range used as a constant per-particle acceleration (Source rerolls it per step). */
-const RANDOM_FORCE_SCALE = 0.3
+/**
+ * Random force: a force redrawn every frame (dt) displaces a particle by sigma * sqrt(dt) * t^1.5 / sqrt(3) after t
+ * seconds; a constant deviation c reaches the same spread at the end of life L when c = dev * K / sqrt(L), with
+ * K = 2 sqrt(dt) / sqrt(3) for 60 frames a second.
+ */
+const RANDOM_WALK_K = (2 * Math.sqrt(1 / 60)) / Math.sqrt(3)
+/** Longest travel time of a particle moving between two control points (its life). */
+const BETWEEN_MAX_LIFE = 2
 /** Emitters without an end inside a finite effect stop after this many seconds. */
 const OPEN_EMITTER_SECONDS = 5
 
@@ -75,7 +85,14 @@ export interface EffectInstance {
   /** seconds: continuous emitters stop here (Infinity while the effect runs) */
   stop: number
   cp: ControlPointSource
-  /** alpha multiplier (POV readability) */
+  /** control point 1 (tracer ends, impact points); initializers that name it use cp when absent */
+  cp1?: ControlPointSource
+  /**
+   * Half extents along the control point's forward, left and up axes of the box Position on Model Random fills
+   * (a stand-in for the hitboxes of the model the effect is attached to); absent: the control point itself.
+   */
+  box?: [number, number, number]
+  /** alpha multiplier */
   alpha?: number
   /**
    * The control point sits on a surface whose normal is its forward axis (a wall or floor explosion): particles of
@@ -164,9 +181,11 @@ type Init =
   | { t: 'rotSpeed'; base: number; min: number; max: number; exp: number; flip: boolean }
   | { t: 'seq'; min: number; max: number }
   | { t: 'trail'; min: number; max: number; exp: number }
-  | { t: 'sphere'; dmin: number; dmax: number; bias: number[]; biasAbs: number[]; biasLocal: boolean; smin: number; smax: number; sexp: number; lmin: number[]; lmax: number[] }
+  | { t: 'sphere'; cp1: boolean; dmin: number; dmax: number; bias: number[]; biasAbs: number[]; biasLocal: boolean; smin: number; smax: number; sexp: number; lmin: number[]; lmax: number[] }
   | { t: 'box'; min: number[]; max: number[] }
-  | { t: 'offset'; min: number[]; max: number[]; local: boolean; prop: boolean }
+  | { t: 'offset'; cp1: boolean; min: number[]; max: number[]; local: boolean; prop: boolean }
+  | { t: 'between'; smin: number; smax: number; spread: number; offset: number }
+  | { t: 'model' }
   | { t: 'velocity'; smin: number; smax: number; lmin: number[]; lmax: number[] }
   | { t: 'skip' }
 
@@ -223,6 +242,8 @@ function lifeRange(sys: PcfSystem, material: PcfMaterial | null): [number, numbe
   let range: [number, number] = [1, 1]
   for (const o of sys.initializers) {
     if (o.fn === 'Lifetime Random' || o.fn === 'lifetime_random') range = [n(o, 'lifetime_min', 1), n(o, 'lifetime_max', 1)]
+    // travel time to control point 1: at most BETWEEN_MAX_LIFE seconds
+    if (o.fn === 'move particles between 2 control points') range = [range[0], Math.max(range[1], BETWEEN_MAX_LIFE)]
     if (o.fn === 'lifetime from sequence' || o.fn === 'Lifetime From Sequence') {
       const fps = n(o, 'Frames Per Second', 30) || 30
       const totals = (material?.sheet ?? []).filter(Boolean).map(s => s!.total / fps)
@@ -265,14 +286,18 @@ function compileInit(o: PcfOperator): Init {
     case 'Position Within Sphere Random':
     case 'position_within_sphere':
       return {
-        t: 'sphere', dmin: n(o, 'distance_min'), dmax: n(o, 'distance_max'), bias: v3(o, 'distance_bias', [1, 1, 1]),
+        t: 'sphere', cp1: n(o, 'control_point_number') === 1, dmin: n(o, 'distance_min'), dmax: n(o, 'distance_max'), bias: v3(o, 'distance_bias', [1, 1, 1]),
         biasAbs: v3(o, 'distance_bias_absolute_value'), biasLocal: b(o, 'bias in local system'), smin: n(o, 'speed_min'), smax: n(o, 'speed_max'),
         sexp: n(o, 'speed_random_exponent', 1), lmin: v3(o, 'speed_in_local_coordinate_system_min'), lmax: v3(o, 'speed_in_local_coordinate_system_max'),
       }
     case 'Position Within Box Random':
       return { t: 'box', min: v3(o, 'min'), max: v3(o, 'max') }
     case 'Position Modify Offset Random':
-      return { t: 'offset', min: v3(o, 'offset min'), max: v3(o, 'offset max'), local: b(o, 'offset in local space 0/1'), prop: b(o, 'offset proportional to radius 0/1') }
+      return { t: 'offset', cp1: n(o, 'control_point_number') === 1, min: v3(o, 'offset min'), max: v3(o, 'offset max'), local: b(o, 'offset in local space 0/1'), prop: b(o, 'offset proportional to radius 0/1') }
+    case 'move particles between 2 control points':
+      return { t: 'between', smin: n(o, 'minimum speed', 1), smax: n(o, 'maximum speed', 1), spread: n(o, 'end spread'), offset: n(o, 'start offset') }
+    case 'Position on Model Random':
+      return { t: 'model' }
     case 'Velocity Random':
       return { t: 'velocity', smin: n(o, 'random_speed_min'), smax: n(o, 'random_speed_max'), lmin: v3(o, 'speed_in_local_coordinate_system_min'), lmax: v3(o, 'speed_in_local_coordinate_system_max') }
     default:
@@ -359,18 +384,21 @@ export function compileParticles(file: PcfFile): CompiledParticles {
         case 'postion_lock_to_controlpoint':
           c.lock = { sMin: n(o, 'start_fadeout_min', 1), sMax: n(o, 'start_fadeout_max', 1), eMin: n(o, 'end_fadeout_min', 1), eMax: n(o, 'end_fadeout_max', 1) }
           break
+        case 'Movement Lock to Bone':
+          c.lock = { sMin: 1, sMax: 1, eMin: 1, eMax: 1 }
+          break
       }
     }
     c.collides = sys.constraints.some(o => o.fn === 'Collision via traces' || o.fn === 'Prevent passing through a plane')
     for (const o of sys.forces) if (o.fn === 'random force') c.randomForce = { min: v3(o, 'min force'), max: v3(o, 'max force') }
-    for (const o of sys.renderers) {
+    // no material, or one without a sprite texture (refraction: conc_warp), draws nothing
+    for (const o of material?.texture ? sys.renderers : []) {
       if (o.fn === 'render_animated_sprites') {
         c.renderers.push({ kind: 'sprite', batch: batchOf(sys.material, 'sprite'), rate: n(o, 'animation rate', 0.1), fit: b(o, 'animation_fit_lifetime'), fps: b(o, 'use animation rate as FPS'), minLen: 0, maxLen: 0, fadeIn: 0 })
       } else if (o.fn === 'render_sprite_trail') {
         c.renderers.push({ kind: 'trail', batch: batchOf(sys.material, 'trail'), rate: n(o, 'animation rate', 0.1), fit: false, fps: false, minLen: n(o, 'min length'), maxLen: n(o, 'max length', 2000), fadeIn: n(o, 'length fade in time') })
       }
     }
-    if (!c.material) c.renderers = []
     for (const child of sys.children) {
       const built = build(child.system, depth + 1)
       if (built) c.children.push({ system: built, delay: child.delay })
@@ -410,6 +438,7 @@ export function treeMaxLife(sys: CompiledSystem): number {
 
 const rng = new Rng()
 const cpBirth = makeControlPoint()
+const cpBirth1 = makeControlPoint()
 const cpLock = makeControlPoint()
 const out: ParticleOut = {
   x: 0, y: 0, z: 0, radius: 0, rotation: 0, r: 1, g: 1, b: 1, a: 1, uv0: [0, 0, 1, 1], uv1: [0, 0, 1, 1], blend: 0, dx: 0, dy: 0, dz: 0, length: 0,
@@ -436,7 +465,7 @@ function localToWorld(cp: ControlPoint, lx: number, ly: number, lz: number, res:
 }
 const tmp = [0, 0, 0]
 
-function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
+function initParticle(sys: CompiledSystem, cp: ControlPoint, cp1: ControlPoint, box: [number, number, number] | undefined): void {
   p.life = 1
   p.radius = sys.radius
   p.alpha = sys.color[3]
@@ -491,6 +520,7 @@ function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
         break
       case 'sphere': {
         // a random direction (uniform on the sphere), biased per axis, at a distance between min and max
+        const c = it.cp1 ? cp1 : cp
         const z = rng.next() * 2 - 1
         const phi = rng.next() * Math.PI * 2
         const s = Math.sqrt(Math.max(0, 1 - z * z))
@@ -502,18 +532,18 @@ function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
         dy *= it.bias[1]
         dz *= it.bias[2]
         if (it.biasLocal) {
-          localToWorld(cp, dx, dy, dz, tmp)
+          localToWorld(c, dx, dy, dz, tmp)
           dx = tmp[0]
           dy = tmp[1]
           dz = tmp[2]
         }
         const len = Math.hypot(dx, dy, dz) || 1
         const dist = lerp(it.dmin, it.dmax, Math.cbrt(rng.next()))
-        p.px = cp.pos.x + (dx / len) * dist
-        p.py = cp.pos.y + (dy / len) * dist
-        p.pz = cp.pos.z + (dz / len) * dist
+        p.px = c.pos.x + (dx / len) * dist
+        p.py = c.pos.y + (dy / len) * dist
+        p.pz = c.pos.z + (dz / len) * dist
         const speed = rng.exp(it.smin, it.smax, it.sexp)
-        localToWorld(cp, lerp(it.lmin[0], it.lmax[0], rng.next()), lerp(it.lmin[1], it.lmax[1], rng.next()), lerp(it.lmin[2], it.lmax[2], rng.next()), tmp)
+        localToWorld(c, lerp(it.lmin[0], it.lmax[0], rng.next()), lerp(it.lmin[1], it.lmax[1], rng.next()), lerp(it.lmin[2], it.lmax[2], rng.next()), tmp)
         p.vx += (dx / len) * speed + tmp[0]
         p.vy += (dy / len) * speed + tmp[1]
         p.vz += (dz / len) * speed + tmp[2]
@@ -532,7 +562,7 @@ function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
           oz *= p.radius
         }
         if (it.local) {
-          localToWorld(cp, ox, oy, oz, tmp)
+          localToWorld(it.cp1 ? cp1 : cp, ox, oy, oz, tmp)
           ox = tmp[0]
           oy = tmp[1]
           oz = tmp[2]
@@ -542,6 +572,40 @@ function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
         p.pz += oz
         break
       }
+      case 'between': {
+        // C_INIT_MoveBetweenPoints: toward control point 1 (plus the end spread) at a random speed, living until it
+        // gets there
+        let ex = cp1.pos.x, ey = cp1.pos.y, ez = cp1.pos.z
+        if (it.spread > 0) {
+          ex += (rng.next() * 2 - 1) * it.spread
+          ey += (rng.next() * 2 - 1) * it.spread
+          ez += (rng.next() * 2 - 1) * it.spread
+        }
+        const dx = ex - p.px, dy = ey - p.py, dz = ez - p.pz
+        const len = Math.hypot(dx, dy, dz)
+        const speed = lerp(it.smin, it.smax, rng.next())
+        if (len > 1e-3 && speed > 0) {
+          p.vx = (dx / len) * speed
+          p.vy = (dy / len) * speed
+          p.vz = (dz / len) * speed
+          p.life = Math.min(BETWEEN_MAX_LIFE, len / speed)
+          if (it.offset) {
+            p.px += (dx / len) * it.offset
+            p.py += (dy / len) * it.offset
+            p.pz += (dz / len) * it.offset
+          }
+        } else p.life = 0
+        break
+      }
+      case 'model':
+        // the hitbox stand-in: uniform in the effect's box around the control point
+        if (box) {
+          localToWorld(cp, (rng.next() * 2 - 1) * box[0], (rng.next() * 2 - 1) * box[1], (rng.next() * 2 - 1) * box[2], tmp)
+          p.px = cp.pos.x + tmp[0]
+          p.py = cp.pos.y + tmp[1]
+          p.pz = cp.pos.z + tmp[2]
+        }
+        break
       case 'velocity': {
         const z = rng.next() * 2 - 1
         const phi = rng.next() * Math.PI * 2
@@ -563,15 +627,24 @@ function initParticle(sys: CompiledSystem, cp: ControlPoint): void {
   p.az = sys.gravity[2]
   const f = sys.randomForce
   if (f) {
-    p.ax += lerp(f.min[0], f.max[0], rng.next()) * RANDOM_FORCE_SCALE
-    p.ay += lerp(f.min[1], f.max[1], rng.next()) * RANDOM_FORCE_SCALE
-    p.az += lerp(f.min[2], f.max[2], rng.next()) * RANDOM_FORCE_SCALE
+    const k = RANDOM_WALK_K / Math.sqrt(Math.max(p.life, 0.05))
+    p.ax += (f.min[0] + f.max[0]) / 2 + (rng.next() - 0.5) * (f.max[0] - f.min[0]) * k
+    p.ay += (f.min[1] + f.max[1]) / 2 + (rng.next() - 0.5) * (f.max[1] - f.min[1]) * k
+    p.az += (f.min[2] + f.max[2]) / 2 + (rng.next() - 0.5) * (f.max[2] - f.min[2]) * k
   }
   if (sys.lock) {
     const s = lerp(sys.lock.sMin, sys.lock.sMax, rng.next())
     const e = lerp(sys.lock.eMin, sys.lock.eMax, rng.next())
     p.lockT = p.life * clamp01((s + Math.max(s, e)) / 2)
   }
+}
+
+function copyPoint(from: ControlPoint, to: ControlPoint): true {
+  to.pos.copy(from.pos)
+  to.fwd.copy(from.fwd)
+  to.left.copy(from.left)
+  to.up.copy(from.up)
+  return true
 }
 
 function sheetSequence(material: PcfMaterial | null, seq: number) {
@@ -636,8 +709,9 @@ function particleAt(sys: CompiledSystem, inst: EffectInstance, seed: number, k: 
   const a = t - birth
   if (a < 0) return 0
   if (!inst.cp(birth, cpBirth)) return 0
+  if (inst.cp1 ? !inst.cp1(birth, cpBirth1) : !copyPoint(cpBirth, cpBirth1)) return 0
   rng.seed(hash32(seed, sys.index, k))
-  initParticle(sys, cpBirth)
+  initParticle(sys, cpBirth, cpBirth1, inst.box)
   const life = p.life
   if (!(a < life) || !(life > 0)) return 0
   const tau = a / life

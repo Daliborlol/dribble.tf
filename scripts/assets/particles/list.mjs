@@ -9,6 +9,8 @@ export const PCF_FILES = [
   'particles/stickybomb.pcf',
   'particles/muzzle_flash.pcf',
   'particles/bullet_tracers.pcf',
+  'particles/medicgun_beam.pcf',
+  'particles/firstperson_weapon_fx.pcf',
 ]
 
 /** Root systems; their children are added recursively. */
@@ -35,4 +37,39 @@ export const ROOT_SYSTEMS = [
   'stickybombtrail_blue',
   'critical_grenade_red',
   'critical_grenade_blue',
+  // weapon scripts' MuzzleFlashParticleEffect (as/particles2): one per hitscan or launcher weapon kind
+  'muzzle_scattergun',
+  'muzzle_shotgun',
+  'muzzle_pistol',
+  'muzzle_smg',
+  'muzzle_revolver',
+  'muzzle_sniperrifle',
+  'muzzle_minigun_constant',
+  'muzzle_syringe',
+  'muzzle_grenadelauncher',
+  'muzzle_pipelauncher',
+  // weapon scripts' TracerEffect, per team and crit (FX_FireBullets appends _red/_blue and _crit)
+  'bullet_tracer01_red',
+  'bullet_tracer01_blue',
+  'bullet_tracer01_red_crit',
+  'bullet_tracer01_blue_crit',
+  'bullet_scattergun_tracer01_red',
+  'bullet_scattergun_tracer01_blue',
+  'bullet_scattergun_tracer01_red_crit',
+  'bullet_scattergun_tracer01_blue_crit',
+  'bullet_shotgun_tracer01_red',
+  'bullet_shotgun_tracer01_blue',
+  'bullet_shotgun_tracer01_red_crit',
+  'bullet_shotgun_tracer01_blue_crit',
+  'bullet_pistol_tracer01_red',
+  'bullet_pistol_tracer01_blue',
+  'bullet_pistol_tracer01_red_crit',
+  'bullet_pistol_tracer01_blue_crit',
+  // C_TFFlameThrower airblast
+  'pyro_blast',
+  // C_WeaponMedigun full charge, and C_TFPlayer's crit-boost effect on the active weapon
+  'medicgun_invulnstatus_fullcharge_red',
+  'medicgun_invulnstatus_fullcharge_blue',
+  'critgun_weaponmodel_red',
+  'critgun_weaponmodel_blu',
 ]

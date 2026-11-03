@@ -9,6 +9,7 @@
 import * as THREE from 'three'
 
 import { LEGACY_EYE_HEIGHT, TEAM_FX } from '@highlander/constants'
+import { PACK_CRIT_PROBE, packDraws } from '@highlander/combat/packParticles'
 
 import {
   BLEED_COLOR,
@@ -283,7 +284,8 @@ export class OverlayRig {
     }
 
     // Kritz orbiters: six diamonds on a tilted orbit, radius 28, z 30 to 70
-    const orbiters = this.part('orbiters', o.crit === 'crit', () => {
+    // with the pack's crit-boost sparks drawing on the weapon, those replace the orbiters
+    const orbiters = this.part('orbiters', o.crit === 'crit' && !packDraws(PACK_CRIT_PROBE), () => {
       const g = new THREE.Group()
       for (let i = 0; i < 6; i++) g.add(new THREE.Mesh(GEO.orbiter, MAT.orbiter[team]))
       return g

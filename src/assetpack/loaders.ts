@@ -149,10 +149,19 @@ export async function warmUpObject(
       console.warn('[assets] warmUpObject needs the drawn scene; skipping the warm-up')
       return
     }
-    if (typeof (renderer as any).compileAsync === 'function') {
-      await (renderer as any).compileAsync(object, camera, scene)
-    } else {
-      renderer.compile(object, camera, scene)
+    // renderer.compile plus our own wait instead of compileAsync: compileAsync's poll reads the program of every
+    // material it compiled and throws (an uncaught error in a timer; its promise never settles) once one of them
+    // was disposed meanwhile, as when a model is released during its warm-up (demo reloads, weapon switches)
+    const materials = renderer.compile(object, camera, scene) as unknown as Set<Material> | undefined
+    const parallel = !!renderer.extensions?.has?.('KHR_parallel_shader_compile')
+    if (!materials || !parallel) return
+    const pending = (m: Material) => {
+      const program = (renderer.properties.get(m) as any)?.currentProgram
+      return !!program && typeof program.isReady === 'function' && !program.isReady()
+    }
+    const started = performance.now()
+    while (Array.from(materials).some(pending) && performance.now() - started < 10000) {
+      await new Promise(resolve => setTimeout(resolve, 10))
     }
   } catch (error) {
     console.warn('[assets] shader warm-up failed', error)

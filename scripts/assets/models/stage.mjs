@@ -7,7 +7,12 @@
 // attachments, sequences, pose-parameter ranges, skins and bodygroups read from the model; those numbers are
 // pack data and never enter git (D19).
 //
-// Options (--set): modelsOnly=["models/...mdl", ...] limits the list (tests), textureMaxSize=<px> (1024).
+// Third-person weapons (thirdperson.mjs): with the item schema (--set itemsGame=<items_game.txt>, as for the
+// viewmodels stage) the stage adds the world models no other stage exports (role `weapon:world`, textures at 512
+// for skins 0 and 1) and one `thirdperson:<class>` pose item per class; without a schema it builds neither.
+//
+// Options (--set): modelsOnly=["models/...mdl", ...] limits the list (tests; no third-person items),
+// textureMaxSize=<px> (1024), itemsGame=<items_game.txt>.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,6 +24,8 @@ import { sha256 } from '../lib/vpk.mjs'
 import { MODEL_LIST } from './list.mjs'
 import { mdlPoseParams } from './mdl.mjs'
 import { exportVtf } from './texture-export.mjs'
+import { loadSchema } from '../lib/schema.mjs'
+import { thirdPersonModels, worldWeaponEntries, thirdPersonPoses } from './thirdperson.mjs'
 
 const TEXTURE_EXPORT_VERSION = 1
 const MODEL_EXPORT_VERSION = 3 // 2: rest pose from the default sequence; 3: triangle winding reversed
@@ -94,7 +101,14 @@ export async function run(ctx) {
   const maxSize = Number(set.textureMaxSize ?? 1024)
   const bspToGlb = findBspToGlb(ctx.options.bspToGlb)
   const tool = bspToGlbVersion(bspToGlb)
-  ctx.setOptions({ models: list.map(e => e.model).sort(), textureMaxSize: maxSize })
+  // Third-person weapons need the item schema (the VPKs have no copy); tests that limit the list skip them
+  const tfDir = path.dirname(ctx.vpk.vpks?.[1]?.file ?? '.')
+  const schemaFile = set.itemsGame ? path.resolve(String(set.itemsGame)) : path.join(tfDir, 'scripts', 'items', 'items_game.txt')
+  const schema = only ? null : loadSchema(schemaFile)
+  const thirdPerson = schema ? thirdPersonModels(schema, ctx.vpk) : null
+  if (!only && !schema) ctx.log(`no item schema at ${schemaFile} (pass --set itemsGame=<items_game.txt>); no third-person weapons`)
+  if (thirdPerson) list.push(...worldWeaponEntries(thirdPerson, new Set(list.map(e => e.model))))
+  ctx.setOptions({ models: list.map(e => e.model).sort(), textureMaxSize: maxSize, thirdPerson: !!thirdPerson })
   const paks = new Map()
   const wanted = new Set()
   const stats = { built: 0, skipped: 0, failed: [], textures: { built: 0, skipped: 0, reused: 0, unsupported: [] } }
@@ -119,7 +133,8 @@ export async function run(ctx) {
     const mdl = readFirst(sources, key)
     if (!mdl) { stats.failed.push({ model: key, error: 'not found' }); ctx.removeItem(key); continue }
     const parts = ['.vvd', '.dx90.vtx', '.ani'].map(ext => { const d = readFirst(sources, base + ext); return d ? sha256(d) : null })
-    const inputKey = ctx.inputKey({ model: key, entry, mdl: sha256(mdl), parts, tool, maxSize, textureExport: TEXTURE_EXPORT_VERSION, modelExport: MODEL_EXPORT_VERSION })
+    const entryMaxSize = entry.textureMaxSize ?? maxSize
+    const inputKey = ctx.inputKey({ model: key, entry, mdl: sha256(mdl), parts, tool, maxSize: entryMaxSize, textureExport: TEXTURE_EXPORT_VERSION, modelExport: MODEL_EXPORT_VERSION })
     const file = `${base}.glb`
     const prev = ctx.previous?.items?.[key]
     let materials
@@ -179,7 +194,8 @@ export async function run(ctx) {
           }
         }
         const textures = new Set()
-        for (const f of families.length ? families : [materials.map((_, i) => i)]) for (const i of f) if (keyOfIndex(i)) textures.add(keyOfIndex(i))
+        const skinFamilies = entry.textureSkins ? families.slice(0, entry.textureSkins) : families
+        for (const f of skinFamilies.length ? skinFamilies : [materials.map((_, i) => i)]) for (const i of f) if (keyOfIndex(i)) textures.add(keyOfIndex(i))
         const item = {
           kind: 'model',
           file,
@@ -220,12 +236,12 @@ export async function run(ctx) {
       const vtfPath = `materials/${tkey}.vtf`
       const vtf = readFirst(sources, vtfPath)
       if (!vtf) { stats.textures.unsupported.push({ key: tkey, reason: 'missing' }); ctx.removeItem(tkey); continue }
-      const tInputKey = ctx.inputKey({ texture: tkey, vtf: sha256(vtf), maxSize, textureExport: TEXTURE_EXPORT_VERSION })
+      const tInputKey = ctx.inputKey({ texture: tkey, vtf: sha256(vtf), maxSize: entryMaxSize, textureExport: TEXTURE_EXPORT_VERSION })
       const prevT = ctx.previous?.items?.[tkey]
       if (!ctx.options.force && prevT?.inputKey === tInputKey && existing && ctx.hasPackFile(existing.file)) { stats.textures.skipped++; continue }
       let out
       try {
-        out = await exportVtf(vtf, { maxSize })
+        out = await exportVtf(vtf, { maxSize: entryMaxSize })
       } catch (error) {
         stats.textures.unsupported.push({ key: tkey, reason: error.message })
         ctx.removeItem(tkey)
@@ -259,6 +275,14 @@ export async function run(ctx) {
       })
       stats.textures.built++
     }
+  }
+  if (thirdPerson) {
+    stats.thirdPerson = await thirdPersonPoses(ctx, { bspToGlb, tool, models: thirdPerson, wanted })
+    const pairs = Object.values(thirdPerson.perClass).reduce((n, c) => n + Object.keys(c.weapons).length, 0)
+    const defs = new Set(Object.values(thirdPerson.perClass).flatMap(c => Object.keys(c.weapons)))
+    stats.thirdPersonCoverage = { defs: defs.size, pairs, worldModels: list.filter(e => e.role === 'weapon:world').length, skipped: thirdPerson.skipped }
+    ctx.log(`third person: ${defs.size} defs, ${pairs} def/class pairs, ${stats.thirdPersonCoverage.worldModels} world-only models`)
+    for (const [cls, s] of Object.entries(stats.thirdPerson)) ctx.log(s.error ? `pose ${cls} failed: ${s.error}` : `pose ${cls}: ${s.skipped ? 'unchanged' : `${s.clip}@${s.frame}, rms ${s.rms}, ${s.pairs} vertex pairs`}`)
   }
   for (const [k, item] of Object.entries(ctx.manifest.items)) if (item.stage === ctx.stage && !wanted.has(k)) ctx.removeItem(k)
   ctx.log(`${stats.built} models built, ${stats.skipped} unchanged, ${stats.failed.length} failed; textures ${stats.textures.built} built, ${stats.textures.skipped} unchanged, ${stats.textures.reused} reused, ${stats.textures.unsupported.length} unsupported`)

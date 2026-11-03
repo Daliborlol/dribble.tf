@@ -227,6 +227,26 @@ export function computeFxState(input: FxInput): FxState {
 
   const scaleZ = crouchScaleAt(x, demo, p, tick)
 
+  // Third-person weapon (pack only, src/highlander/players/PackWeapon.tsx): the active weapon's def, or the
+  // disguise weapon while drawn as the disguise; the loadout feeds the extra wearables (banner backpacks)
+  let weaponDef = -1
+  if (drawnAsDisguise && disguise) weaponDef = disguise.weaponDef !== 65535 ? disguise.weaponDef : -1
+  else if (a.weapon) {
+    const w = x.players.weapon
+    const i = trackIndexAt(w, p, tick)
+    if (i >= 0 && w.id[i] !== 0xffffffff && w.def[i] !== 65535) weaponDef = w.def[i]
+  }
+  let loadoutDefs = ''
+  if (!drawnAsDisguise && a.loadout) {
+    const t = x.players.loadout
+    const i = trackIndexAt(t, p, tick)
+    if (i >= 0) {
+      for (const d of [t.d0[i], t.d1[i], t.d2[i], t.d3[i], t.d4[i], t.d5[i], t.d6[i], t.d7[i]]) {
+        if (d !== 65535) loadoutDefs += loadoutDefs ? `,${d}` : `${d}`
+      }
+    }
+  }
+
   const fx: ActorFx = {
     modelClassId: drawnAsDisguise && disguise ? disguise.cls : classId,
     modelTeam: drawnAsDisguise && disguiseTeam ? disguiseTeam : team,
@@ -236,6 +256,8 @@ export function computeFxState(input: FxInput): FxState {
     hidden,
     scaleZ,
     nameplate: null,
+    weaponDef,
+    loadoutDefs,
   }
 
   const state: FxState = { fx, flags, inv, invE, view, enemy, disguise, drawnAsDisguise, drawnTeam, cloaked, gas, condIndex }

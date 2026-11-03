@@ -4,6 +4,7 @@
 //   assets.models(filter?)                  the model cache rows
 //   assets.modelShow(keys | null, opts?)    draws copies in front of the camera (null removes them); for shots
 //   assets.gpu()                            renderer.info.memory and the last frame's render counts
+//   assets.tpweapons()                      mounted third-person weapon copies (thirdPerson.ts)
 
 import { _roots } from '@react-three/fiber'
 import { Matrix4, Object3D, Vector3 } from 'three'
@@ -12,6 +13,7 @@ import type { Camera, Scene, WebGLRenderer } from 'three'
 import { registerHlProbe } from '@highlander/debug'
 
 import { acquirePackModel, attachmentMatrix, listPackModels, releasePackModel } from './models'
+import { thirdPersonRows } from './thirdPerson'
 import type { PackModelHandle } from './models'
 
 function rootState(): { gl: WebGLRenderer; scene: Scene; camera: Camera } | null {
@@ -81,6 +83,7 @@ async function modelShow(keys: string | string[] | null, opts: ShowOptions = {})
 }
 
 registerHlProbe('assets.models', (filter?: string) => listPackModels(filter))
+registerHlProbe('assets.tpweapons', () => thirdPersonRows())
 registerHlProbe('assets.modelShow', (keys: string | string[] | null, opts?: ShowOptions) => modelShow(keys, opts))
 registerHlProbe('assets.gpu', () => {
   const state = rootState()

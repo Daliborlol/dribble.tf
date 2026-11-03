@@ -25,7 +25,13 @@ export interface NameplateExtra {
   classOverride?: number       // spy drawn as his disguise: disguise class
   teamOverride?: string        // spy drawn as his disguise: disguise team, 'red' | 'blue' (F1 addition)
 }
-export interface ActorFx { modelClassId: number; modelTeam: string; opacity: number; tint: string | null; emissive: number; hidden: boolean; scaleZ: number; nameplate: NameplateExtra | null }
+export interface ActorFx {
+  modelClassId: number; modelTeam: string; opacity: number; tint: string | null; emissive: number; hidden: boolean; scaleZ: number; nameplate: NameplateExtra | null
+  /** Item def held in third person (the disguise weapon while drawn as the disguise); -1 for none or unknown. */
+  weaponDef: number
+  /** Loadout weapon defs, comma separated ('' while drawn as the disguise), for the pack's extra wearables. */
+  loadoutDefs: string
+}
 
 /**
  * Defaults: base class and team, opacity 1, no tint, emissive 0, not hidden, scaleZ 1, no nameplate extra.
@@ -41,6 +47,8 @@ export const DEFAULT_ACTOR_FX: Readonly<ActorFx> = Object.freeze({
   hidden: false,
   scaleZ: 1,
   nameplate: null,
+  weaponDef: -1,
+  loadoutDefs: '',
 })
 
 /** DEFAULT_ACTOR_FX with the actor's base class and team. */

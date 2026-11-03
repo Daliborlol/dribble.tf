@@ -30,6 +30,7 @@ import { useActorFx, type NameplateExtra } from '@highlander/scene/actorFx'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { getPovSubject } from '@highlander/pov/subject'
+import { PackWeapons } from '@highlander/players/PackWeapon'
 import {
   declutterPlates,
   nameplateExtraEqual,
@@ -78,6 +79,10 @@ export interface PlayerModelProps {
   opacity?: number
   tint?: string | null
   emissive?: number
+  /** Held item def for the pack's third-person weapon (-1 none); without a pack nothing is drawn */
+  weaponDef?: number
+  /** Loadout defs, comma separated, for the pack's extra wearables */
+  loadoutDefs?: string
 }
 
 type EmissiveMaterial = THREE.Material & { emissive?: THREE.Color; emissiveIntensity?: number }
@@ -110,7 +115,7 @@ const cloneModel = (source: THREE.Object3D) => {
 }
 
 export const PlayerModel = React.memo((props: PlayerModelProps) => {
-  const { team, classId, visible, opacity = 1, tint = null, emissive = 0 } = props
+  const { team, classId, visible, opacity = 1, tint = null, emissive = 0, weaponDef = -1, loadoutDefs = '' } = props
 
   // Note: currently RED and BLU models are separate GLTF files.
   // It would be awesome if we could use a single GLTF and swap the material/textures.
@@ -150,6 +155,15 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
     <group visible={visible} rotation={[Math.PI * 0.5, Math.PI * 0.5, 0]}>
       <Select enabled={!!gltf.scene}>
         <primitive object={model.object} />
+        <PackWeapons
+          classKey={CLASS_MAP[classId] ?? ''}
+          team={team}
+          weaponDef={weaponDef}
+          loadoutDefs={loadoutDefs}
+          opacity={opacity}
+          tint={tint}
+          emissive={emissive}
+        />
       </Select>
     </group>
   )
@@ -483,6 +497,8 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
               opacity={fx.opacity}
               tint={fx.tint}
               emissive={fx.emissive}
+              weaponDef={fx.weaponDef}
+              loadoutDefs={fx.loadoutDefs}
             />
           ) : null}
         </Suspense>

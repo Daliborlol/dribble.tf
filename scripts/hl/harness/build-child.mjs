@@ -1,7 +1,7 @@
 // Builds a dribble.tf checkout (repo or worktree) with that checkout's own vite.config.mts,
 // without copying public/ (the harness server serves <root>/public directly).
 //
-// Usage: node scripts/hl/harness/build-child.mjs <root> <outDir> [--no-minify] [--asset-pack-url <url>]
+// Usage: node scripts/hl/harness/build-child.mjs <root> <outDir> [--no-minify] [--source-map] [--asset-pack-url <url>]
 // Run by shot.mjs as a child process so the Rollup heap is released when it exits. It uses the vite in
 // <root>/node_modules, so a worktree builds with the same toolchain as its main checkout.
 import fs from 'node:fs'
@@ -13,7 +13,7 @@ const minify = !flags.includes('--no-minify')
 const packAt = flags.indexOf('--asset-pack-url')
 const packUrl = packAt >= 0 ? flags[packAt + 1] : null
 if (!root || !outDir || (packAt >= 0 && !packUrl)) {
-  console.error('usage: node build-child.mjs <root> <outDir> [--no-minify] [--asset-pack-url <url>]')
+  console.error('usage: node build-child.mjs <root> <outDir> [--no-minify] [--source-map] [--asset-pack-url <url>]')
   process.exit(64)
 }
 
@@ -44,7 +44,8 @@ await build({
     outDir,
     emptyOutDir: true,
     reportCompressedSize: false,
-    sourcemap: false,
+    // tools/perf-breakdown.mjs maps a CPU profile's frames back to source files with this.
+    sourcemap: flags.includes('--source-map'),
     minify,
   },
 })

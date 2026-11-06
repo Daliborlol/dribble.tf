@@ -96,8 +96,9 @@ const MemoPlaybackPanel = memo(PlaybackPanel)
  * layout effect keyed on `children`, so re-rendering it with fresh JSX children on every tick removed and re-added
  * the outline pass every frame (addPass, configure) even while outlines were off.
  */
-const OutlineComposer = memo(({ enabled }: { enabled: boolean }) => (
-  <EffectComposer enabled={enabled} autoClear={false}>
+const OutlineComposer = memo(({ enabled, antialias }: { enabled: boolean; antialias: boolean }) => (
+  // the library's default target (8x MSAA, half float) cost 8 ms of main thread a frame on the 680M with outlines on
+  <EffectComposer enabled={enabled} autoClear={false} multisampling={antialias ? 4 : 0} frameBufferType={THREE.UnsignedByteType}>
     <Outline blendFunction={BlendFunction.SCREEN} visibleEdgeColor={0xffffff} hiddenEdgeColor={0xffffff} xRay={true} />
   </EffectComposer>
 ))
@@ -605,6 +606,9 @@ type DemoViewerProps = {
 }
 
 class DemoViewer extends Component<DemoViewerProps> {
+  // A context attribute: fixed when the canvas is created, so the setting applies on the next demo load
+  private readonly antialias = useStore.getState().settings.ui.antialias !== false
+
   settingsSub = function () {}
   canvasRef = createRef<HTMLCanvasElement>()
   uiLayers = createRef<HTMLDivElement>()
@@ -769,7 +773,7 @@ class DemoViewer extends Component<DemoViewerProps> {
         <Canvas
           ref={this.canvasRef}
           id="main-canvas"
-          gl={{ alpha: true }}
+          gl={{ alpha: true, antialias: this.antialias }}
           dpr={canvasDpr}
           onCreated={({ scene }) => {
             // The root never moves. Composing its matrix every frame would mark it dirty, and three's scene update
@@ -807,7 +811,7 @@ class DemoViewer extends Component<DemoViewerProps> {
             <Selection>
               <Actors />
 
-              <OutlineComposer enabled={settings.ui.playerOutlines} />
+              <OutlineComposer enabled={settings.ui.playerOutlines} antialias={this.antialias} />
             </Selection>
           </Suspense>
 

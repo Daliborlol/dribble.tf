@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect, CSSProperties, useEffect } from 'react'
+import { useRef, useLayoutEffect, CSSProperties, useEffect, useState } from 'react'
 import CanvasDraw from 'react-canvas-draw'
 import { motion } from 'framer-motion'
 
@@ -25,6 +25,12 @@ export const DemoDrawing = () => {
   const brushColor = useStore(state => state.drawing.brushColor)
   const brushRadius = useStore(state => state.drawing.brushRadius)
 
+  // the four full-screen CanvasDraw canvases and their rAF loop mount with the first use of the tool
+  const [mountCanvas, setMountCanvas] = useState(false)
+  useEffect(() => {
+    if (enabled) setMountCanvas(true)
+  }, [enabled])
+
   useEffect(() => {
     if (drawingTool !== DrawingTool.BRUSH) {
       setDrawingToolAction(DrawingTool.BRUSH)
@@ -44,26 +50,31 @@ export const DemoDrawing = () => {
     if (drawingCanvasRef.current) {
       setDrawingCanvas(drawingCanvasRef.current)
     }
-  }, [drawingCanvasRef, setDrawingCanvas])
+  }, [drawingCanvasRef, setDrawingCanvas, mountCanvas])
 
   const actionButtonClass = () =>
     'inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition-all hover:scale-110 hover:bg-white/20'
 
   return (
     <>
-      <CanvasDraw
-        ref={drawingCanvasRef}
-        style={drawingCanvasStyle}
-        brushColor={brushColor}
-        brushRadius={brushRadius}
-        lazyRadius={6}
-        hideInterface
-        hideGrid
-      />
+      {mountCanvas && (
+        <CanvasDraw
+          ref={drawingCanvasRef}
+          style={drawingCanvasStyle}
+          brushColor={brushColor}
+          brushRadius={brushRadius}
+          lazyRadius={6}
+          hideInterface
+          hideGrid
+        />
+      )}
 
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 flex items-end justify-center overflow-hidden [outline:8px_solid_rgba(0,0,0,0.6)] [transition:0.3s_ease_all]',
+          'pointer-events-none absolute inset-0 flex items-end justify-center overflow-hidden [transition:0.3s_ease_all]',
+          // at offset 0 this outline lies outside the viewport, yet it keeps a full-screen layer with four
+          // rastered tiles (8.4 MB, a full-screen blend per frame) alive; transparent paints nothing until the tool opens
+          enabled ? '[outline:8px_solid_rgba(0,0,0,0.6)]' : '[outline:8px_solid_transparent]',
           enabled && '-outline-offset-8'
         )}
       >

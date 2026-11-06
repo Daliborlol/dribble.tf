@@ -255,6 +255,7 @@ export type StoreState = {
         color: string
       }
       playerOutlines: boolean
+      antialias: boolean
       showStats: boolean
       showSkybox: boolean
       viewDistance: number
@@ -348,6 +349,7 @@ export const initialState: StoreState = {
         color: '#ffffff',
       },
       playerOutlines: false,
+      antialias: true,
       showStats: true,
       showSkybox: true,
       viewDistance: 15000,

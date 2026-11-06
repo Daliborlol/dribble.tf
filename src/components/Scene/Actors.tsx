@@ -5,7 +5,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Select } from '@components/Scene/OutlineSelect'
 import { useXrayGlow } from '@highlander/players/xrayGlow'
 import { skipUpdateWhileHidden } from '@highlander/perf/sceneUpdate'
-import { Html, useGLTF } from '@react-three/drei'
+import { useGLTF } from '@react-three/drei'
+import { PlateHtml } from '@highlander/perf/PlateHtml'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { Vector } from '@components/Analyse/Data/Types'
@@ -749,9 +750,9 @@ const ActorNameplate = React.memo((props: ActorNameplateProps) => {
   )
   const position = useMemo(() => [0, 0, z] as [number, number, number], [z])
   return (
-    <Html ref={plateRef} name="html" className="pointer-events-none select-none" style={PLATE_STYLE} position={position}>
+    <PlateHtml entityId={content.entityId} ref={plateRef} name="html" className="pointer-events-none select-none" style={PLATE_STYLE} position={position}>
       <PlateContent {...content} settings={settings} />
-    </Html>
+    </PlateHtml>
   )
 })
 

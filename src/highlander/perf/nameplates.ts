@@ -16,6 +16,7 @@ import * as THREE from 'three'
 
 import { registerHlProbe } from '@highlander/debug'
 import type { NameplateExtra } from '@highlander/scene/actorFx'
+const Z_BASE = 10000000
 
 /** Nameplates drawn besides the exempt ones. */
 export const NAMEPLATE_CAP = 12
@@ -65,6 +66,10 @@ interface PlateEntry {
   applied: boolean | null
   /** the wrapper element that last got will-change, and the value */
   moving: { element: HTMLElement | null; on: boolean }
+  /** no per-frame writes while set (not drawn, capped, filtered or far off screen), and the z-index last written */
+  hiddenForWrites: boolean
+  zWritten: number
+  anchorDistance: number
   /** last pass results, for the probe */
   distance: number
   rank: number
@@ -86,13 +91,33 @@ export function registerPlate(
   element: { current: HTMLElement | null },
   state: { current: PlateState }
 ): () => void {
-  const entry: PlateEntry = { entityId, group, element, state, applied: null, moving: { element: null, on: false }, distance: 0, rank: -1, shown: true, reason: 'notDrawn' }
+  const entry: PlateEntry = { entityId, group, element, state, applied: null, moving: { element: null, on: false }, hiddenForWrites: false, zWritten: -1, anchorDistance: 0, distance: 0, rank: -1, shown: true, reason: 'notDrawn' }
   entries.set(entityId, entry)
   return () => {
     if (entries.get(entityId) === entry) entries.delete(entityId)
     const el = entry.element.current
     if (el && entry.applied === false) el.style.removeProperty('display')
   }
+}
+
+/** True while the declutter pass keeps this plate hidden. */
+export function plateHidden(entityId: number): boolean {
+  return entries.get(entityId)?.applied === false
+}
+
+const showListeners = new Map<number, () => void>()
+
+/** `listener` runs when the pass shows the plate again; returns the cleanup. */
+export function onPlateShown(entityId: number, listener: () => void): () => void {
+  showListeners.set(entityId, listener)
+  return () => {
+    if (showListeners.get(entityId) === listener) showListeners.delete(entityId)
+  }
+}
+
+/** True while the plate needs no position write (`PlateHtml`). */
+export function plateSkipsWrites(entityId: number): boolean {
+  return entries.get(entityId)?.hiddenForWrites ?? false
 }
 
 /** Tracks the pointer over the canvas for the hover exemption; returns the cleanup. */
@@ -254,6 +279,34 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
   else delete lastOptions.focusOnly
   order.length = 0
 
+  // Writes only for plates that show: rank z-index (nearest on top, drei's order) written when it changes
+  for (const entry of entries.values()) {
+    const drawn = entry.state.current.drawn
+    let hidden = !drawn || !entry.shown
+    // TF2 look: a plate whose anchor is off screen is filtered like an on-screen one unless it is followed or a POV teammate
+    if (!hidden && focusOnly && entry.reason === 'offscreen' && entry.entityId !== opts.focusedEntityId && entry.entityId !== opts.subjectEntityId && !(povTeam && entry.state.current.team === povTeam)) hidden = true
+    if (!hidden) {
+      entry.group.getWorldPosition(_pos)
+      _pos.z += PLATE_Z
+      entry.anchorDistance = _camera.distanceTo(_pos)
+      _ndc.copy(_pos).project(camera)
+      if (entry.reason === 'offscreen' && !(_ndc.z >= -1 && _ndc.z <= 1 && Math.abs(_ndc.x) <= 1.4 && Math.abs(_ndc.y) <= 1.4)) hidden = true
+    }
+    entry.hiddenForWrites = hidden
+    if (!hidden) order.push(entry)
+  }
+  order.sort((a, b) => a.anchorDistance - b.anchorDistance || a.entityId - b.entityId)
+  for (let i = 0; i < order.length; i++) {
+    const entry = order[i]
+    const z = Z_BASE + 64 - i
+    const wrapper = entry.element.current?.parentElement
+    if (wrapper && entry.zWritten !== z) {
+      entry.zWritten = z
+      wrapper.style.zIndex = String(z)
+    }
+  }
+  order.length = 0
+
   for (const entry of entries.values()) {
     const el = entry.element.current
     if (!el) {
@@ -262,9 +315,12 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
     }
     const shown = entry.shown
     if (entry.applied === shown && el.style.display === (shown ? '' : 'none')) continue
+    const wasHidden = entry.applied === false
     entry.applied = shown
-    if (shown) el.style.removeProperty('display')
-    else el.style.display = 'none'
+    if (shown) {
+      el.style.removeProperty('display')
+      if (wasHidden) showListeners.get(entry.entityId)?.()
+    } else el.style.display = 'none'
   }
 }
 

@@ -35,6 +35,8 @@ import {
   resolvePlaywright,
   shown,
 } from './lib/setup.mjs'
+import { WINDOW_END_MARK, WINDOW_START_MARK, frameStats, frameWorkStats, parseTraceBuffer, statOf, traceBreakdown } from './lib/perf-analysis.mjs'
+import { readPowerProfile, startSystemSampler, waitForQuiet } from './lib/system-sampler.mjs'
 
 const SCRIPT = fileURLToPath(import.meta.url)
 const COMMON_FLAGS = [
@@ -51,6 +53,8 @@ const GPU_FLAGS = {
   egl: ['--use-gl=angle', '--use-angle=gl-egl', '--enable-gpu'],
   vulkan: ['--use-angle=vulkan', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan', '--enable-gpu'],
   swiftshader: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  // No ANGLE switch: the backend the browser picks by itself, as a user's browser does.
+  default: ['--enable-gpu'],
 }
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -115,12 +119,22 @@ Perf
   --perf                  open with ?perf=true and collect [Perf] console lines
   --perf-play <spec>      tick:seconds[:mode[:player[:speed]]] e.g. 50%:10:rts or 21000:8:pov:medic@red:0
                           (speed 0 = paused) -> perf.json (fps, frame ms, ticks/s, long tasks, memory)
+                          perf.json also gets: system (Radeon load and clock, CPU clocks, power state, per-thread CPU
+                          time, sampled in the window only), frameStats (p50, p95, p99, frames over 20 and 34 ms),
+                          renderInfo (renderer.info samples) and browserInfo (WebGL backend, MSAA, GPU feature status)
+  --quiet-cores <n>       with --perf-play: before the window, wait until other processes use at most n cores for a
+  --quiet-wait <sec>      second, at most this long (default 30); then measure anyway. perf.json records it as quiet
+  --gpu-timer             with --perf-play: time every renderer.render() on the GPU with EXT_disjoint_timer_query_webgl2;
+                          perf.json gets gpuTimer (scene GPU ms per frame, without the MSAA resolve and the compositor)
   --cpu-profile           with --perf-play: record a CDP CPU profile + top self-time table
   --trace                 with --perf-play: record a Chromium trace (perf-trace.json) and write the busy time per
                           thread and event (renderer main, compositor, GPU main) to perf-trace.txt
 Build
   --rebuild               force a rebuild;  --no-build  reuse the last build even if stale
   --no-minify             unminified build (separate cache) so --cpu-profile shows real function names
+  --source-map            with --no-minify: also write source maps (own cache entry; the build takes about 4 GB of
+                          memory), so tools/perf-breakdown.mjs can sum a profile per source file
+  --build-only            build (or find the fresh cached build) under the lock and exit; needs --demo like a run
   --build-cache <dir>     build cache (env DRIBBLE_HARNESS_BUILDS; default <root>/node_modules/.cache/dribble-harness)
 Browser and page
   --browser <shell|chrome|path>
@@ -129,7 +143,9 @@ Browser and page
                           or a browser executable. Default: env CHROME_PATH, else the expected shell, then the
                           expected chromium, then the newest shell, then the newest chromium
                           (searched in $PLAYWRIGHT_BROWSERS_PATH and ~/.cache/ms-playwright)
-  --gpu <egl|vulkan|swiftshader>  WebGL backend (default egl = AMD iGPU; falls back to swiftshader)
+  --gpu <egl|vulkan|swiftshader|default>
+                          WebGL backend (default egl = AMD iGPU; falls back to swiftshader); default passes no ANGLE
+                          switch and takes what the browser picks by itself
   --keep-default-map      do not stub the boot map GLB (by default only the demo's map GLB loads)
   --allow-network         do not block non-local requests (fonts, analytics)
   --query <a=1&b=2>       extra URL query parameters (repeatable)
@@ -181,10 +197,15 @@ const FLAGS = {
   perf: 'bool',
   'perf-play': 'value',
   'cpu-profile': 'bool',
+  'gpu-timer': 'bool',
+  'quiet-cores': 'number',
+  'quiet-wait': 'number',
   trace: 'bool',
   rebuild: 'bool',
   'no-build': 'bool',
   'no-minify': 'bool',
+  'source-map': 'bool',
+  'build-only': 'bool',
   'build-cache': 'value',
   browser: 'value',
   gpu: 'value',
@@ -268,7 +289,7 @@ if (args.help) {
 // Option values that can be checked without the lock, so a typo fails at once instead of after a build.
 const usageProblems = [...parsed.problems]
 if (args.size !== undefined && !/^\d+x\d+$/.test(String(args.size))) usageProblems.push(`--size needs WxH, e.g. 1600x900 (got "${args.size}")`)
-if (args.gpu !== undefined && !GPU_FLAGS[String(args.gpu)]) usageProblems.push(`unknown --gpu ${args.gpu} (egl|vulkan|swiftshader)`)
+if (args.gpu !== undefined && !GPU_FLAGS[String(args.gpu)]) usageProblems.push(`unknown --gpu ${args.gpu} (${Object.keys(GPU_FLAGS).join('|')})`)
 for (const tick of list(args.ticks)) if (!isTickSpec(tick)) usageProblems.push(`bad tick "${tick}" in --ticks (a playback tick or a percentage)`)
 for (const mode of list(args.modes)) if (!MODES.includes(mode)) usageProblems.push(`unknown mode "${mode}" in --modes (${MODES.join('|')})`)
 if (args['perf-play'] !== undefined) {
@@ -278,7 +299,9 @@ if (args['perf-play'] !== undefined) {
   }
 }
 if (args['cpu-profile'] && !args['perf-play']) usageProblems.push('--cpu-profile needs --perf-play')
+if (args['source-map'] && !args['no-minify']) usageProblems.push('--source-map needs --no-minify')
 if (args.trace && !args['perf-play']) usageProblems.push('--trace needs --perf-play')
+if (args['gpu-timer'] && !args['perf-play']) usageProblems.push('--gpu-timer needs --perf-play')
 if (usageProblems.length) {
   console.error(`[harness] ${usageProblems.join('\n[harness] ')}\n[harness] see --help`)
   process.exit(EXIT_USAGE)
@@ -424,7 +447,7 @@ async function runCheck() {
     const dir = buildCacheDir(root)
     const packUrl = packArg ? PACK_ROUTE : null
     const key = buildKey(root, packUrl)
-    const status = ['', '-nominify']
+    const status = ['', '-nominify', '-nominify-map']
       .map(suffix => {
         const distDir = path.join(dir, key + suffix, 'dist')
         if (!fs.existsSync(path.join(distDir, 'index.html'))) return null
@@ -576,6 +599,7 @@ async function main({ root, demoPath, plan, initScripts, assetPack, playwright, 
     ensureNodeModules(root, log)
     const packUrl = assetPack ? PACK_ROUTE : null
     const distDir = await ensureBuild(root, outDir, log, packUrl)
+    if (args['build-only']) return
 
     // 2. server
     const server = await startServer({
@@ -869,6 +893,21 @@ async function main({ root, demoPath, plan, initScripts, assetPack, playwright, 
             await bridge(([o, v]) => window.__dribble.setSetting(o, v), [option, value])
           }
         }
+        if (step.reload) {
+          // settings read once at load (ui.antialias, highlander.enabled) persist in IndexedDB: reload and wait for the demo again
+          await sleep(800)
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+          await page.waitForFunction(() => !!window.__dribble, null, { timeout: 60000 })
+          const reloadDeadline = Date.now() + 180000
+          while (true) {
+            const reloaded = await getState().catch(() => null)
+            if (reloaded?.parser?.status === 'done' && reloaded.demo && reloaded.scene.mapLoaded) break
+            if (Date.now() > reloadDeadline) throw new Error('demo did not load again after the reload')
+            await sleep(300)
+          }
+          await bridge(() => window.__dribble.setPlaying(false))
+          await waitForNetworkIdle(800, 120000)
+        }
         if (step.speed) await bridge(s => window.__dribble.setSpeed(s), Number(step.speed))
         await bridge(([t]) => window.__dribble.goToTick(t), [tick])
         entry.modeResult = await applyMode(step)
@@ -915,7 +954,7 @@ async function main({ root, demoPath, plan, initScripts, assetPack, playwright, 
 
     // 6. perf
     if (args['perf-play']) {
-      manifest.perf = await runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memory, outDir, log })
+      manifest.perf = await runPerfPlay({ page, bridge, resolveTick, applyMode, settle, waitAssetsIdle, memory, browserPid, distDir, outDir, log })
       fs.writeFileSync(path.join(outDir, 'perf.json'), JSON.stringify(manifest.perf, null, 2))
       log(`perf: ${JSON.stringify(manifest.perf.summary)}`)
     }
@@ -960,8 +999,20 @@ async function launchBrowser(chromium, executablePath, requestedGpu, noVsync, lo
   const order = requestedGpu === 'swiftshader' ? ['swiftshader'] : [requestedGpu, 'swiftshader']
   for (const gpu of order) {
     const flags = GPU_FLAGS[gpu]
-    if (!flags) throw new Error(`unknown --gpu ${gpu} (egl|vulkan|swiftshader)`)
-    const browser = await chromium.launch({ executablePath, headless: true, args: [...COMMON_FLAGS, ...flags, ...(noVsync ? NO_VSYNC_FLAGS : [])], timeout: 60000 })
+    if (!flags) throw new Error(`unknown --gpu ${gpu} (${Object.keys(GPU_FLAGS).join('|')})`)
+    // A full browser (Brave, Chromium) must never reach the desktop session: no display variables, Ozone's headless
+    // platform. Playwright gives it a throwaway --user-data-dir under TMPDIR, never a user's profile.
+    const env = { ...process.env }
+    delete env.DISPLAY
+    delete env.WAYLAND_DISPLAY
+    const fullBrowser = !/headless[-_]shell/.test(executablePath)
+    const ozone = fullBrowser ? ['--ozone-platform=headless'] : []
+    // A full browser's process singleton keeps a socket in a folder under TMPDIR, whose path must fit sun_path.
+    if (fullBrowser && os.tmpdir().length > 60) {
+      env.TMPDIR = path.join(os.homedir(), '.cache', 'dribble-harness-tmp')
+      fs.mkdirSync(env.TMPDIR, { recursive: true })
+    }
+    const browser = await chromium.launch({ executablePath, headless: true, env, args: [...COMMON_FLAGS, ...ozone, ...flags, ...(noVsync ? NO_VSYNC_FLAGS : [])], timeout: 60000 })
     let renderer = 'unknown'
     try {
       const probe = await browser.newPage()
@@ -988,16 +1039,79 @@ async function launchBrowser(chromium, executablePath, requestedGpu, noVsync, lo
 
 // ─── PERF ─────────────────────────────────────────────────────────────────────────
 
-async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memory, outDir, log }) {
+// The WebGL context of the app's own canvas and the browser's view of its GPU, read outside the measured seconds.
+async function readBrowserInfo(page) {
+  const canvas = await page
+    .evaluate(() => {
+      const element = document.querySelector('#main-canvas canvas') ?? document.querySelector('canvas')
+      const gl = element?.getContext('webgl2')
+      if (!gl) return null
+      const debug = gl.getExtension('WEBGL_debug_renderer_info')
+      const extensions = gl.getSupportedExtensions() ?? []
+      return {
+        renderer: gl.getParameter(gl.RENDERER),
+        vendor: gl.getParameter(gl.VENDOR),
+        version: gl.getParameter(gl.VERSION),
+        unmaskedRenderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+        unmaskedVendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+        attributes: gl.getContextAttributes(),
+        samples: gl.getParameter(gl.SAMPLES),
+        maxSamples: gl.getParameter(gl.MAX_SAMPLES),
+        drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+        canvasCss: [element.clientWidth, element.clientHeight],
+        devicePixelRatio: window.devicePixelRatio,
+        timerQuery: extensions.includes('EXT_disjoint_timer_query_webgl2'),
+        multiDraw: extensions.includes('WEBGL_multi_draw'),
+        extensions,
+      }
+    })
+    .catch(error => ({ error: String(error?.message || error) }))
+  const browser = page.context().browser()
+  let system = null
+  try {
+    const cdp = await browser.newBrowserCDPSession()
+    const info = await cdp.send('SystemInfo.getInfo')
+    const aux = info.gpu?.auxAttributes ?? {}
+    system = {
+      featureStatus: info.gpu?.featureStatus ?? null,
+      driverBugWorkarounds: info.gpu?.driverBugWorkarounds?.length ?? null,
+      glRenderer: aux.glRenderer ?? null,
+      glVersion: aux.glVersion ?? null,
+      glImplementationParts: aux.glImplementationParts ?? null,
+      vulkanVersion: aux.vulkanVersion ?? null,
+      passthroughCommandDecoder: aux.passthroughCmdDecoder ?? null,
+      inProcessGpu: aux.inProcessGpu ?? null,
+      commandLine: info.commandLine ?? null,
+    }
+    await cdp.detach().catch(() => {})
+  } catch (error) {
+    system = { error: String(error?.message || error) }
+  }
+  return { version: browser.version(), userAgent: await page.evaluate(() => navigator.userAgent).catch(() => null), canvas, system }
+}
+
+async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, waitAssetsIdle, memory, browserPid, distDir, outDir, log }) {
   const [tickSpec = '50%', secondsSpec = '10', mode = 'rts', playerSpec, speedSpec = '1'] = String(args['perf-play']).split(':')
   const seconds = Number(secondsSpec)
   const speed = Number(speedSpec)
   const player = playerSpec || undefined
   const tick = resolveTick(tickSpec)
   await bridge(([t]) => window.__dribble.goToTick(t), [tick])
-  await applyMode({ mode, player })
+  const modeResult = await applyMode({ mode, player })
+  if (modeResult && modeResult.ok === false) log(`WARNING perf window: ${modeResult.error}`)
   if (speed > 0) await bridge(s => window.__dribble.setSpeed(s), speed)
   await settle()
+  // A camera switch shows a tip panel for 2 s and a new subject can start pack model loads: neither belongs in the window.
+  await sleep(2300)
+  const assetsIdle = await waitAssetsIdle()
+  const browserInfo = await readBrowserInfo(page)
+  const profileBefore = await readPowerProfile()
+  const quiet = args['quiet-cores'] !== undefined ? await waitForQuiet({ rootPid: browserPid, maxOtherCores: Number(args['quiet-cores']), timeoutSec: num(args['quiet-wait'], 30) }) : null
+  if (quiet && !quiet.ok) log(`perf window: other processes still use ${quiet.otherCores} cores after ${quiet.waitedSec} s; measuring anyway`)
+  const startState = await bridge(() => {
+    const state = window.__dribble.getState()
+    return { playback: state.playback, scene: state.scene }
+  })
 
   let cdp
   if (args['cpu-profile']) {
@@ -1015,12 +1129,82 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
   }
 
   const memBefore = memory.sample()
+  // The memory sampler walks every smaps_rollup once a second, which holds each browser process's mmap lock: it stays
+  // out of the measured seconds, and the samples just before and after them still catch the page's level.
+  memory.pause()
+  const systemSampler = startSystemSampler({ rootPid: browserPid, profileBefore })
   // Play, sample frame times and long tasks, and pause, all inside one evaluate so the
   // tick rate is measured over exactly the sampled wall time.
   const run = await page.evaluate(
-    ([ms, play]) =>
+    ([ms, play, marks, useGpuTimer]) =>
       new Promise(resolve => {
         const bridge = window.__dribble
+        if (marks) console.timeStamp(marks[0])
+        // renderer.info of the app's r3f root, read twice a second; the alive count once a second.
+        const threeRoot = bridge.stores.useInstance.getState().threeScene?.__r3f?.root
+        const renderer = threeRoot?.getState?.()?.gl ?? null
+        // A time-elapsed query around each renderer.render(): it covers the scene's GL commands, not the wait between
+        // frames, the MSAA resolve or the compositor. Results arrive some frames later, so a queue is polled.
+        let gpuTimer = null
+        if (useGpuTimer && renderer) {
+          const gl = renderer.getContext()
+          const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2')
+          if (ext) {
+            const original = renderer.render
+            const pending = []
+            const sceneMs = []
+            let disjoint = 0
+            const poll = () => {
+              while (pending.length && gl.getQueryParameter(pending[0], gl.QUERY_RESULT_AVAILABLE)) {
+                const query = pending.shift()
+                if (gl.getParameter(ext.GPU_DISJOINT_EXT)) disjoint++
+                else sceneMs.push(gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6)
+                gl.deleteQuery(query)
+              }
+            }
+            renderer.render = function (...renderArgs) {
+              poll()
+              const query = gl.createQuery()
+              gl.beginQuery(ext.TIME_ELAPSED_EXT, query)
+              try {
+                return original.apply(this, renderArgs)
+              } finally {
+                gl.endQuery(ext.TIME_ELAPSED_EXT)
+                pending.push(query)
+              }
+            }
+            gpuTimer = {
+              stop() {
+                renderer.render = original
+                poll()
+                return { sceneMs, disjoint, pendingAtEnd: pending.length }
+              },
+            }
+          }
+        }
+        const renderInfo = []
+        let nextRenderSample = 0
+        let renderSamples = 0
+        const sampleRender = t => {
+          const perf = bridge.stores.useInstance.getState().runtimePerf
+          const info = renderer?.info
+          const row = {
+            t: Math.round(t),
+            calls: info ? info.render.calls : perf.renderCalls,
+            triangles: info ? info.render.triangles : perf.renderTriangles,
+            renders: info ? info.render.frame : null,
+            programs: info?.programs?.length ?? null,
+            geometries: info?.memory?.geometries ?? null,
+            textures: info?.memory?.textures ?? null,
+          }
+          if (renderSamples++ % 2 === 0) {
+            const players = bridge.listPlayers().filter(p => p.connected && (p.teamId === 2 || p.teamId === 3))
+            row.alive = players.filter(p => p.alive).length
+            const focused = bridge.stores.useInstance.getState().focusedObject?.userData?.entityId
+            if (focused != null) row.focusedAlive = !!players.find(p => p.entityId === focused)?.alive
+          }
+          renderInfo.push(row)
+        }
         const longTasks = []
         let observer
         try {
@@ -1032,15 +1216,51 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
         const t0 = performance.now()
         if (play) bridge.setPlaying(true)
         const deltas = []
+        // How long each frame keeps the main thread, unquantized by vsync, so it shows the margin to the budget while fps
+        // sits at 60: from the frame's first rAF callback (requestAnimationFrame is wrapped for the window) to a message
+        // posted from the harness's callback, which runs once the frame's task is over (callbacks, style, layout, paint,
+        // commit) and after what the page posted before it. frameDone counts from the vsync's timestamp instead, so it
+        // also holds the delay before the frame's task could start.
+        const frameWork = []
+        const frameDone = []
+        let frameFirstCallback = 0
+        let frameVsync = 0
+        const nativeRaf = window.requestAnimationFrame
+        window.requestAnimationFrame = callback =>
+          nativeRaf.call(window, ts => {
+            if (ts !== frameVsync) {
+              frameVsync = ts
+              frameFirstCallback = performance.now()
+            }
+            callback(ts)
+          })
+        const workChannel = new MessageChannel()
+        workChannel.port1.onmessage = () => {
+          const at = performance.now()
+          frameWork.push(at - frameFirstCallback)
+          frameDone.push(at - frameVsync)
+        }
         let last = t0
         const step = now => {
           deltas.push(now - last)
           last = now
+          workChannel.port2.postMessage(0)
+          if (now - t0 >= nextRenderSample) {
+            sampleRender(now - t0)
+            nextRenderSample += 500
+          }
           if (now - t0 < ms) return requestAnimationFrame(step)
+          if (marks) console.timeStamp(marks[1])
           bridge.setPlaying(false)
           observer?.disconnect()
+          window.requestAnimationFrame = nativeRaf
+          setTimeout(() => workChannel.port1.close(), 0)
           resolve({
             deltas,
+            frameWork,
+            frameDone,
+            renderInfo,
+            gpuTimer: gpuTimer ? gpuTimer.stop() : null,
             elapsedMs: performance.now() - t0,
             tick0,
             tick1: bridge.getState().playback.tick,
@@ -1052,8 +1272,11 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
         }
         requestAnimationFrame(step)
       }),
-    [seconds * 1000, speed > 0]
+    [seconds * 1000, speed > 0, tracingBrowser ? [WINDOW_START_MARK, WINDOW_END_MARK] : null, !!args['gpu-timer']]
   )
+  const finishSystem = systemSampler.stop({ frames: run.deltas.length })
+  const system = finishSystem(await readPowerProfile())
+  memory.resume()
   const memAfter = memory.sample()
 
   let profileSummary
@@ -1067,10 +1290,13 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
     await cdp.detach().catch(() => {})
   }
 
+  let traceSummary
   if (tracingBrowser) {
     const buffer = await tracingBrowser.stopTracing()
     fs.writeFileSync(path.join(outDir, 'perf-trace.json'), buffer)
-    fs.writeFileSync(path.join(outDir, 'perf-trace.txt'), summarizeTrace(JSON.parse(buffer.toString()), run.elapsedMs, run.deltas.length))
+    const { text: traceText, ...traceRecord } = traceBreakdown(parseTraceBuffer(buffer), run.elapsedMs, run.deltas.length)
+    traceSummary = traceRecord
+    fs.writeFileSync(path.join(outDir, 'perf-trace.txt'), traceText)
     log(`trace -> ${path.join(outDir, 'perf-trace.json')} (busy time per thread in perf-trace.txt)`)
   }
 
@@ -1079,8 +1305,32 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
   const avg = sorted.reduce((sum, v) => sum + v, 0) / Math.max(1, sorted.length)
   const toMb = bytes => (bytes ? Math.round(bytes / 1048576) : null)
   const round1 = v => Number(v.toFixed(1))
+  const renderValues = key => run.renderInfo.map(row => row[key]).filter(value => value !== null && value !== undefined)
+  const rendersDelta = run.renderInfo.length > 1 ? renderValues('renders').at(-1) - renderValues('renders')[0] : null
+  const renderInfoSummary = {
+    calls: statOf(renderValues('calls')),
+    triangles: statOf(renderValues('triangles'), 0),
+    alive: statOf(renderValues('alive')),
+    focusedAlivePct: renderValues('focusedAlive').length ? round1((renderValues('focusedAlive').filter(Boolean).length / renderValues('focusedAlive').length) * 100) : null,
+    // renderer.render() calls per animation frame: 1 means renderer.info covers the whole frame
+    rendersPerFrame: rendersDelta === null || Number.isNaN(rendersDelta) ? null : Number((rendersDelta / Math.max(1, run.deltas.length)).toFixed(2)),
+    samples: run.renderInfo,
+  }
   return {
     spec: { tick, seconds, mode, player: player ?? null, speed, noVsync: !!args['no-vsync'] },
+    distDir,
+    quiet,
+    modeResult: modeResult ?? null,
+    startState,
+    assetsIdle,
+    browserInfo,
+    system,
+    frameStats: frameStats(run.deltas),
+    frameWork: frameWorkStats(run.frameWork),
+    frameDone: frameWorkStats(run.frameDone),
+    renderInfo: renderInfoSummary,
+    gpuTimer: run.gpuTimer ? { sceneMs: statOf(run.gpuTimer.sceneMs, 2), disjoint: run.gpuTimer.disjoint, pendingAtEnd: run.gpuTimer.pendingAtEnd } : null,
+    trace: traceSummary ?? null,
     summary: {
       fps: round1(1000 / avg),
       frameMs: { avg: round1(avg), p50: round1(pct(50)), p95: round1(pct(95)), max: round1(pct(100)) },
@@ -1097,30 +1347,6 @@ async function runPerfPlay({ page, bridge, resolveTick, applyMode, settle, memor
     frames: run.deltas.length,
     frameDeltas: run.deltas.map(round1),
   }
-}
-
-/** Busy time per thread (top-level task slices) and per event name, in ms per frame. */
-function summarizeTrace(trace, elapsedMs, frames) {
-  const events = trace.traceEvents ?? trace
-  const threadName = new Map()
-  for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') threadName.set(`${e.pid}:${e.tid}`, e.args?.name)
-  const keep = name => /^(CrRendererMain|CrGpuMain|Compositor|VizCompositorThread|CrBrowserMain)/.test(name ?? '')
-  const toplevel = new Map()
-  const byName = new Map()
-  for (const e of events) {
-    if (e.ph !== 'X' || !e.dur) continue
-    const t = threadName.get(`${e.pid}:${e.tid}`)
-    if (!keep(t)) continue
-    if (e.cat?.includes('toplevel')) toplevel.set(t, (toplevel.get(t) ?? 0) + e.dur)
-    const k = `${t} ${e.name}`
-    byName.set(k, (byName.get(k) ?? 0) + e.dur)
-  }
-  const perFrame = us => (us / 1000 / Math.max(1, frames)).toFixed(2).padStart(7)
-  const lines = [`# ${frames} frames in ${Math.round(elapsedMs)} ms; ms per frame (nested events overlap)`, '', '# busy (toplevel tasks) per thread']
-  for (const [t, us] of [...toplevel].sort((a, b) => b[1] - a[1])) lines.push(`${perFrame(us)}  ${t}`)
-  lines.push('', '# per event name')
-  for (const [k, us] of [...byName].sort((a, b) => b[1] - a[1]).slice(0, 80)) lines.push(`${perFrame(us)}  ${k}`)
-  return lines.join('\n') + '\n'
 }
 
 async function summarizeProfile(profile) {
@@ -1202,9 +1428,22 @@ function startMemorySampler(rootPid) {
     peak = Math.max(peak, mb)
     return mb
   }
-  const timer = setInterval(sample, 1000)
+  let paused = false
+  const timer = setInterval(() => {
+    if (!paused) sample()
+  }, 1000)
   timer.unref()
-  return { sample, peak: () => peak, stop: () => clearInterval(timer) }
+  return {
+    sample,
+    peak: () => peak,
+    pause: () => {
+      paused = true
+    },
+    resume: () => {
+      paused = false
+    },
+    stop: () => clearInterval(timer),
+  }
 }
 
 // ─── BUILD ────────────────────────────────────────────────────────────────────────
@@ -1278,7 +1517,7 @@ function fingerprint(root, packUrl = null) {
 }
 
 async function ensureBuild(root, outDir, log, packUrl) {
-  const buildRoot = path.join(buildCacheDir(root), buildKey(root, packUrl) + (args['no-minify'] ? '-nominify' : ''))
+  const buildRoot = path.join(buildCacheDir(root), buildKey(root, packUrl) + (args['source-map'] ? '-nominify-map' : args['no-minify'] ? '-nominify' : ''))
   const distDir = path.join(buildRoot, 'dist')
   const fpFile = path.join(buildRoot, 'fingerprint.txt')
   const current = fingerprint(root, packUrl)
@@ -1296,10 +1535,13 @@ async function ensureBuild(root, outDir, log, packUrl) {
   const output = []
   const code = await new Promise(resolve => {
     const childArgs = [
+      // Rollup's source map of the whole bundle does not fit Node's default heap limit.
+      ...(args['source-map'] ? ['--max-old-space-size=5000'] : []),
       path.join(HARNESS_DIR, 'build-child.mjs'),
       root,
       distDir,
       ...(args['no-minify'] ? ['--no-minify'] : []),
+      ...(args['source-map'] ? ['--source-map'] : []),
       ...(packUrl ? ['--asset-pack-url', packUrl] : []),
     ]
     const env = { ...process.env, VITE_APP_ASSET_URL: '' }

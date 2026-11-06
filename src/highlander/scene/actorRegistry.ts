@@ -35,7 +35,8 @@ export function allActors(): IterableIterator<ActorHandles> {
   return actors.values()
 }
 
-export const useActorRegistryVersion = () => useInstance(s => s.actorRegistryVersion)
+const selectRegistryVersion = (s: { actorRegistryVersion: number }) => s.actorRegistryVersion
+export const useActorRegistryVersion = () => useInstance(selectRegistryVersion)
 
 /**
  * Whether the player model is drawn: true when some mesh under `body` has every node from itself up to the actor

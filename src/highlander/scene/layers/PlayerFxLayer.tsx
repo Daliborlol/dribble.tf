@@ -52,7 +52,7 @@ const ActorOverlay = React.memo(({ handles, frameCache }: ActorOverlayProps) => 
 
 // The overlays read the tick and frameProgress of the frame from the store (FxFrameCache, frameTime), not from the
 // renderTick prop, which reaches React a frame after DemoViewer advances playback.tick.
-export const PlayerFxLayer = React.memo((_props: { renderTick: number }) => {
+export const PlayerFxLayer = React.memo(() => {
   const x = useExtras()
   const conditions = useHlSetting<boolean>('players.conditions')
   const cloak = useHlSetting<boolean>('players.cloak')

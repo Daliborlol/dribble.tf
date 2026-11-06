@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
 import { isMobile } from 'react-device-detect'
+
+import { getState, useStore } from '@zus/store'
 
 import { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { ChatEntry } from '@components/Analyse/Data/Types'
@@ -180,17 +181,28 @@ const getVisibleChat = (chat: ChatEntry[], tick: number, intervalPerTick: number
 
 export interface ChatHudProps {
   parser: AsyncParser
-  tick: number
+}
+
+const chatOpacity = (entryTick: number, tick: number, intervalPerTick: number) => {
+  const ageSeconds = Math.max(0, (tick - entryTick) * intervalPerTick)
+  const fadeStart = HUD_CHAT_TIME_SECONDS - HUD_CHAT_FADE_SECONDS
+  return ageSeconds <= fadeStart ? 1 : Math.max(0, Math.min(1, (HUD_CHAT_TIME_SECONDS - ageSeconds) / HUD_CHAT_FADE_SECONDS))
 }
 
 export const ChatHud = (props: ChatHudProps) => {
-  const { parser, tick } = props
+  const { parser } = props
 
   const intervalPerTick = parser.intervalPerTick ?? 0.015
-  const visible = useMemo(
-    () => getVisibleChat(parser.chat ?? [], tick, intervalPerTick),
-    [parser, tick, intervalPerTick]
-  )
+  // What the chat shows at the tick, as one primitive: lines and their fade. It renders when a line comes or goes and
+  // on every tick of a fade, not on the ticks in between.
+  useStore(state => {
+    const at = state.playback.tick
+    let key = ''
+    for (const entry of getVisibleChat(parser.chat ?? [], at, intervalPerTick)) key += `${entry.tick}:${chatOpacity(entry.tick, at, intervalPerTick)};`
+    return key
+  })
+  const tick = getState().playback.tick
+  const visible = getVisibleChat(parser.chat ?? [], tick, intervalPerTick)
 
   if (!visible.length || isMobile) {
     return null
@@ -199,12 +211,7 @@ export const ChatHud = (props: ChatHudProps) => {
   return (
     <div className="text-outline pointer-events-none max-w-[46rem] select-none space-y-1">
       {visible.map((entry, idx) => {
-        const ageSeconds = Math.max(0, (tick - entry.tick) * intervalPerTick)
-        const fadeStart = HUD_CHAT_TIME_SECONDS - HUD_CHAT_FADE_SECONDS
-        const opacity =
-          ageSeconds <= fadeStart
-            ? 1
-            : Math.max(0, Math.min(1, (HUD_CHAT_TIME_SECONDS - ageSeconds) / HUD_CHAT_FADE_SECONDS))
+        const opacity = chatOpacity(entry.tick, tick, intervalPerTick)
 
         const nameColor = getPlayerNameColor(parser, entry.clientPlayerId, entry.tick)
         const segments = parseTf2ColorMarkup(entry.rawText, nameColor)

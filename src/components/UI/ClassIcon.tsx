@@ -1,3 +1,5 @@
+import React from 'react'
+
 import { CLASS_ORDER_MAP } from '@constants/mappings'
 
 import classIcons from '@assets/class_icons_64.png'
@@ -7,7 +9,7 @@ export interface ClassIconProps {
   size?: string | number | undefined
 }
 
-export const ClassIcon = (props: ClassIconProps) => {
+export const ClassIcon = React.memo((props: ClassIconProps) => {
   const { classId, size } = props
 
   const classIndex = CLASS_ORDER_MAP[classId]
@@ -27,4 +29,4 @@ export const ClassIcon = (props: ClassIconProps) => {
       />
     </>
   )
-}
+})

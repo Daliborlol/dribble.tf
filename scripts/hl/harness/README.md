@@ -19,7 +19,9 @@ scripts/hl/harness/
   lib/images.mjs        the app's sharp and the pixel diff, for scripts that import them
   plans/1438891-baseline.json   the baseline plan (koth_product, 15 shots)
   plans/smoke-gen.mjs   writes the smoke plans
-  tools/                run comparison, pixel diff, contact sheets, GPU probe, base-parser stats
+  lib/perf-analysis.mjs frame statistics, trace and CPU profile breakdowns
+  lib/system-sampler.mjs Radeon, CPU clock, power and per-thread CPU telemetry of a perf window (read only)
+  tools/                run comparison, perf matrix, pixel diff, contact sheets, GPU probe, base-parser stats
   package.json          pins playwright-core 1.64.0 for this folder only
 ```
 
@@ -103,15 +105,19 @@ argument stops the run with a usage error before anything is built.
 | `--settle-ms <n>` | 700 | wait before each shot |
 | `--settle-frames <n>` | 8 | animation frames to wait before each shot |
 | `--perf` | off | open with `?perf=true` so the app logs `[Perf]` lines |
-| `--perf-play <spec>` | | `tick:seconds[:mode[:player[:speed]]]`, e.g. `50%:10:rts`; speed 0 measures paused. Writes `perf.json` |
+| `--perf-play <spec>` | | `tick:seconds[:mode[:player[:speed]]]`, e.g. `50%:10:rts`; speed 0 measures paused. Writes `perf.json`, see Perf window |
+| `--quiet-cores <n>`, `--quiet-wait <sec>` | off, 30 | with `--perf-play`: wait before the window until other processes use at most n cores over a second, at most that long, then measure anyway; `perf.json` records it as `quiet` |
+| `--gpu-timer` | off | with `--perf-play`: time each `renderer.render()` with `EXT_disjoint_timer_query_webgl2`; `perf.json` gets `gpuTimer` |
 | `--cpu-profile` | off | with `--perf-play`: CDP CPU profile, `perf.cpuprofile` and `perf-top.txt` |
-| `--trace` | off | with `--perf-play`: a Chromium trace of the measured seconds, `perf-trace.json`, and `perf-trace.txt` with the busy ms per frame of the renderer main thread, the compositor and the GPU process main thread, by event (WebGL, raster, layout, paint). A 5 s trace is about 60 MB |
+| `--trace` | off | with `--perf-play`: a Chromium trace of the measured seconds, `perf-trace.json`, and `perf-trace.txt` with the busy ms per frame of the renderer main thread, the compositor and the GPU process main thread, the renderer main thread by category (scripting, style, layout, paint, commit, GC), and self time by event; `perf.json` gets the same as `trace`. A 5 s trace is about 60 MB |
 | `--rebuild` | off | build even when the cached build is fresh |
 | `--no-build` | off | reuse the cached build even when it is stale |
 | `--no-minify` | off | unminified build in its own cache entry, for readable profiles |
+| `--source-map` | off | with `--no-minify`: also write source maps, in its own cache entry; the build takes about 4 GB of memory |
+| `--build-only` | off | build, or find the fresh cached build, under the lock and exit; needs `--demo` like a run |
 | `--build-cache <dir>` | `$DRIBBLE_HARNESS_BUILDS`, else `<root>/node_modules/.cache/dribble-harness` | build cache |
 | `--browser <shell\|chrome\|path>` | `$CHROME_PATH`, else the expected shell, then chromium, then the newest of each | `shell` and `chrome` pick the Playwright headless shell or chromium of the revision playwright-core expects, else the newest one (with a warning) |
-| `--gpu <egl\|vulkan\|swiftshader>` | `egl` | WebGL backend, see GPU backends |
+| `--gpu <egl\|vulkan\|swiftshader\|default>` | `egl` | WebGL backend, see GPU backends |
 | `--keep-default-map` | off | load the boot map GLB too (normally stubbed with an empty GLB) |
 | `--allow-network` | off | let the page reach hosts other than 127.0.0.1 |
 | `--query <a=1&b=2>` | | extra URL query parameters, repeatable (e.g. `hlExtrasBudget=1`) |
@@ -178,6 +184,7 @@ A plan is a JSON array of steps. Every field is optional.
 | `play` | seconds of real time to play after seeking, then pause |
 | `eval` | page expression. A returned promise is awaited; the JSON result goes to the manifest, a thrown error becomes `{ "error": "..." }` |
 | `hideHud` | hide the HUD layers for this shot (default: `--hide-hud`) |
+| `reload` | after applying `settings`, reload the page and wait for the demo again, for settings read once at load (`ui.antialias`, `highlander.enabled`) |
 | `screenshot` | `false` skips the PNG; the state, players and eval are still recorded |
 
 The harness logs a warning for any other field and ignores it.
@@ -412,6 +419,7 @@ about 2 s after the extras are ready: a plan that reads `memory.projectiles` rig
 | `egl` (default) | `--use-gl=angle --use-angle=gl-egl --enable-gpu` | ANGLE on radeonsi through `/dev/dri/renderD128`, renderer `ANGLE (AMD, AMD Radeon 680M (radeonsi rembrandt ACO), OpenGL ES 3.2)`, 60 fps (vsync cap) |
 | `vulkan` | `--use-angle=vulkan --enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan --enable-gpu` | ANGLE on RADV |
 | `swiftshader` | `--use-angle=swiftshader --enable-unsafe-swiftshader` | CPU rendering on every core, 1 to 6 fps |
+| `default` | `--enable-gpu` | no ANGLE switch: what the browser picks by itself |
 
 Every launch also passes `--enable-webgl --ignore-gpu-blocklist`, turns off background throttling and mutes
 audio. The harness reads the WebGL renderer string from a probe page; when it says SwiftShader, or WebGL2 is
@@ -459,6 +467,106 @@ On the baseline plan, two runs of the same build differ by 0.001 to 0.64 % of pi
 the shots with heal beams (00, 01, 02, 14) and the beam line in 09. A beam that passes close to a POV camera
 covers more of the screen: shot 07 of the 1434434 smoke plan changed by 1.7 % between two runs of the same
 code, all of it beam and FPS counter.
+
+## Perf window
+
+`--perf-play` seeks, waits for the settle, 2.3 s for the camera tip panel and `assets.waitIdle`, then plays for the given
+seconds. `perf.json` holds:
+
+| field | content |
+|---|---|
+| `spec`, `modeResult`, `startState`, `assetsIdle` | what was asked, whether the camera mode took, the state at the start, the pack's idle result |
+| `summary` | as before: `fps`, `frameMs {avg, p50, p95, max}`, ticks per second, long tasks, memory, render calls |
+| `frameStats` | from `frameDeltas`: `fps`, `avg`, `p50`, `p95`, `p99`, `max`, `over20Pct`, `over34Pct` (shares of frames over 20 and 34 ms, one and two missed vsyncs) and `droppedVsyncPct` (vsyncs without a new frame) |
+| `frameWork`, `frameDone` | per frame, the main thread's time from the frame's first rAF callback (`frameWork`) or from the vsync's timestamp (`frameDone`, so with the delay before the task could start) to the end of the frame's task (callbacks, style, layout, paint, commit), measured with a message posted from the rAF callback: `avg`, `p50`, `p95`, `p99`, `max`, `over16Pct`. Not quantized by vsync, so `frameWork` shows the margin to the 16.7 ms budget while fps sits at 60 |
+| `renderInfo` | `renderer.info` of the r3f root twice a second: `calls`, `triangles` (`{n, avg, min, p50, p95, max}`), `rendersPerFrame` (1 means `info` covers the whole frame), `alive`, `focusedAlivePct`, and the raw `samples` with programs, geometries and textures |
+| `system` | sampled at 10 Hz in the window only: `gpuBusyPct`, `sclkMhz` (active level of `pp_dpm_sclk`), `sclkActualMhz`, `cpuMhz` (mean `scaling_cur_freq`), `cpuMaxCoreMhz` (the fastest core), `gpuPptWatts`, `gpuTempC`, `batteryWatts`, `vramUsedMB`, `gttUsedMB`, each `{n, avg, min, p50, p95, max}`; `power` (`label` such as `battery/power-saver/3.2GHz`, AC, battery status and capacity, profile, platform profile, energy preference, CPU limit, `changed`); `cpuLoad` (busy cores of the system, of the browser and of everything else, plus `topOther`, the busiest other processes); `memory` (available MB at the start and the end, swap traffic and major faults of the whole system in the window); `processes` and `threads` (on-CPU and run-queue ms per frame and busy % per process type and thread, from `/proc/<pid>/task/<tid>/schedstat`, read at the start and the end) |
+| `browserInfo` | `version`, `userAgent`; `canvas`: the app's WebGL context (renderer, attributes, `samples`, `maxSamples`, drawing buffer, `timerQuery`, `multiDraw`, every extension); `system`: CDP `SystemInfo` (`featureStatus`, `glRenderer`, `glImplementationParts`, the command line) |
+| `gpuTimer` | with `--gpu-timer`: `sceneMs` per frame, `disjoint` and `pendingAtEnd` |
+| `trace` | with `--trace`: `threads` (busy and CPU ms per frame per thread role), `rendererCategories`, `counts` |
+| `distDir` | the build that ran, for source maps |
+| `frames`, `frameDeltas` | every frame's ms |
+
+The memory sampler pauses during the measured seconds, because its `smaps_rollup` walk takes each process's mmap
+lock; the summary's memory figures come from samples right before and after. All of this exists only with
+`--perf-play`, so a run without it keeps the manifest structure `compare-runs.mjs` checks. Telemetry reads
+sysfs and `/proc` only and changes no setting; one 10 Hz sample costs about 2 ms in the harness's process, not the
+browser's. Without an amdgpu card or a battery those fields are null.
+
+`tools/perf-breakdown.mjs <run> [--profile-run <run>] [--top 30] [--out <file>]` prints the per-thread CPU table, the
+trace's categories and, from a `--cpu-profile --no-minify` run, the top functions by self and inclusive time, with
+native WebGL calls and garbage collection apart; with `--source-map` also self time per source group.
+
+A full browser such as Brave runs like the shell with `--browser <path>`. The harness removes `DISPLAY` and
+`WAYLAND_DISPLAY` from its environment and adds `--ozone-platform=headless`, so it cannot reach the desktop, and
+Playwright gives it a throwaway profile under `TMPDIR`, never a user's. Its process singleton needs a socket path under
+108 bytes, so a long `TMPDIR` is replaced for the browser by `~/.cache/dribble-harness-tmp`.
+
+## Perf matrix
+
+`tools/perf-matrix.mjs` runs scenario x checkout x repeat through `shot.mjs`, alternating the checkouts run by run
+(A B A B) so that drift and the power state cancel, and writes `matrix.json` and `report.md` under `--out`: medians and
+ranges per cell, A/B tables with the median of paired deltas and a noise verdict, the power state of every run, and the
+run order. Scenarios live in `tools/perf-scenarios.json` (`--list` prints them; the lock and build cache default to
+what that file names, or `--lock` and `--build-cache`).
+
+```sh
+# A/B of two checkouts on one scenario: 3 uncapped and 3 vsync runs each, 10 s windows, about 8 minutes
+node scripts/hl/harness/tools/perf-matrix.mjs --quick test-rts --root before=<base checkout> --root after=<your worktree> --out <out>/ab-mychange
+
+# the same with the user's likely settings, in POV
+node scripts/hl/harness/tools/perf-matrix.mjs --quick test-pov-tf2 --root before=<base> --root after=<worktree> --out <out>/ab-mychange-pov
+
+# the whole fixed set on one checkout, vsync and uncapped, 2 repeats
+node scripts/hl/harness/tools/perf-matrix.mjs --scenarios tag:core --vsync on,off --repeats 2 --root base=<checkout> --out <out>/baseline
+
+# a resolution sweep: one size per cell
+node scripts/hl/harness/tools/perf-matrix.mjs --scenarios test-rts,test-pov --sizes 960x600,1280x800,1600x900,1920x1100 --vsync off --root base=<checkout> --out <out>/sweep
+
+# the same checkout under two browsers, or with and without a setting, is an A/B too
+node scripts/hl/harness/tools/perf-matrix.mjs --quick test-rts --root shell=<checkout> --root brave=<checkout>,browser=/opt/brave-bin/brave --out <out>/browsers
+node scripts/hl/harness/tools/perf-matrix.mjs --quick test-rts --root on=<checkout>,set=highlander.players.xrayGlow=true --root off=<checkout>,set=highlander.players.xrayGlow=false --out <out>/glow
+```
+
+Each run's plan checks the settings paths, applies the scenario's settings, waits for the extras and the projectile
+release, then plays the window once at 4x so everything that first appears in it has loaded and compiled (`warm: false`,
+as in the scenario `test-rts-cold`, measures the first pass instead). Each run prints one line and leaves its outputs in
+`runs/<cell>/<root>-r<n>/` (`shot.log`, `command.txt`, `plan.json`, `perf.json`, `manifest.json`, the one screenshot,
+which shows pack content, so `--out` stays out of git). `perf-trace.json` goes after its summary unless `--keep-traces`.
+A scenario in the file takes `demo`, `tick`, `mode`, `player`, `presets` and `settings`, `query`, `flags`, `browser`, `gpu`,
+`init` (init scripts, relative to the file), `noPack`, `size`, `seconds`, `warm`, `minAvailable` and `extends`. `viewPresetChecks` warns when a settings preset drifts
+from a checkout's `VIEW_PRESETS`.
+
+Before the runs it builds each checkout once, so no measured run follows a build. Before each run it checks the battery
+and stops at `--min-battery` (12 %) when discharging, exit 3; what finished stays in the report and `--resume` continues.
+Before each run, with no browser up, it waits up to 120 s for other processes to use at most 2.5 cores
+(`--pre-quiet-wait`, at most `--pre-quiet-budget` 1200 s over the matrix); before each window it waits up to 20 s more
+(`--quiet-cores`, `--quiet-wait`) and notes a window that started without that.
+A closed memory gate skips that run and the matrix goes on. The harness's memory gate defaults to 2500 MB (3000 on
+1428628) with a wait of 900 s.
+
+Read a report with the machine in mind. On battery in power-saver the package power limit couples CPU and GPU, and other
+processes take from the same budget, so the columns `CPU MHz`, `sclk MHz`, `other cores` and `power` say which runs compare.
+On AC a long session heats the package to 93 to 95 °C and the fastest core falls from 4.3 to 3.6 GHz, so two runs an hour
+apart do not compare either. The A/B tables pair runs of one repeat and skip a pair whose power states differ. A run during
+which other processes used more than 3.5 cores leaves the medians when its cell has a quieter run (the run order marks it
+NOISY), and a window that measured no scene (the map never loaded, playback did not advance) is retried once and then
+marked invalid. Vsync frame times are quantized, so use fps, the shares of frames over 20 and 34 ms and `frame work` there,
+and the average on uncapped runs, whose frames come in short/long pairs. An A/A run of `--quick test-rts` on two checkouts
+of the same code calls every metric noise; its ranges were 56.3 to 58.1 fps and 17.05 to 17.65 main thread ms/frame with
+vsync, 55.4 to 59.8 fps and 16.8 to 18.2 ms uncapped.
+
+Which browser. Use the headless shell (the default) for A/B runs and repeat a decision on Brave with
+`--root <name>=<dir>,browser=/opt/brave-bin/brave`. Both are Chromium 156.0.8078 with the same WebGL backend, extensions and
+MSAA (the GUI Brave's GPU process loads the same Mesa radeonsi GL libraries; headless Brave needs `--gpu egl`, the default,
+because `--gpu default` falls back to SwiftShader there). Brave's main thread costs 7 to 9 % more on AC. Its headless
+SwapBuffers blocks the GPU main thread for 4 ms a frame on AC and 9.5 ms on battery, and the shell's takes 0.07 ms. That
+looks like a full frame readback, which a real display does not do, and it would become a false cap once the main thread
+gets faster. Neither headless browser shows Hyprland's composition or a real Wayland swap.
+
+Spectator scenarios stub the pointer lock (`tools/perf-no-pointer-lock.js`): headless Chromium answers it with 20 000
+`WidgetInputHandler` messages a second, which keep the browser's main thread and the renderer's compositor thread busy.
+A plain `--perf-play ...:spectator` run without the stub measures that storm too.
 
 ## Comparing two runs
 
@@ -528,6 +636,8 @@ and `sheet.mjs`) run themselves again as a child with sharp's fontconfig warning
 |---|---|
 | `summarize.mjs <run>...` | summary of one or more runs |
 | `tools/compare-runs.mjs` | two runs: structure, requests, steps, pixels, side-by-side sheet; exit 0 when they did the same thing |
+| `tools/perf-matrix.mjs` | scenario x checkout x repeat, alternating; medians, spreads, A/B deltas (see Perf matrix) |
+| `tools/perf-breakdown.mjs <run>` | CPU per thread, trace categories, top functions and source groups of a run |
 | `tools/imgdiff.mjs` | pixel diff of two folders |
 | `tools/sheet.mjs` | contact sheet |
 | `tools/gpu-probe.mjs [--browser ...]` | which WebGL flag sets give hardware rendering (launches Chromium 8 times) |

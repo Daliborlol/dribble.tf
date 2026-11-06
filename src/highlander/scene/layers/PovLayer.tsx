@@ -28,6 +28,7 @@ import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { povFovAt } from '@highlander/pov/fov'
 import { entityIdOfPlayer, getPovSubject, usePovSubject, type PovSubject } from '@highlander/pov/subject'
+import { renderTickOf } from '@utils/tickData'
 import { allActors, getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { vmShared } from '@highlander/scene/viewmodel/shared'
@@ -136,9 +137,9 @@ const makeCamera = (name: string) => {
   return camera
 }
 
-export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+export const PovLayer = React.memo(() => {
   const extras = useExtras()
-  const subject = usePovSubject(renderTick)
+  const subject = usePovSubject()
   const controlsMode = useStore(s => s.scene.controls.mode)
   const focusedObject = useInstance(s => s.focusedObject)
   const tf2Fov = useHlSetting<boolean>('pov.tf2Fov')
@@ -165,7 +166,7 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
       if (placeChase(chaseCamera, subject)) setOverride(chaseCamera)
       else setOverride(undefined)
     } else if (kind === 'deathcam') {
-      placeDeathcam(deathCamera, subject, renderTick)
+      placeDeathcam(deathCamera, subject, renderTickOf(useStore.getState().playback.tick))
       setOverride(deathCamera)
     } else {
       setOverride(undefined)
@@ -204,20 +205,20 @@ export const PovLayer = React.memo(({ renderTick }: { renderTick: number }) => {
   )
 
   // POV medic beam (only while the base beam is hidden: pov.viewmodel on and extras ready, S0's Actors rule)
-  const beamTargetEntity = useMemo(() => {
+  const beamTargetEntity = useStore(state => {
     if (!povActive || !subject || !extras || !viewmodelOn || !extras.meta.available.medigun) return -1
     if (subject.camera !== 'own' && subject.camera !== 'spectated') return -1
-    const medigun = medigunAt(extras, subject.p, renderTick)
+    const medigun = medigunAt(extras, subject.p, renderTickOf(state.playback.tick))
     if (!medigun || !medigun.healing || medigun.target === 255) return -1
     const demo = useInstance.getState().parsedDemo
     return demo ? entityIdOfPlayer(demo, medigun.target) : -1
-  }, [povActive, subject, extras, viewmodelOn, renderTick])
+  })
   const beamTarget = useMemo(() => new THREE.Vector3(), [])
-  const beamTeam = useMemo(() => {
+  const beamTeam = useStore(state => {
     const demo = useInstance.getState().parsedDemo
     if (!demo || !subject || subject.p < 0) return 'red'
-    return demo.playerCache.metaCache.getMeta(subject.p, renderTick).teamId === 3 ? 'blue' : 'red'
-  }, [subject, renderTick])
+    return demo.playerCache.metaCache.getMeta(subject.p, renderTickOf(state.playback.tick)).teamId === 3 ? 'blue' : 'red'
+  })
   const showBeam = beamTargetEntity > 0 && !!getActor(beamTargetEntity)
 
   useFrame(state => {

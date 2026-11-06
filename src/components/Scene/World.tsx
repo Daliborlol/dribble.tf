@@ -30,6 +30,7 @@ import {
 } from '@highlander/map/bspMaterials'
 import { collectMapNodes } from '@highlander/map/mapNodes'
 import { batchStaticBrushes } from '@highlander/map/staticBatch'
+import { freezeGeometryAfterFirstDraw } from '@highlander/perf/sceneUpdate'
 import '@highlander/map/probes'
 import { StaticProps, usePackPakProps, usePackSkyProps, useStockProps } from '@highlander/map/StaticProps'
 import { Skybox3D } from '@highlander/map/Skybox3D'
@@ -399,6 +400,11 @@ export const World = (props: WorldProps) => {
     if (loadedMap) {
       if (loadedMap.pipeline === 'bsp-to-glb') applyBspInitialVisibility(loadedMap.root)
       freezeStaticMapSubtree(loadedMap.root)
+      if (loadedMap.pack) {
+        loadedMap.root.traverse(node => {
+          if ((node as THREE.Mesh).isMesh) freezeGeometryAfterFirstDraw(node as THREE.Mesh)
+        })
+      }
     }
 
     if (mapOverlay) {

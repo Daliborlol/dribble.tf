@@ -106,7 +106,7 @@ const sameOffsetVector = (
   b: { x: number; y: number; z: number }
 ) => a.x === b.x && a.y === b.y && a.z === b.z
 
-const useInstance = create<InstanceState>()(set => ({
+const useInstance = create<InstanceState>()((set, get) => ({
   mapOffsetDebug: {
     cameraOffset: { x: 0, y: 0, z: 0 },
   },
@@ -129,7 +129,11 @@ const useInstance = create<InstanceState>()(set => ({
   setDrawingCanvas: (drawingCanvas: CanvasDraw) => set({ drawingCanvas }),
   setFocusedObject: (focusedObject?: THREE.Object3D) => set({ focusedObject }),
   setLastFocusedPOV: (lastFocusedPOV?: THREE.Object3D) => set({ lastFocusedPOV }),
-  setFrameProgress: (frameProgress: number) => set({ frameProgress }),
+  // Every frame. Read with getState() only (never selected, see Determinism in AGENTS.md), so it notifies nobody: a set()
+  // here ran the 250 useInstance selectors of a 9v9 scene each frame.
+  setFrameProgress: (frameProgress: number) => {
+    get().frameProgress = frameProgress
+  },
   setMapCenterPickerActive: (mapCenterPickerActive: boolean) => set({ mapCenterPickerActive }),
   setMapOffsetDebug: mapOffsetDebug =>
     set(state => {
@@ -251,6 +255,7 @@ export type StoreState = {
         color: string
       }
       playerOutlines: boolean
+      antialias: boolean
       showStats: boolean
       showSkybox: boolean
       viewDistance: number
@@ -344,6 +349,7 @@ export const initialState: StoreState = {
         color: '#ffffff',
       },
       playerOutlines: false,
+      antialias: true,
       showStats: true,
       showSkybox: true,
       viewDistance: 15000,
@@ -382,5 +388,18 @@ const useStore = create(redux<StoreState, StoreAction>(rootReducer as any, initi
 // Export these functions at first level because they will be used very frequently
 // and are essentially the Redux equivalents (makes migration/adoption easier)
 const { dispatch, getState } = useStore
+
+// One store listener for every hook that reads only the settings (react-perf): the store notifies its listeners on every
+// playback tick, and about 700 of the page's hooks only care about the settings, which change when the user changes one.
+const settingsListeners = new Set<() => void>()
+useStore.subscribe((state, prev) => {
+  if (state.settings !== prev.settings) for (const listener of settingsListeners) listener()
+})
+export const subscribeSettings = (listener: () => void) => {
+  settingsListeners.add(listener)
+  return () => {
+    settingsListeners.delete(listener)
+  }
+}
 
 export { useStore, dispatch, getState, useInstance }

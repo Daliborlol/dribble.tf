@@ -12,7 +12,9 @@ import { BLD, BUILDING_TYPE } from '@highlander/extras/enums'
 import { sinceTick } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { attachmentMatrix, packTeamSkin, usePackModel, type PackModelHandle } from '@pack/models'
+import { skipSceneUpdateWhileHidden } from '@highlander/perf/hiddenSubtree'
 
+import { hideBoneSubtrees } from '@highlander/perf/sceneUpdate'
 import { lastShotTicks, type BuildingDraw } from './render'
 import { MINI_SCALE } from './sentryAim'
 
@@ -88,6 +90,8 @@ export class PackCopy {
     this.handle = handle
     this.object = handle.instantiate(skin)
     this.object.visible = false
+    skipSceneUpdateWhileHidden(this.object)
+    hideBoneSubtrees(this.object)
     this.mixer = new THREE.AnimationMixer(this.object)
     this.object.traverse(node => this.rest.push({ node, p: node.position.clone(), q: node.quaternion.clone(), s: node.scale.clone() }))
     const clip = (name: string) => handle.clips.find(c => c.name === name)

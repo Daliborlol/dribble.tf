@@ -1,0 +1,153 @@
+{
+  "_comment": "The fixed perf scenario set of tools/perf-matrix.mjs, at the size of the user's browser viewport on the 1920x1200 laptop screen. Ticks are playback ticks. warm plays the whole window once at 4x before measuring, so pack models and shaders that first appear in it are loaded and compiled; warm false measures a cold first pass.",
+  "defaults": {
+    "size": "1920x1100",
+    "seconds": 15,
+    "speed": 1,
+    "warm": true,
+    "assetPack": "/home/dalibor/tf2-pack",
+    "minAvailable": 2500,
+    "waitAvailable": 900,
+    "lock": "/home/dalibor/programming/personal/dribble.tf-wt/perf2-out/heavy.lock",
+    "buildCache": "/home/dalibor/programming/personal/dribble.tf-wt/perf2-out/builds"
+  },
+  "demos": {
+    "test": "/home/dalibor/Downloads/test.dem",
+    "1438891": "/home/dalibor/demo_tool/demos/1438891.dem",
+    "1434434": "/home/dalibor/demo_tool/demos/1434434.dem",
+    "1428628": "/home/dalibor/demo_tool/demos/1428628.dem"
+  },
+  "settingsPresets": {
+    "tf2look": {
+      "highlander.view.plates": "focus",
+      "highlander.view.plateTags": "brief",
+      "ui.nameplate.showClass": false,
+      "ui.nameplate.showHealth": true,
+      "highlander.players.nameplateWeapon": false,
+      "highlander.view.buildingLabels": "focus",
+      "highlander.sniper.beams": false,
+      "highlander.view.healBeamScale": 0.45,
+      "highlander.view.objectiveMarkers": "subtle",
+      "highlander.view.respawnRings": false,
+      "highlander.map.deathMarkers": false,
+      "highlander.view.playerColumns": false,
+      "highlander.hud.timelineMarkers": false,
+      "highlander.view.autoHideControls": true
+    },
+    "glow": {
+      "highlander.players.xrayGlow": true
+    }
+  },
+  "viewPresetChecks": { "tf2look": "tf2" },
+  "scenarios": [
+    {
+      "id": "test-rts",
+      "description": "test.dem (koth_product) RTS, default camera, fight from tick 8300, Analysis style",
+      "demo": "test",
+      "tick": 8300,
+      "mode": "rts",
+      "tags": ["core", "rts"]
+    },
+    {
+      "id": "test-rts-tf2",
+      "description": "test.dem RTS from tick 8300, TF2 look preset and through-wall glow",
+      "extends": "test-rts",
+      "presets": ["tf2look", "glow"],
+      "tags": ["core", "rts", "tf2"]
+    },
+    {
+      "id": "test-pov",
+      "description": "test.dem POV of the red pyro (Lord Slime) from tick 1290, flames at 1291, 1465 and 2083, Analysis style",
+      "demo": "test",
+      "tick": 1290,
+      "mode": "pov",
+      "player": "pyro@red",
+      "tags": ["core", "pov"]
+    },
+    {
+      "id": "test-pov-tf2",
+      "description": "test.dem red pyro POV from tick 1290, TF2 look preset and through-wall glow",
+      "extends": "test-pov",
+      "presets": ["tf2look", "glow"],
+      "tags": ["core", "pov", "tf2"]
+    },
+    {
+      "id": "1438891-rts",
+      "description": "1438891 (koth_product) RTS, default camera, from tick 30000, Analysis style",
+      "demo": "1438891",
+      "tick": 30000,
+      "mode": "rts",
+      "tags": ["core", "rts"]
+    },
+    {
+      "id": "1438891-rts-tf2",
+      "description": "1438891 RTS from tick 30000, TF2 look preset and through-wall glow",
+      "extends": "1438891-rts",
+      "presets": ["tf2look", "glow"],
+      "tags": ["core", "rts", "tf2"]
+    },
+    {
+      "id": "1438891-spec",
+      "description": "1438891 spectator camera at its default pose from tick 30000 (pointer lock stubbed, see perf-no-pointer-lock.js)",
+      "demo": "1438891",
+      "tick": 30000,
+      "mode": "spectator",
+      "init": ["perf-no-pointer-lock.js"],
+      "tags": ["core"]
+    },
+    {
+      "id": "1434434-rts",
+      "description": "1434434 (pl_vigil) RTS, default camera, from 50 % of the demo",
+      "demo": "1434434",
+      "tick": "50%",
+      "mode": "rts",
+      "tags": ["core", "rts"]
+    },
+    {
+      "id": "1434434-medic",
+      "description": "1434434 POV of the red medic (alive throughout) in the projectile-heavy stretch from tick 5600",
+      "demo": "1434434",
+      "tick": 5600,
+      "mode": "pov",
+      "player": "medic@red",
+      "tags": ["core", "pov"]
+    },
+    {
+      "id": "1428628-rts",
+      "description": "1428628 (tow_tetsudo, the worst map for draw calls) RTS from tick 78600, the demo's busiest stretch",
+      "demo": "1428628",
+      "tick": 78600,
+      "mode": "rts",
+      "minAvailable": 3000,
+      "tags": ["core", "rts", "worst"]
+    },
+    {
+      "id": "1428628-rts-tf2",
+      "description": "1428628 RTS from tick 78600, TF2 look preset and through-wall glow",
+      "extends": "1428628-rts",
+      "presets": ["tf2look", "glow"],
+      "tags": ["extra", "tf2", "worst"]
+    },
+    {
+      "id": "1438891-rts-nopack",
+      "description": "1438891 RTS from tick 30000 without an asset pack (production default build)",
+      "extends": "1438891-rts",
+      "noPack": true,
+      "tags": ["core", "nopack"]
+    },
+    {
+      "id": "1438891-spec-tf2",
+      "description": "1438891 spectator camera from tick 30000, TF2 look preset and through-wall glow",
+      "extends": "1438891-spec",
+      "presets": ["tf2look", "glow"],
+      "tags": ["extra", "tf2"]
+    },
+    {
+      "id": "test-rts-cold",
+      "description": "test.dem RTS from tick 8300 with no warm-up: the first pass, with model loads and shader compiles",
+      "extends": "test-rts",
+      "warm": false,
+      "tags": ["extra", "cold"]
+    }
+  ]
+}

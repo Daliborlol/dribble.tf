@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import * as Slider from '@radix-ui/react-slider'
 import { motion } from 'framer-motion'
@@ -104,7 +104,40 @@ const PlaybackAction = (props: PlaybackActionProps) => {
 // tick readout subscribes to the tick itself, and the seek buttons read the tick when clicked.
 const currentTick = () => useStore.getState().playback.tick
 
-const TickText = () => <>{useStore(state => state.playback.tick)}</>
+// The tick readout, outside React (it changes on every tick). While the button row is faded out (playing, not hovered,
+// after its 0.7 s delay and 0.5 s fade) it writes nothing: a changing text is the one thing that would make Blink lay the
+// page out on every frame. It catches up on the first tick of a hover.
+const FADE_MS = 1300
+
+const TickText = ({ faded }: { faded: boolean }) => {
+  const ref = useRef<HTMLSpanElement>(null)
+  const fadedRef = useRef(faded)
+  const fadedSince = useRef(0)
+  if (fadedRef.current !== faded) {
+    fadedRef.current = faded
+    fadedSince.current = performance.now()
+  }
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const write = (tick: number) => {
+      element.textContent = String(tick)
+    }
+    write(useStore.getState().playback.tick)
+    const panel = element.closest('.group')
+    return useStore.subscribe((state, prev) => {
+      const tick = state.playback.tick
+      if (tick === prev.playback.tick) return
+      if (fadedRef.current && performance.now() - fadedSince.current > FADE_MS && !panel?.matches(':hover')) return
+      write(tick)
+    })
+  }, [])
+  // leaving the faded state (paused again): show the current tick at once
+  useLayoutEffect(() => {
+    if (!faded && ref.current) ref.current.textContent = String(useStore.getState().playback.tick)
+  }, [faded])
+  return <span ref={ref} />
+}
 
 interface PlaybackButtonsProps {
   isMobile: boolean
@@ -159,7 +192,7 @@ const PlaybackButtons = React.memo((props: PlaybackButtonsProps) => {
             <div className="-mr-1 flex min-w-11 select-none flex-col items-center text-center">
               <div className="text-xs leading-none">TICK</div>
               <div className="font-bold leading-none">
-                <TickText />
+                <TickText faded={playing && !forceShowPanel && !stickersOpen} />
               </div>
             </div>
           }
@@ -361,15 +394,116 @@ const PlaybackButtons = React.memo((props: PlaybackButtonsProps) => {
   )
 })
 
+// The timeline's position (react-perf). The bar's edges snap to whole pixels, so while playing the slider only needs a
+// new value when the edge lands on another pixel, a few times a second at most on a long demo. While paused it follows
+// every tick, so stepping and dragging behave as they always did.
+const TimelineSlider = React.memo(({ maxTicks, isMobile, onSeek }: { maxTicks: number; isMobile: boolean; onSeek: (tick: number) => void }) => {
+  const root = useRef<HTMLSpanElement | null>(null)
+  const width = useRef(0)
+  useLayoutEffect(() => {
+    const element = root.current
+    if (!element) return
+    width.current = element.getBoundingClientRect().width
+    const observer = new ResizeObserver(entries => {
+      width.current = entries[entries.length - 1].contentRect.width
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const held = useRef(1)
+  const value = useStore(state => {
+    const { tick, playing } = state.playback
+    if (playing && width.current > 0 && maxTicks > 1) {
+      const pixel = (t: number) => Math.round(((t - 1) / (maxTicks - 1)) * width.current)
+      if (pixel(tick) === pixel(held.current)) return held.current
+    }
+    return (held.current = tick)
+  })
+  return (
+    <Slider.Root
+      ref={root}
+      className="relative flex w-full cursor-pointer select-none items-center"
+      min={1}
+      max={maxTicks}
+      value={[value]}
+      step={1}
+      onValueChange={([next]) => onSeek(next)}
+    >
+      <Slider.Track
+        className={cn('relative grow rounded-full bg-pp-panel/30', isMobile ? 'h-3' : 'h-2')}
+      >
+        <Slider.Range className="absolute h-full rounded-full bg-white" />
+      </Slider.Track>
+    </Slider.Root>
+  )
+})
+
+const DurationText = React.memo(({ maxTicks }: { maxTicks: number }) => {
+  const now = useStore(state => getDurationFromTicks(state.playback.tick).formatted)
+  return (
+    <>
+      {now} / {getDurationFromTicks(maxTicks).formatted}
+    </>
+  )
+})
+
+interface RoundInfo { tick: number; winningTeam: string; duration?: number }
+
+const RoundButtons = React.memo(({ rounds, isMobile, onClickRound }: { rounds: RoundInfo[]; isMobile: boolean; onClickRound: (round: RoundInfo) => void }) => {
+  // One bit per round, whether it has been reached: this row renders when the playhead crosses a round
+  const reached = useStore(state => {
+    let bits = ''
+    for (const round of rounds) bits += round.tick <= state.playback.tick ? '1' : '0'
+    return bits
+  })
+  return (
+    <>
+      {rounds.map((round, index) => (
+        <div
+          key={`jump-to-round-${index}`}
+          className={cn(
+            'relative mr-2 flex cursor-pointer items-center justify-center overflow-hidden rounded-full bg-pp-panel/40 text-sm hover:opacity-80 active:opacity-80',
+            isMobile ? 'h-8 w-8' : 'h-5 w-5',
+            reached[index] === '1' && 'bg-white text-black'
+          )}
+          onClick={onClickRound.bind(null, round)}
+        >
+          <span>{index + 1}</span>
+
+          <div
+            className={cn(
+              'absolute -bottom-2 -right-2 h-4 w-4 rotate-45',
+              round.winningTeam === 'red' && 'bg-pp-killfeed-text-red',
+              round.winningTeam === 'blue' && 'bg-pp-killfeed-text-blue'
+            )}
+          />
+        </div>
+      ))}
+    </>
+  )
+})
+
+const onClickRound = async (round: RoundInfo) => {
+  await goToTickAction(round.tick)
+  focusMainCanvas()
+}
+
+const seekFromPanel = (tick: number) => {
+  goToTickAction(tick)
+  focusMainCanvas()
+}
+
 export const PlaybackPanel = () => {
   const parsedDemo = useInstance(state => state.parsedDemo)
-  const playback = useStore(state => state.playback)
+  const playing = useStore(state => state.playback.playing)
+  const speed = useStore(state => state.playback.speed)
+  const maxTicks = useStore(state => state.playback.maxTicks)
+  const forceShowPanel = useStore(state => state.playback.forceShowPanel)
   const bookmarks = useStore(state => state.bookmarks)
+  const isBookmarked = useStore(state => state.bookmarks.includes(state.playback.tick))
   const lastEventHistory = useStore(state => state.eventHistory)?.[0]
   const stickerDragActive = useStore(state => state.drawing.stickerDrag.active)
   const stickersOpen = useStore(state => state.drawing.stickersPanelOpen)
-  const { playing, speed, tick, maxTicks, forceShowPanel } = playback
-  const isBookmarked = bookmarks.includes(tick)
   const isMobile = useIsMobile()
 
   const rounds = useMemo(() => {
@@ -392,16 +526,6 @@ export const PlaybackPanel = () => {
 
     return result
   }, [parsedDemo?.rounds])
-
-  const onClickRound = async (round: any) => {
-    await goToTickAction(round.tick)
-    focusMainCanvas()
-  }
-
-  const goToTick = (tick: number) => {
-    goToTickAction(tick)
-    focusMainCanvas()
-  }
 
   return (
     <div className={cn('group relative m-4 max-w-full rounded-2xl px-6 py-2')}>
@@ -451,20 +575,7 @@ export const PlaybackPanel = () => {
         {/* Timeline slider */}
 
         <div className="relative">
-          <Slider.Root
-            className="relative flex w-full cursor-pointer select-none items-center"
-            min={1}
-            max={maxTicks}
-            value={[tick]}
-            step={1}
-            onValueChange={([value]) => goToTick(value)}
-          >
-            <Slider.Track
-              className={cn('relative grow rounded-full bg-pp-panel/30', isMobile ? 'h-3' : 'h-2')}
-            >
-              <Slider.Range className="absolute h-full rounded-full bg-white" />
-            </Slider.Track>
-          </Slider.Root>
+          <TimelineSlider maxTicks={maxTicks} isMobile={isMobile} onSeek={seekFromPanel} />
 
           {/* Highlander timeline markers ([ and ] step through them) */}
           {!isMobile && <HlTimelineMarkers maxTicks={maxTicks} />}
@@ -475,7 +586,7 @@ export const PlaybackPanel = () => {
               key={`bookmark-marker-${bookmarkTick}`}
               className="absolute top-1/2 h-3 w-1 -translate-y-1/2 cursor-pointer rounded-sm bg-amber-400 hover:bg-amber-300"
               style={{ left: `${((bookmarkTick - 1) / (maxTicks - 1)) * 100}%` }}
-              onClick={() => goToTick(bookmarkTick)}
+              onClick={() => seekFromPanel(bookmarkTick)}
             />
           ))}
         </div>
@@ -486,33 +597,13 @@ export const PlaybackPanel = () => {
           <div className="flex items-center text-sm">
             <div className="text-outline mr-2">Round</div>
 
-            {rounds.map((round, index) => (
-              <div
-                key={`jump-to-round-${index}`}
-                className={cn(
-                  'relative mr-2 flex cursor-pointer items-center justify-center overflow-hidden rounded-full bg-pp-panel/40 text-sm hover:opacity-80 active:opacity-80',
-                  isMobile ? 'h-8 w-8' : 'h-5 w-5',
-                  round.tick <= tick && 'bg-white text-black'
-                )}
-                onClick={onClickRound.bind(null, round)}
-              >
-                <span>{index + 1}</span>
-
-                <div
-                  className={cn(
-                    'absolute -bottom-2 -right-2 h-4 w-4 rotate-45',
-                    round.winningTeam === 'red' && 'bg-pp-killfeed-text-red',
-                    round.winningTeam === 'blue' && 'bg-pp-killfeed-text-blue'
-                  )}
-                />
-              </div>
-            ))}
+            <RoundButtons rounds={rounds} isMobile={isMobile} onClickRound={onClickRound} />
           </div>
 
           {/* Duration (Current Time / Total Time) */}
 
           <div className="text-outline text-sm">
-            {getDurationFromTicks(tick).formatted} / {getDurationFromTicks(maxTicks).formatted}
+            <DurationText maxTicks={maxTicks} />
           </div>
         </div>
       </div>

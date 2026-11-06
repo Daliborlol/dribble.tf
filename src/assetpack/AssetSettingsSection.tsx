@@ -41,6 +41,7 @@ const AssetSettingsRows = () => {
   const skybox3d = useStore(s => s.settings.assets?.skybox3d ?? true)
   const particles = useStore(s => s.settings.assets?.particles ?? true)
   const characterShading = useStore(s => s.settings.assets?.characterShading ?? true)
+  const farPlayerLod = useStore(s => s.settings.assets?.farPlayerLod ?? true)
   const offByUrl = isAssetsOffByUrl()
 
   useEffect(() => {
@@ -89,6 +90,12 @@ const AssetSettingsRows = () => {
           onChange={checked => updateSettingsOptionAction('assets.skybox3d', checked)}
         />
       )}
+
+      <ToggleOption
+        label="Simplify far players while playing (animation at half rate, no eyes)"
+        checked={farPlayerLod}
+        onChange={checked => updateSettingsOptionAction('assets.farPlayerLod', checked)}
+      />
 
       {hasParticles && (
         <ToggleOption

@@ -1,37 +1,41 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, Suspense, useState } from 'react'
+import React, { useRef, useEffect, useLayoutEffect, useMemo, Suspense, useState, useSyncExternalStore } from 'react'
 
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Select } from '@components/Scene/OutlineSelect'
 import { useXrayGlow } from '@highlander/players/xrayGlow'
-import { Html, useGLTF } from '@react-three/drei'
+import { skipUpdateWhileHidden } from '@highlander/perf/sceneUpdate'
+import { useGLTF } from '@react-three/drei'
+import { PlateHtml } from '@highlander/perf/PlateHtml'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
+import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { Vector } from '@components/Analyse/Data/Types'
 
 import { HealBeam } from '@components/Scene/HealBeam'
 import { Nameplate } from '@components/Scene/Nameplate'
 import { CachedPlayer } from '@components/Analyse/Data/PlayerCache'
 
-import { useInstance, useStore } from '@zus/store'
+import { getState, subscribeSettings, useInstance, useStore, type InstanceState, type StoreState } from '@zus/store'
 import { getPovPicks } from '@zus/actions'
 import { CLASS_MAP } from '@constants/mappings'
 import {
-  objCoordsToVector3,
   cameraQuaternionFromSourceAnglesDeg,
   yawQuaternionFromDegrees,
   smoothingAlpha,
-  createStaleFrameGuard,
-  guardedLerpProgress,
 } from '@utils/geometry'
 import { getAsset } from '@utils/misc'
+import { playersAt, renderTickOf, useStoreValue } from '@utils/tickData'
 import { useEventListener } from '@utils/hooks'
 
-import { registerActor, unregisterActor, getActor } from '@highlander/scene/actorRegistry'
-import { useActorFx, type NameplateExtra } from '@highlander/scene/actorFx'
+import { registerActor, unregisterActor, getActor, useActorRegistryVersion } from '@highlander/scene/actorRegistry'
+import { actorFxAt, type ActorFx, type NameplateExtra } from '@highlander/scene/actorFx'
+import { frameTime, type FrameTime } from '@highlander/combat/time'
+import { useFxSettings } from '@highlander/players/fxSettings'
 import { filterPlateTags } from '@highlander/view/plateTags'
 import { getEyeHeight } from '@highlander/scene/eyeHeight'
 import { getHlSetting, useExtras, useHlSetting } from '@highlander/extras/hooks'
-import { getPovSubject } from '@highlander/pov/subject'
+import type { HighlanderExtras } from '@highlander/extras/types'
+import { getPovSubject, povSubjectCached } from '@highlander/pov/subject'
 import { PackWeapons } from '@highlander/players/PackWeapon'
 import { PackPlayer } from '@highlander/players/PackPlayer'
 import { useAssetPack, useAssetPackActive } from '@pack/pack'
@@ -40,6 +44,8 @@ import { playerModelItem, playerModelKey } from '@pack/playerAnim'
 import {
   declutterPlates,
   nameplateExtraEqual,
+  onPlateShown,
+  plateHidden,
   registerPlate,
   trackPointer,
   type PlateState,
@@ -173,6 +179,16 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
   const xrayGlow = useHlSetting<boolean>('players.xrayGlow') === true && hlEnabled
   const glowKey = packHandle && packItem ? 'pack' : 'public'
   useXrayGlow(glowRoot, xrayGlow && entityId >= 0, team, opacity, glowKey)
+  // a dead player's or the POV subject's own pack model leaves the scene update while hidden
+  const packDrawn = !!(packHandle && packItem)
+  useLayoutEffect(() => {
+    if (!packDrawn || !glowRoot.current) return
+    const group = glowRoot.current
+    skipUpdateWhileHidden(group)
+    return () => {
+      delete (group as Partial<THREE.Group>).updateMatrixWorld
+    }
+  }, [packDrawn])
 
   if (packHandle && packItem) {
     return (
@@ -217,11 +233,6 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
 
 // ─── ACTORS ──────────────────────────────────────────────────────────────────
 
-export interface ActorsProps {
-  actors: ActorProps[]
-  renderTick: number
-}
-
 interface FocusMemo {
   /** Entity id of the player the user focused while a stand-in is shown (or parked as the last POV), else null */
   wanted: number | null
@@ -238,7 +249,7 @@ const clearStandIn = (memo: FocusMemo) => {
   memo.standIn = null
 }
 
-const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
+const resolveFocus = (memo: FocusMemo, actors: number[]) => {
   const { focusedObject, lastFocusedPOV, setFocusedObject, setLastFocusedPOV } = useInstance.getState()
   const picks = getPovPicks()
   const picked = picks !== memo.picks
@@ -254,7 +265,7 @@ const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
   }
   if (focusedObject !== memo.standIn) clearStandIn(memo)
   const wanted: number = memo.wanted ?? focusedObject.userData?.entityId
-  const slot = actors.findIndex(actor => actor.user.entityId === wanted)
+  const slot = actors.indexOf(wanted)
   if (slot >= 0) memo.slot = slot
 
   let next: THREE.Object3D | undefined
@@ -266,7 +277,7 @@ const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
   } else if (!focusedObject.parent && actors.length > 0) {
     // The focused group is detached and the player is absent: the player in his slot stands in for him
     const standIn = actors[Math.min(Math.max(memo.slot, 0), actors.length - 1)]
-    next = getActor(standIn.user.entityId)?.group
+    next = getActor(standIn)?.group
     if (next?.parent) {
       memo.wanted = wanted
       memo.standIn = next
@@ -278,9 +289,15 @@ const resolveFocus = (memo: FocusMemo, actors: ActorProps[]) => {
   if (lastFocusedPOV === focusedObject) setLastFocusedPOV(next)
 }
 
-export const Actors = (props: ActorsProps) => {
-  const { actors = [], renderTick } = props
+const NO_ACTORS: number[] = []
+const _actorsTime: FrameTime = { tick: 0, tickF: 0 }
+
+export const Actors = () => {
   const gl = useThree(state => state.gl)
+  const demo = useInstance(state => state.parsedDemo)
+  // The drawn players as a primitive: this list renders when somebody joins or leaves, not on every tick
+  const roster = useStore(state => (demo ? playersAt(demo, renderTickOf(state.playback.tick)).roster : ''))
+  const actors = useMemo(() => (roster ? roster.split(',').map(Number) : NO_ACTORS), [roster])
 
   // Nameplate declutter (contract 5 X1): once per frame, before the actors' own callbacks (negative priority),
   // show the 12 plates nearest the camera plus the focused, followed, hovered and pinned ones.
@@ -288,7 +305,7 @@ export const Actors = (props: ActorsProps) => {
   useFrame(state => {
     const enabled = getHlSetting<boolean>('enabled') !== false
     const focusedEntityId = (useInstance.getState().focusedObject?.userData?.entityId as number | undefined) ?? -1
-    const subjectEntityId = enabled && focusedEntityId >= 0 ? getPovSubject(renderTick)?.entityId ?? -1 : -1
+    const subjectEntityId = enabled && focusedEntityId >= 0 ? getPovSubject(frameTime(_actorsTime).tick)?.entityId ?? -1 : -1
     const { playback, scene } = useStore.getState()
     const playing = playback.playing
     // as/tflook: the TF2 look's plates (followed, hovered and, in POV, the subject's teammates)
@@ -313,9 +330,7 @@ export const Actors = (props: ActorsProps) => {
   // component instance (and the focused POV stays on the same player).
   return (
     <group name="actors">
-      {actors.map(actor => (
-        <Actor key={`actor-${actor.user.entityId}`} {...actor} renderTick={renderTick} />
-      ))}
+      {demo && actors.map(entityId => <Actor key={`actor-${entityId}`} demo={demo} entityId={entityId} />)}
     </group>
   )
 }
@@ -324,7 +339,54 @@ export const Actors = (props: ActorsProps) => {
 // ─── ACTOR ──────────────────────────────────────────────────────────────────────
 //
 
-export type ActorProps = CachedPlayer & { positionNext: Vector; viewAnglesNext: Vector }
+/** What an actor renders from the tick's data. A store selector builds it on every tick; a value change renders the actor. */
+interface ActorView {
+  user: CachedPlayer['user']
+  classId: number
+  team: string
+  alive: boolean
+  healTarget: CachedPlayer['healTarget']
+  fx: ActorFx
+  /** The plate's opacity and pin, for the frame callbacks; what the plate shows is PlateContent's selector */
+  plateOpacity: number
+  platePinned: boolean
+}
+
+/** computeFxState once per tick per actor, for the actor's and his plate's selectors. */
+type FxReader = (tick: number, classId: number, team: string) => ActorFx
+
+const actorFxEqual = (a: ActorFx, b: ActorFx) =>
+  a === b ||
+  (a.modelClassId === b.modelClassId &&
+    a.modelTeam === b.modelTeam &&
+    a.opacity === b.opacity &&
+    a.tint === b.tint &&
+    a.hidden === b.hidden &&
+    a.scaleZ === b.scaleZ &&
+    a.weaponDef === b.weaponDef &&
+    a.loadoutDefs === b.loadoutDefs)
+
+/** The uber and crit pulses change the emissive on every tick: written to the materials directly, not through a render. */
+const applyEmissive = (root: THREE.Object3D, intensity: number) => {
+  root.traverse(node => {
+    const material = (node as THREE.Mesh).material as EmissiveMaterial | EmissiveMaterial[] | undefined
+    if (!material) return
+    if (Array.isArray(material)) {
+      for (const m of material) if (m.emissive) m.emissiveIntensity = intensity
+    } else if (material.emissive) material.emissiveIntensity = intensity
+  })
+}
+
+const actorViewEqual = (a: ActorView, b: ActorView) =>
+  a === b ||
+  (a.user === b.user &&
+    a.classId === b.classId &&
+    a.team === b.team &&
+    a.alive === b.alive &&
+    a.healTarget === b.healTarget &&
+    a.plateOpacity === b.plateOpacity &&
+    a.platePinned === b.platePinned &&
+    actorFxEqual(a.fx, b.fx))
 
 /** Entity id of the actor whose own `povCamera` this is, or undefined for any other camera. */
 const povCameraOwnerOf = (camera?: THREE.Object3D): number | undefined => {
@@ -335,7 +397,18 @@ const povCameraOwnerOf = (camera?: THREE.Object3D): number | undefined => {
   return undefined
 }
 
-export const Actor = (props: ActorProps & { renderTick: number }) => {
+const selectPlateEnabled = () => getState().settings.ui.nameplate.enabled
+const selectPlateName = () => getState().settings.ui.nameplate.showName
+const selectPlateHealth = () => getState().settings.ui.nameplate.showHealth
+const selectPlateClass = () => getState().settings.ui.nameplate.showClass
+const selectControlsMode = (s: StoreState) => s.scene.controls.mode
+const selectFocusedObject = (s: InstanceState) => s.focusedObject
+const selectPovOverride = (s: InstanceState) => s.povCameraOverride
+const _position = new THREE.Vector3()
+const _positionNext = new THREE.Vector3()
+const _actorTime: FrameTime = { tick: 0, tickF: 0 }
+
+export const Actor = React.memo(({ demo, entityId }: { demo: AsyncParser; entityId: number }) => {
   const actorRef = useRef<THREE.Group>(null)
   const bodyRef = useRef<THREE.Group>(null)
   const playerAimRef = useRef<THREE.Group>(null)
@@ -344,24 +417,59 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
   const lastGoodViewAngles = useRef<Vector>({ x: 0, y: 0, z: 0 })
   const lerpedPosition = useRef(new THREE.Vector3())
   const hasPositionInit = useRef(false)
-  const staleGuard = useRef(createStaleFrameGuard(props.position))
+  const beamOrigin = useMemo(() => new THREE.Vector3(), [])
+  const appliedEmissive = useRef(0)
   const [changing, setChanging] = useState<boolean>(false)
 
-  // Only the playing flag (as/perf): selecting the whole playback object re-rendered every actor in a commit of its
-  // own on each tick, before DemoViewer's render re-rendered them all again with the new tick's props
-  const playing = useStore(state => state.playback.playing)
-  const settings = useStore(state => state.settings)
-  const controlsMode = useStore(state => state.scene.controls.mode)
-  const focusedObject = useInstance(state => state.focusedObject)
-  const povCameraOverride = useInstance(state => state.povCameraOverride)
+  const plateEnabled = useSyncExternalStore(subscribeSettings, selectPlateEnabled)
+  const plateName = useSyncExternalStore(subscribeSettings, selectPlateName)
+  const plateHealth = useSyncExternalStore(subscribeSettings, selectPlateHealth)
+  const plateClass = useSyncExternalStore(subscribeSettings, selectPlateClass)
+  const controlsMode = useStore(selectControlsMode)
+  const focusedObject = useInstance(selectFocusedObject)
+  const povCameraOverride = useInstance(selectPovOverride)
   const extras = useExtras()
   const hlEnabled = useHlSetting<boolean>('enabled')
   const povViewmodel = useHlSetting<boolean>('pov.viewmodel')
   const nameplateFadeDistance = useHlSetting<number>('players.nameplateFadeDistance')
   const plateTags = useHlSetting<string>('view.plateTags')
 
-  const { classId, health, team, user, healTarget, renderTick } = props
-  const fx = useActorFx(user.entityId, renderTick, classId, team)
+  // The tick's data, as a value: most ticks change nothing here, so most ticks render nothing (react-perf)
+  const fxSettings = useFxSettings()
+  const focusedEntityId = focusedObject?.userData?.entityId as number | undefined
+  const deadPov = useHlSetting<'stay' | 'spectated'>('pov.deadPov')
+  const chase = useHlSetting<boolean>('pov.chase')
+  const readFx = useMemo<FxReader>(() => {
+    let last: { tick: number; classId: number; team: string; fx: ActorFx } | null = null
+    return (tick, classId, team) => {
+      if (last && last.tick === tick && last.classId === classId && last.team === team) return last.fx
+      const subject = controlsMode === 'pov' && focusedEntityId !== undefined ? povSubjectCached(extras, demo, focusedEntityId, tick, deadPov, chase) : null
+      const fx = actorFxAt(extras, demo, fxSettings, subject, entityId, tick, classId, team)
+      last = { tick, classId, team, fx }
+      return fx
+    }
+  }, [extras, demo, fxSettings, controlsMode, focusedEntityId, deadPov, chase, entityId])
+  const viewRef = useRef<ActorView | null>(null)
+  const view = useStoreValue((state: StoreState): ActorView => {
+    const tick = renderTickOf(state.playback.tick)
+    const row = playersAt(demo, tick).byEntity.get(entityId)
+    // Left the drawn list on this tick: Actors unmounts him in the same pass
+    if (!row && viewRef.current) return viewRef.current
+    const p = row ?? demo.playerCache.getPlayer(tick, demo.playerIndexOfEntity(entityId), demo.entityPlayerMap.get(demo.playerIndexOfEntity(entityId))!.user as any)
+    const fx = readFx(tick, p.classId, p.team)
+    return {
+      user: p.user,
+      classId: p.classId,
+      team: p.team,
+      alive: p.health > 0,
+      healTarget: p.healTarget,
+      fx,
+      plateOpacity: fx.nameplate?.opacity ?? 1,
+      platePinned: !!fx.nameplate?.pinned,
+    }
+  }, actorViewEqual)
+  viewRef.current = view
+  const { classId, alive, team, user, healTarget, fx, plateOpacity, platePinned } = view
   // DEFAULT_ACTOR_FX leaves the model class and team at 0 and '', which mean the actor's base class and team
   const modelClassId = fx.modelClassId || classId
   const modelTeam = fx.modelTeam || team
@@ -374,29 +482,12 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     (povCameraOverride
       ? povCameraOwnerOf(povCameraOverride) === user.entityId
       : focusedObject.userData?.entityId === user.entityId)
-  let { position, viewAngles, positionNext, viewAnglesNext } = props
-
-  // Resolve zero-valued view angles (parser bug) by falling back to last non-zero angles
-  viewAngles = resolveViewAngles(viewAngles, lastGoodViewAngles)
-  if (viewAnglesNext.x === 0 && viewAnglesNext.y === 0 && viewAnglesNext.z === 0) {
-    viewAnglesNext = viewAngles
-  }
-
-  const alive = health > 0
   let color
   if (team === 'red') color = '#ff0202'
   if (team === 'blue') color = '#0374ff'
 
-  // Source QAngle convention (degrees): x=pitch, y=yaw, z=roll
-  const positionVec3: THREE.Vector3 = objCoordsToVector3(position)
-  const positionNextVec3: THREE.Vector3 = objCoordsToVector3(positionNext)
-  const pitchDeg = viewAngles.x
-  const yawDeg = viewAngles.y
-  const rollDeg = viewAngles.z
-  const pitchNextDeg = viewAnglesNext.x
-  const yawNextDeg = viewAnglesNext.y
-  const rollNextDeg = viewAnglesNext.z
-
+  // Renders when the registry changes, so a heal target that mounts after his medic is found
+  useActorRegistryVersion()
   const healTargetVec3: THREE.Vector3 | undefined = healTarget
     ? getActor(healTarget)?.group.position
     : undefined
@@ -419,19 +510,16 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
   // Nameplate declutter (X1): the Actors pass reads this every frame; it is the state of the latest render. A plate
   // at opacity 0 shows nothing (F1: an enemy spy cloaked in the POV player's view, pinned because he is cloaked), so
   // it counts as not drawn: it takes none of the cap's slots and cannot be hovered.
-  const showPlate = settings.ui.nameplate.enabled && !isFocusedPOV
-  const plateOpacity = fx.nameplate?.opacity ?? 1
+  const showPlate = plateEnabled && !isFocusedPOV
   const plateState = useRef<PlateState>({ drawn: false, pinned: false, team: '' })
-  // as/tflook: view.plateTags ('always' passes F1's extra through unchanged)
-  const plateExtra = filterPlateTags(fx.nameplate ?? undefined, plateTags, extras, user.entityId, renderTick)
-  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: !!fx.nameplate?.pinned, team }
+  plateState.current = { drawn: showPlate && alive && plateOpacity > 0, pinned: platePinned, team }
   useEffect(() => {
     if (!actorRef.current) return
     return registerPlate(user.entityId, actorRef.current, nameplateRef, plateState)
   }, [user.entityId])
 
   // Nameplate distance fade: 1 up to the fade distance, linear to 0 at twice that (0 disables it)
-  const fadeDistance = hlEnabled && !fx.nameplate?.pinned ? nameplateFadeDistance || 0 : 0
+  const fadeDistance = hlEnabled && !platePinned ? nameplateFadeDistance || 0 : 0
   useFrame(({ camera }) => {
     const element = nameplateRef.current
     if (!element || !actorRef.current) return
@@ -458,36 +546,61 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     // Actor group is position-only; rotations are applied to children.
     actorRef.current.quaternion.identity()
 
-    const frameProgress = useInstance.getState().frameProgress
+    // The tick and its data of this very frame, from the store: no prop to wait for, so nothing lags a frame
+    const { tick, tickF } = frameTime(_actorTime)
+    const row = playersAt(demo, tick).byEntity.get(entityId)
+    if (!row) return
+    const next = playersAt(demo, tick + 1).byEntity.get(entityId)
+
+    const fxNow = readFx(tick, row.classId, row.team)
+    const emissiveNow = fxNow.tint ? fxNow.emissive : 0
+    if (emissiveNow !== appliedEmissive.current) {
+      appliedEmissive.current = emissiveNow
+      applyEmissive(bodyRef.current, emissiveNow)
+    }
+
+    // Resolve zero-valued view angles (parser bug) by falling back to last non-zero angles
+    const viewAngles = resolveViewAngles(row.viewAngles, lastGoodViewAngles)
+    let viewAnglesNext = next?.viewAngles ?? row.viewAngles
+    if (viewAnglesNext.x === 0 && viewAnglesNext.y === 0 && viewAnglesNext.z === 0) {
+      viewAnglesNext = viewAngles
+    }
+    const position = row.position
+    const positionNext = next?.position ?? row.position
+    // Source QAngle convention (degrees): x=pitch, y=yaw, z=roll
+    const pitchDeg = viewAngles.x
+    const yawDeg = viewAngles.y
+    const rollDeg = viewAngles.z
+    beamOrigin.set(position.x, position.y, position.z)
 
     // Skip interpolation when disabled or paused
-    if (settings.scene.interpolateFrames === false || playing === false) {
+    const { playback, settings } = getState()
+    if (settings.scene.interpolateFrames === false || playback.playing === false) {
       actorRef.current.position.set(position.x, position.y, position.z)
       hasPositionInit.current = true
       bodyRef.current.quaternion.copy(yawQuaternionFromDegrees(yawDeg))
-      playerAimRef.current.position.set(0, 0, getEyeHeight(user.entityId, classId, renderTick))
+      playerAimRef.current.position.set(0, 0, getEyeHeight(entityId, row.classId, tick))
       playerAimRef.current.quaternion.copy(
         cameraQuaternionFromSourceAnglesDeg({ pitch: pitchDeg, yaw: yawDeg, roll: rollDeg })
       )
-      guardedLerpProgress(staleGuard.current, frameProgress, position, false)
       return
     }
 
-    playerAimRef.current.position.set(0, 0, getEyeHeight(user.entityId, classId, renderTick))
+    playerAimRef.current.position.set(0, 0, getEyeHeight(entityId, row.classId, tick))
 
-    const lerpProgress = guardedLerpProgress(
-      staleGuard.current, frameProgress, position, playing
-    )
-    const didTeleport = positionVec3.distanceTo(positionNextVec3) > TELEPORT_LERP_DISTANCE
+    const lerpProgress = tickF - tick
+    _position.set(position.x, position.y, position.z)
+    _positionNext.set(positionNext.x, positionNext.y, positionNext.z)
+    const didTeleport = _position.distanceTo(_positionNext) > TELEPORT_LERP_DISTANCE
     const wasInitialized = hasPositionInit.current
     const positionBlend = smoothingAlpha(delta, RENDER_POSITION_SMOOTH_SECONDS)
     const rotationBlend = smoothingAlpha(delta, RENDER_ROTATION_SMOOTH_SECONDS)
 
     // Position interpolation
     if (didTeleport) {
-      lerpedPosition.current.copy(positionVec3)
+      lerpedPosition.current.copy(_position)
     } else {
-      lerpedPosition.current.copy(positionVec3).lerp(positionNextVec3, lerpProgress)
+      lerpedPosition.current.copy(_position).lerp(_positionNext, lerpProgress)
     }
 
     if (didTeleport || !wasInitialized) {
@@ -500,7 +613,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
     // Body: yaw-only quaternion
     const bodyTarget = yawQuaternionFromDegrees(yawDeg)
       .clone()
-      .slerp(yawQuaternionFromDegrees(yawNextDeg), lerpProgress)
+      .slerp(yawQuaternionFromDegrees(viewAnglesNext.y), lerpProgress)
     if (didTeleport || !wasInitialized) {
       bodyRef.current.quaternion.copy(bodyTarget)
     } else {
@@ -516,9 +629,9 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
       .clone()
       .slerp(
         cameraQuaternionFromSourceAnglesDeg({
-          pitch: pitchNextDeg,
-          yaw: yawNextDeg,
-          roll: rollNextDeg,
+          pitch: viewAnglesNext.x,
+          yaw: viewAnglesNext.y,
+          roll: viewAnglesNext.z,
         }),
         lerpProgress
       )
@@ -567,7 +680,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
       <group
         ref={playerAimRef}
         name="playerAim"
-        position={[0, 0, getEyeHeight(user.entityId, classId, renderTick)]}
+        position={[0, 0, getEyeHeight(entityId, classId, renderTickOf(getState().playback.tick))]}
       >
         {/* Aim line (debugging) */}
         {/* <mesh visible={alive} position={[AimLineSize * 0.5, 0, 0]}>
@@ -581,7 +694,7 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
       {/* Medic heal beam */}
 
       {showHealBeam && healTargetVec3 && (
-        <HealBeam origin={positionVec3} target={healTargetVec3} color={color} />
+        <HealBeam origin={beamOrigin} target={healTargetVec3} color={color} />
       )}
 
       {/* Nameplate */}
@@ -590,21 +703,20 @@ export const Actor = (props: ActorProps & { renderTick: number }) => {
         <ActorNameplate
           plateRef={nameplateRef}
           z={ActorDimensions.z * 0.85 * fx.scaleZ}
-          alive={alive}
-          name={user.name}
-          team={team}
-          health={health}
-          classId={classId}
-          plateEnabled={settings.ui.nameplate.enabled}
-          showName={settings.ui.nameplate.showName}
-          showHealth={settings.ui.nameplate.showHealth}
-          showClass={settings.ui.nameplate.showClass}
-          extra={plateExtra}
+          demo={demo}
+          entityId={entityId}
+          readFx={readFx}
+          plateTags={plateTags}
+          extras={extras}
+          plateEnabled={plateEnabled}
+          showName={plateName}
+          showHealth={plateHealth}
+          showClass={plateClass}
         />
       )}
     </group>
   )
-}
+})
 
 // ─── NAMEPLATE ──────────────────────────────────────────────────────────────────
 
@@ -613,61 +725,79 @@ const PLATE_STYLE: React.CSSProperties = { bottom: 0, transform: 'translateX(-50
 interface ActorNameplateProps {
   plateRef: React.RefObject<HTMLDivElement>
   z: number
-  alive: boolean
-  name: string
-  team: string
-  health: number
-  classId: number
+  demo: AsyncParser
+  entityId: number
+  readFx: FxReader
+  plateTags: string
+  extras: HighlanderExtras | undefined
   // settings.ui.nameplate as primitives: the settings reducer mutates that object in place
   plateEnabled: boolean
   showName: boolean
   showHealth: boolean
   showClass: boolean
-  extra?: NameplateExtra
 }
 
-const actorNameplateEqual = (a: ActorNameplateProps, b: ActorNameplateProps) =>
-  a.plateRef === b.plateRef &&
-  a.z === b.z &&
-  a.alive === b.alive &&
-  a.name === b.name &&
-  a.team === b.team &&
-  a.health === b.health &&
-  a.classId === b.classId &&
-  a.plateEnabled === b.plateEnabled &&
-  a.showName === b.showName &&
-  a.showHealth === b.showHealth &&
-  a.showClass === b.showClass &&
-  nameplateExtraEqual(a.extra, b.extra)
-
 /**
- * The actor's drei Html nameplate (X1). drei's Html re-renders its own React root on every render, and the actor
- * renders on every tick; memoized by value (the nameplate extra included), the plate re-renders only when what it
- * shows changes. Opacity (distance fade, cloak) and the declutter's display toggle are written to its DOM node by
- * the frame callbacks, outside React.
+ * The actor's drei Html nameplate (X1). drei's Html re-renders its own React root on every render, so it stays out of
+ * the tick's way: only PlateContent inside it follows the data. Opacity (distance fade, cloak) and the declutter's display
+ * toggle are written to its DOM node by the frame callbacks, outside React.
  */
 const ActorNameplate = React.memo((props: ActorNameplateProps) => {
-  const { plateRef, z, alive, name, team, health, classId, plateEnabled, showName, showHealth, showClass, extra } = props
+  const { plateRef, z, plateEnabled, showName, showHealth, showClass, ...content } = props
   const settings = useMemo(
     () => ({ enabled: plateEnabled, showName, showHealth, showClass }),
     [plateEnabled, showName, showHealth, showClass]
   )
   const position = useMemo(() => [0, 0, z] as [number, number, number], [z])
   return (
-    <Html ref={plateRef} name="html" className="pointer-events-none select-none" style={PLATE_STYLE} position={position}>
-      {alive && <Nameplate name={name} team={team} health={health} classId={classId} settings={settings} extra={extra} />}
-    </Html>
+    <PlateHtml entityId={content.entityId} ref={plateRef} name="html" className="pointer-events-none select-none" style={PLATE_STYLE} position={position}>
+      <PlateContent {...content} settings={settings} />
+    </PlateHtml>
   )
-}, actorNameplateEqual)
+})
+
+interface PlateView { alive: boolean; name: string; team: string; health: number; classId: number; extra?: NameplateExtra }
+const plateViewEqual = (a: PlateView, b: PlateView) =>
+  a === b ||
+  (a.alive === b.alive && a.name === b.name && a.team === b.team && a.health === b.health && a.classId === b.classId && nameplateExtraEqual(a.extra, b.extra))
+
+/** What the plate shows at the tick: a selector compares it by value, and only this small tree renders when it changes. */
+const PlateContent = React.memo(({ demo, entityId, readFx, plateTags, extras, settings }: Omit<ActorNameplateProps, 'plateRef' | 'z' | 'plateEnabled' | 'showName' | 'showHealth' | 'showClass'> & { settings: { enabled: boolean; showName: boolean; showHealth: boolean; showClass: boolean } }) => {
+  const last = useRef<PlateView | null>(null)
+  const [, refresh] = useState(0)
+  useEffect(() => onPlateShown(entityId, () => refresh(n => n + 1)), [entityId])
+  const view = useStoreValue((state: StoreState): PlateView => {
+    // A plate the declutter pass hides updates when it shows again or playback stops (probes read paused plates)
+    if (state.playback.playing && last.current && plateHidden(entityId)) return last.current
+    const tick = renderTickOf(state.playback.tick)
+    const row = playersAt(demo, tick).byEntity.get(entityId)
+    if (!row && last.current) return last.current
+    const p = row ?? demo.playerCache.getPlayer(tick, demo.playerIndexOfEntity(entityId), demo.entityPlayerMap.get(demo.playerIndexOfEntity(entityId))!.user as any)
+    const fx = readFx(tick, p.classId, p.team)
+    return {
+      alive: p.health > 0,
+      name: p.user.name,
+      team: p.team,
+      health: p.health,
+      classId: p.classId,
+      extra: filterPlateTags(fx.nameplate ?? undefined, plateTags, extras, entityId, tick),
+    }
+  }, plateViewEqual)
+  last.current = view
+  if (!view.alive) return null
+  return <Nameplate name={view.name} team={view.team} health={view.health} classId={view.classId} settings={settings} extra={view.extra} />
+})
 
 export interface POVCameraProps {}
 
 // Memoized (as/perf): it has no props and reads the settings itself, so the actor's per-tick render no longer
 // re-renders it (r3f applied no prop then anyway, as the values were unchanged)
+const readSettings = () => getState().settings
+
 export const POVCamera = React.memo(({}: POVCameraProps) => {
   const ref = useRef<THREE.PerspectiveCamera>(null)
 
-  const settings = useStore(state => state.settings)
+  const settings = useSyncExternalStore(subscribeSettings, readSettings)
 
   const updateCamera = () => {
     if (!ref.current) return
@@ -677,6 +807,22 @@ export const POVCamera = React.memo(({}: POVCameraProps) => {
 
   useEffect(updateCamera, [settings])
   useEventListener('resize', updateCamera, window)
+
+  // The viewmodel is portalled under this camera, about 200 nodes. drei's Html calls camera.updateMatrixWorld() once per
+  // plate every frame, and the declutter pass once more: a direct call (no force) updates the camera's own matrices
+  // only. The scene update reaches this camera with force = true (its parents move every frame) and updates the rest.
+  useLayoutEffect(() => {
+    const camera = ref.current
+    if (!camera) return
+    const update = THREE.PerspectiveCamera.prototype.updateMatrixWorld
+    camera.updateMatrixWorld = function (this: THREE.PerspectiveCamera, force?: boolean) {
+      if (force) return update.call(this, force)
+      if (this.matrixAutoUpdate) this.updateMatrix()
+      if (this.parent) this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix)
+      else this.matrixWorld.copy(this.matrix)
+      this.matrixWorldInverse.copy(this.matrixWorld).invert()
+    }
+  }, [])
 
   return (
     <perspectiveCamera

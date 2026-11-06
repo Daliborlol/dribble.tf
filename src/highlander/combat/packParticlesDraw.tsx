@@ -17,7 +17,7 @@ import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
-import { useInstance } from '@zus/store'
+import { getState, useInstance } from '@zus/store'
 import { registerHlProbe } from '@highlander/debug'
 import { HL } from '@highlander/extras/enums'
 import { flagsAt } from '@highlander/extras/getters'
@@ -38,6 +38,7 @@ import {
   type EffectInstance,
   type ParticleOut,
   type ParticleSink,
+  particleCacheFrame,
 } from '@pack/particles/sim'
 
 import { getHlSetting } from '@highlander/extras/hooks'
@@ -214,7 +215,7 @@ function playerPoint(x: HighlanderExtras, demo: AsyncParser, p: number, ipt: num
   let memo = memos.get(key)
   if (!memo) memos.set(key, (memo = new Map()))
   const m = memo
-  return (t, out) => {
+  const source: ControlPointSource = (t, out) => {
     const q = Math.round((t / ipt) * 8)
     let cp = m.get(q)
     if (cp === undefined) {
@@ -232,6 +233,9 @@ function playerPoint(x: HighlanderExtras, demo: AsyncParser, p: number, ipt: num
     out.up.copy(cp.up)
     return true
   }
+  // the POV owner's anchor follows the viewmodel: particles cached from another anchor are stale (sim.ts)
+  source.epoch = pov && demo.entityPlayerMap.get(p)?.user.entityId === pov.entityId ? hash32(Math.round(pov.f * 4), Math.round(pov.r * 4), Math.round(pov.u * 4)) : 0
+  return source
 }
 
 const _pov = makePlayerView()
@@ -649,7 +653,7 @@ const PackParticlesDraw = ({ x, demo, defs }: { x: HighlanderExtras; demo: Async
       lastPov = null
     }
   }, [renderer, defs])
-  const s = useMemo(() => ({ time: { tick: 0, tickF: 0 }, memo: new Map<number, Map<number, ControlPoint | null>>() }), [])
+  const s = useMemo(() => ({ time: { tick: 0, tickF: 0 }, memo: new Map<number, Map<number, ControlPoint | null>>(), lastTickF: -1e9, povKey: '', frame: 0 }), [])
 
   useFrame(({ camera }) => {
     const t0 = performance.now()
@@ -659,9 +663,32 @@ const PackParticlesDraw = ({ x, demo, defs }: { x: HighlanderExtras; demo: Async
     let particles = 0
     if (renderer.ready) {
       const ipt = x.meta.intervalPerTick || 0.015
-      s.memo.clear()
       const ownEyes = povCameraOwner()
       lastPov = measurePovAnchor(demo, ownEyes, tickF)
+      // While playing, a control point stays what it was at the particle's birth and a particle's initial state is
+      // computed once. Paused, after a seek or a jump everything is computed from the data again, as a seek always did,
+      // so what a seek shows does not depend on what was cached before it (D12).
+      const continuous = getState().playback.playing && tickF >= s.lastTickF && tickF - s.lastTickF < 16
+      s.lastTickF = tickF
+      particleCacheFrame(continuous)
+      if (!continuous) s.memo.clear()
+      else {
+        const povKey = lastPov ? `${lastPov.f}:${lastPov.r}:${lastPov.u}` : ''
+        if (povKey !== s.povKey && lastPov) {
+          const p = demo.playerIndexOfEntity(lastPov.entityId)
+          for (let k = 0; k < 4; k++) s.memo.delete(p * 4 + k)
+        }
+        s.povKey = povKey
+        // particles live at most a few seconds: births older than 6 s go, in a slow sweep
+        if (++s.frame % 256 === 0) {
+          const oldest = ((tickF * ipt - 6) / ipt) * 8
+          s.memo.forEach(memo =>
+            memo.forEach((_, q) => {
+              if (q < oldest) memo.delete(q)
+            })
+          )
+        }
+      }
       const list = packEffectsAt(x, demo, getProjectileSource(x, demo), defs.compiled, tickF, readCombatSettings(), ownEyes, s.memo, lastPov)
       effects = list.length
       const t = tickF * ipt

@@ -124,6 +124,8 @@ function finishTexture(texture: Texture, item: PackTextureItem, renderer: WebGLR
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
   texture.userData.dribblePack = true
   texture.needsUpdate = true
+  // pack textures keep the identity uv transform: three need not recompute it on every material refresh
+  texture.matrixAutoUpdate = false
 }
 
 async function loadDds(url: string, item: PackTextureItem, renderer: WebGLRenderer): Promise<Texture> {

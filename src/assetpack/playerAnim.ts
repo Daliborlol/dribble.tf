@@ -179,11 +179,36 @@ interface Sample {
   w: number
 }
 
-const _base: Sample[] = []
-const _delta: Sample[] = []
-const _over: { s: Sample; weights: Float32Array | null }[] = []
-const _q = new Float32Array(4)
-const _p = new Float32Array(3)
+// Reused sample records: a pose evaluation allocates nothing.
+const _basePool: Sample[] = []
+const _deltaPool: Sample[] = []
+const _overPool: { s: Sample; weights: Float32Array | null }[] = []
+let _baseCount = 0
+let _deltaCount = 0
+let _overCount = 0
+
+function pushBase(clip: CompiledClip, frame: number, w: number) {
+  const s = _basePool[_baseCount] ?? (_basePool[_baseCount] = { clip, frame, w })
+  s.clip = clip
+  s.frame = frame
+  s.w = w
+  _baseCount++
+}
+function pushDelta(clip: CompiledClip, frame: number, w: number) {
+  const s = _deltaPool[_deltaCount] ?? (_deltaPool[_deltaCount] = { clip, frame, w })
+  s.clip = clip
+  s.frame = frame
+  s.w = w
+  _deltaCount++
+}
+function pushOver(clip: CompiledClip, frame: number, w: number, weights: Float32Array | null) {
+  const o = _overPool[_overCount] ?? (_overPool[_overCount] = { s: { clip, frame, w }, weights })
+  o.s.clip = clip
+  o.s.frame = frame
+  o.s.w = w
+  o.weights = weights
+  _overCount++
+}
 
 /** Frame of a looping clip at `cycle` (0..1). */
 const loopFrame = (clip: CompiledClip, cycle: number) => (cycle - Math.floor(cycle)) * Math.max(0, clip.frames - 1)
@@ -197,30 +222,27 @@ function pushSeq(rig: PlayerRigData, seq: PlayerSeqInfo | undefined, w: number, 
   if (moving && seq.stride && seq.stride > 1) cycle = input.distance / seq.stride
   else cycle = input.time / Math.max(1 / 30, (first.frames - 1) / first.fps)
   if (seq.grid && seq.clips.length === seq.grid.size[0] * seq.grid.size[1]) {
-    const v = [0, 0]
-    for (let d = 0; d < 2; d++) v[d] = seq.grid.p[d] === 'move_x' ? input.moveX : input.moveY
-    const idx = [0, 0]
-    const f = [0, 0]
-    for (let d = 0; d < 2; d++) {
-      const keys = seq.grid.k[d]
-      const n = keys.length
-      let i = 0
-      while (i < n - 2 && v[d] > keys[i + 1]) i++
-      const span = keys[i + 1] - keys[i] || 1
-      idx[d] = i
-      f[d] = Math.min(1, Math.max(0, (v[d] - keys[i]) / span))
-    }
-    const g0 = seq.grid.size[0]
+    const grid = seq.grid
+    const v0 = grid.p[0] === 'move_x' ? input.moveX : input.moveY
+    const v1 = grid.p[1] === 'move_x' ? input.moveX : input.moveY
+    const k0 = grid.k[0], k1 = grid.k[1]
+    let i0 = 0
+    while (i0 < k0.length - 2 && v0 > k0[i0 + 1]) i0++
+    let i1 = 0
+    while (i1 < k1.length - 2 && v1 > k1[i1 + 1]) i1++
+    const f0 = Math.min(1, Math.max(0, (v0 - k0[i0]) / (k0[i0 + 1] - k0[i0] || 1)))
+    const f1 = Math.min(1, Math.max(0, (v1 - k1[i1]) / (k1[i1 + 1] - k1[i1] || 1)))
+    const g0 = grid.size[0]
     for (let a = 0; a < 2; a++) {
       for (let b = 0; b < 2; b++) {
-        const wc = w * (a ? f[0] : 1 - f[0]) * (b ? f[1] : 1 - f[1])
+        const wc = w * (a ? f0 : 1 - f0) * (b ? f1 : 1 - f1)
         if (wc < 1e-4) continue
-        const clip = rig.clips.get(seq.clips[idx[0] + a + (idx[1] + b) * g0])
-        if (clip) _base.push({ clip, frame: loopFrame(clip, cycle), w: wc })
+        const clip = rig.clips.get(seq.clips[i0 + a + (i1 + b) * g0])
+        if (clip) pushBase(clip, loopFrame(clip, cycle), wc)
       }
     }
   } else {
-    _base.push({ clip: first, frame: loopFrame(first, cycle), w })
+    pushBase(first, loopFrame(first, cycle), w)
   }
   // aim matrix: rows bracketing body_pitch
   const rows = seq.aim?.rows
@@ -233,54 +255,9 @@ function pushSeq(rig: PlayerRigData, seq: PlayerSeqInfo | undefined, w: number, 
     const fj = j === i ? 0 : Math.min(1, Math.max(0, (pitch - rows[i].pitch) / span))
     const ci = rig.clips.get(rows[i].clip)
     const cj = rig.clips.get(rows[j].clip)
-    if (ci && 1 - fj > 1e-4) _delta.push({ clip: ci, frame: 0, w: w * (1 - fj) })
-    if (cj && fj > 1e-4) _delta.push({ clip: cj, frame: 0, w: w * fj })
+    if (ci && 1 - fj > 1e-4) pushDelta(ci, 0, w * (1 - fj))
+    if (cj && fj > 1e-4) pushDelta(cj, 0, w * fj)
   }
-}
-
-function sampleT(clip: CompiledClip, b: number, frame: number, rest: Float32Array, out: Float32Array) {
-  const v = clip.t[b]
-  if (!v) {
-    if (clip.delta) { out[0] = 0; out[1] = 0; out[2] = 0 }
-    else { out[0] = rest[b * 3]; out[1] = rest[b * 3 + 1]; out[2] = rest[b * 3 + 2] }
-    return
-  }
-  const n = v.length / 3
-  if (n <= 1) {
-    out[0] = v[0]; out[1] = v[1]; out[2] = v[2]
-    return
-  }
-  const f = Math.min(Math.max(frame, 0), n - 1)
-  const i = Math.floor(f)
-  const j = Math.min(i + 1, n - 1)
-  const a = f - i
-  for (let k = 0; k < 3; k++) out[k] = v[i * 3 + k] * (1 - a) + v[j * 3 + k] * a
-}
-
-function sampleR(clip: CompiledClip, b: number, frame: number, rest: Float32Array, out: Float32Array) {
-  const v = clip.r[b]
-  if (!v) {
-    if (clip.delta) { out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 1 }
-    else { out[0] = rest[b * 4]; out[1] = rest[b * 4 + 1]; out[2] = rest[b * 4 + 2]; out[3] = rest[b * 4 + 3] }
-    return
-  }
-  const n = v.length / 4
-  if (n <= 1) {
-    out[0] = v[0]; out[1] = v[1]; out[2] = v[2]; out[3] = v[3]
-    return
-  }
-  const f = Math.min(Math.max(frame, 0), n - 1)
-  const i = Math.floor(f)
-  const j = Math.min(i + 1, n - 1)
-  const a = f - i
-  const s = v[i * 4] * v[j * 4] + v[i * 4 + 1] * v[j * 4 + 1] + v[i * 4 + 2] * v[j * 4 + 2] + v[i * 4 + 3] * v[j * 4 + 3] < 0 ? -1 : 1
-  let len = 0
-  for (let k = 0; k < 4; k++) {
-    out[k] = v[i * 4 + k] * (1 - a) + v[j * 4 + k] * a * s
-    len += out[k] * out[k]
-  }
-  len = 1 / Math.sqrt(len || 1)
-  for (let k = 0; k < 4; k++) out[k] *= len
 }
 
 function gestureWeights(rig: PlayerRigData, part: PlayerGestureInfo['parts'][number]): Float32Array | null {
@@ -296,12 +273,135 @@ function gestureWeights(rig: PlayerRigData, part: PlayerGestureInfo['parts'][num
   return w
 }
 
+/** Bones a clip has a track for, ascending (delta layers touch only those). */
+const trackedBones = new WeakMap<CompiledClip, Int32Array>()
+function tracked(clip: CompiledClip): Int32Array {
+  let list = trackedBones.get(clip)
+  if (!list) {
+    const out: number[] = []
+    for (let b = 0; b < clip.t.length; b++) if (clip.t[b] || clip.r[b]) out.push(b)
+    list = Int32Array.from(out)
+    trackedBones.set(clip, list)
+  }
+  return list
+}
+
+// Accumulators, 7 per bone: position and the unnormalized rotation.
+let _acc = new Float64Array(0)
+
+/** Adds one sample's blend contribution to every bone: its tracks read in one pass, frame position computed once. */
+function addBase(acc: Float64Array, clip: CompiledClip, frame: number, w: number, nb: number, restT: Float32Array, restR: Float32Array) {
+  const delta = clip.delta
+  const tt = clip.t, rr = clip.r
+  let lastN = -1, i = 0, j = 0, f = 0
+  for (let b = 0; b < nb; b++) {
+    const o = b * 7
+    // translation
+    const vt = tt[b]
+    if (!vt) {
+      if (!delta) {
+        acc[o] += restT[b * 3] * w
+        acc[o + 1] += restT[b * 3 + 1] * w
+        acc[o + 2] += restT[b * 3 + 2] * w
+      }
+    } else {
+      const n = vt.length / 3
+      if (n <= 1) {
+        acc[o] += vt[0] * w
+        acc[o + 1] += vt[1] * w
+        acc[o + 2] += vt[2] * w
+      } else {
+        if (n !== lastN) {
+          lastN = n
+          const c = Math.min(Math.max(frame, 0), n - 1)
+          i = Math.floor(c)
+          j = Math.min(i + 1, n - 1)
+          f = c - i
+        }
+        const it = i * 3, jt = j * 3, g = 1 - f
+        acc[o] += (vt[it] * g + vt[jt] * f) * w
+        acc[o + 1] += (vt[it + 1] * g + vt[jt + 1] * f) * w
+        acc[o + 2] += (vt[it + 2] * g + vt[jt + 2] * f) * w
+      }
+    }
+    // rotation, aligned to the rest rotation
+    const rx = restR[b * 4], ry = restR[b * 4 + 1], rz = restR[b * 4 + 2], rw = restR[b * 4 + 3]
+    const vr = rr[b]
+    let qx: number, qy: number, qz: number, qw: number
+    if (!vr) {
+      if (delta) { qx = 0; qy = 0; qz = 0; qw = 1 }
+      else { qx = rx; qy = ry; qz = rz; qw = rw }
+    } else {
+      const n = vr.length / 4
+      if (n <= 1) {
+        qx = vr[0]; qy = vr[1]; qz = vr[2]; qw = vr[3]
+      } else {
+        if (n !== lastN) {
+          lastN = n
+          const c = Math.min(Math.max(frame, 0), n - 1)
+          i = Math.floor(c)
+          j = Math.min(i + 1, n - 1)
+          f = c - i
+        }
+        const a = i * 4, c = j * 4
+        const ax = vr[a], ay = vr[a + 1], az = vr[a + 2], aw = vr[a + 3]
+        if (f === 0) {
+          qx = ax; qy = ay; qz = az; qw = aw
+        } else {
+          const cx = vr[c], cy = vr[c + 1], cz = vr[c + 2], cw = vr[c + 3]
+          const s = ax * cx + ay * cy + az * cz + aw * cw < 0 ? -f : f
+          const g = 1 - f
+          qx = ax * g + cx * s
+          qy = ay * g + cy * s
+          qz = az * g + cz * s
+          qw = aw * g + cw * s
+          const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw || 1)
+          qx *= l; qy *= l; qz *= l; qw *= l
+        }
+      }
+    }
+    const sign = qx * rx + qy * ry + qz * rz + qw * rw < 0 ? -w : w
+    acc[o + 3] += qx * sign
+    acc[o + 4] += qy * sign
+    acc[o + 5] += qz * sign
+    acc[o + 6] += qw * sign
+  }
+}
+
+const _q = new Float64Array(4)
+const _p = new Float64Array(3)
+
+function readT(v: Float32Array, frame: number) {
+  const n = v.length / 3
+  if (n <= 1) { _p[0] = v[0]; _p[1] = v[1]; _p[2] = v[2]; return }
+  const c = Math.min(Math.max(frame, 0), n - 1)
+  const i = Math.floor(c), j = Math.min(i + 1, n - 1), a = c - i
+  _p[0] = v[i * 3] * (1 - a) + v[j * 3] * a
+  _p[1] = v[i * 3 + 1] * (1 - a) + v[j * 3 + 1] * a
+  _p[2] = v[i * 3 + 2] * (1 - a) + v[j * 3 + 2] * a
+}
+
+function readR(v: Float32Array, frame: number) {
+  const n = v.length / 4
+  if (n <= 1) { _q[0] = v[0]; _q[1] = v[1]; _q[2] = v[2]; _q[3] = v[3]; return }
+  const c = Math.min(Math.max(frame, 0), n - 1)
+  const i = Math.floor(c), j = Math.min(i + 1, n - 1), a = c - i
+  const s = v[i * 4] * v[j * 4] + v[i * 4 + 1] * v[j * 4 + 1] + v[i * 4 + 2] * v[j * 4 + 2] + v[i * 4 + 3] * v[j * 4 + 3] < 0 ? -1 : 1
+  let len = 0
+  for (let k = 0; k < 4; k++) {
+    _q[k] = v[i * 4 + k] * (1 - a) + v[j * 4 + k] * a * s
+    len += _q[k] * _q[k]
+  }
+  len = 1 / Math.sqrt(len || 1)
+  for (let k = 0; k < 4; k++) _q[k] *= len
+}
+
 /** Fills `pose` with the bone-local transforms of `input`. */
 export function evaluatePlayerPose(rig: PlayerRigData, input: PlayerAnimInput, pose: PlayerPose): void {
   const slot = rig.item.anim.slots[input.slot] ?? Object.values(rig.item.anim.slots)[0]
-  _base.length = 0
-  _delta.length = 0
-  _over.length = 0
+  _baseCount = 0
+  _deltaCount = 0
+  _overCount = 0
   if (slot) {
     const dep = input.deployed ? slot.deployed : undefined
     const stand = dep?.stand ?? slot.stand
@@ -324,8 +424,8 @@ export function evaluatePlayerPose(rig: PlayerRigData, input: PlayerAnimInput, p
           if (!clip) continue
           const frame = Math.min(t * clip.fps, clip.frames - 1)
           const weights = gestureWeights(rig, part)
-          if (part.delta && !weights) _delta.push({ clip, frame, w })
-          else _over.push({ s: { clip, frame, w }, weights })
+          if (part.delta && !weights) pushDelta(clip, frame, w)
+          else pushOver(clip, frame, w, weights)
         }
       }
     }
@@ -335,80 +435,102 @@ export function evaluatePlayerPose(rig: PlayerRigData, input: PlayerAnimInput, p
   const { restT, restR } = rig
   const T = pose.t
   const R = pose.r
+  if (_acc.length < nb * 7) _acc = new Float64Array(nb * 7)
+  const acc = _acc
   // base: weighted blend (positions linear, rotations nlerp aligned to the rest rotation)
   let total = 0
-  for (const s of _base) total += s.w
-  for (let b = 0; b < nb; b++) {
-    let px = 0, py = 0, pz = 0, qx = 0, qy = 0, qz = 0, qw = 0
-    const rx = restR[b * 4], ry = restR[b * 4 + 1], rz = restR[b * 4 + 2], rw = restR[b * 4 + 3]
-    if (total < 1e-4) {
-      px = restT[b * 3]; py = restT[b * 3 + 1]; pz = restT[b * 3 + 2]
-      qx = rx; qy = ry; qz = rz; qw = rw
-    } else {
-      for (const s of _base) {
-        const w = s.w / total
-        sampleT(s.clip, b, s.frame, restT, _p)
-        px += _p[0] * w; py += _p[1] * w; pz += _p[2] * w
-        sampleR(s.clip, b, s.frame, restR, _q)
-        const sign = _q[0] * rx + _q[1] * ry + _q[2] * rz + _q[3] * rw < 0 ? -w : w
-        qx += _q[0] * sign; qy += _q[1] * sign; qz += _q[2] * sign; qw += _q[3] * sign
-      }
+  for (let k = 0; k < _baseCount; k++) total += _basePool[k].w
+  if (total < 1e-4) {
+    for (let b = 0; b < nb; b++) {
+      const o = b * 7
+      acc[o] = restT[b * 3]; acc[o + 1] = restT[b * 3 + 1]; acc[o + 2] = restT[b * 3 + 2]
+      acc[o + 3] = restR[b * 4]; acc[o + 4] = restR[b * 4 + 1]; acc[o + 5] = restR[b * 4 + 2]; acc[o + 6] = restR[b * 4 + 3]
     }
-    // delta layers: q = q * slerp(identity, d, w), p += d * w
-    for (const s of _delta) {
-      if (!s.clip.r[b] && !s.clip.t[b]) continue
-      if (s.clip.t[b]) {
-        sampleT(s.clip, b, s.frame, restT, _p)
-        px += _p[0] * s.w; py += _p[1] * s.w; pz += _p[2] * s.w
+  } else {
+    acc.fill(0, 0, nb * 7)
+    for (let k = 0; k < _baseCount; k++) {
+      const s = _basePool[k]
+      addBase(acc, s.clip, s.frame, s.w / total, nb, restT, restR)
+    }
+  }
+  // delta layers: q = q * slerp(identity, d, w), p += d * w
+  for (let k = 0; k < _deltaCount; k++) {
+    const s = _deltaPool[k]
+    const clip = s.clip
+    const list = tracked(clip)
+    const sw = s.w
+    for (let n = 0; n < list.length; n++) {
+      const b = list[n]
+      const o = b * 7
+      const vt = clip.t[b]
+      if (vt) {
+        readT(vt, s.frame)
+        acc[o] += _p[0] * sw; acc[o + 1] += _p[1] * sw; acc[o + 2] += _p[2] * sw
       }
-      if (s.clip.r[b]) {
-        sampleR(s.clip, b, s.frame, restR, _q)
-        let dx = _q[0] * s.w, dy = _q[1] * s.w, dz = _q[2] * s.w, dw = (_q[3] < 0 ? -_q[3] : _q[3]) * s.w + (1 - s.w)
+      const vr = clip.r[b]
+      if (vr) {
+        readR(vr, s.frame)
+        let dx = _q[0] * sw, dy = _q[1] * sw, dz = _q[2] * sw, dw = (_q[3] < 0 ? -_q[3] : _q[3]) * sw + (1 - sw)
         if (_q[3] < 0) { dx = -dx; dy = -dy; dz = -dz }
         const dl = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz + dw * dw)
         dx *= dl; dy *= dl; dz *= dl; dw *= dl
-        const x = qx * dw + qw * dx + qy * dz - qz * dy
-        const y = qy * dw + qw * dy + qz * dx - qx * dz
-        const z = qz * dw + qw * dz + qx * dy - qy * dx
-        const w = qw * dw - qx * dx - qy * dy - qz * dz
-        qx = x; qy = y; qz = z; qw = w
+        const qx = acc[o + 3], qy = acc[o + 4], qz = acc[o + 5], qw = acc[o + 6]
+        acc[o + 3] = qx * dw + qw * dx + qy * dz - qz * dy
+        acc[o + 4] = qy * dw + qw * dy + qz * dx - qx * dz
+        acc[o + 5] = qz * dw + qw * dz + qx * dy - qy * dx
+        acc[o + 6] = qw * dw - qx * dx - qy * dy - qz * dz
       }
     }
-    // absolute (or weighted delta) gesture layers
-    for (const o of _over) {
-      const bw = o.weights ? o.weights[b] : 1
-      const w = o.s.w * bw
+  }
+  // absolute (or weighted delta) gesture layers
+  for (let k = 0; k < _overCount; k++) {
+    const over = _overPool[k]
+    const clip = over.s.clip
+    const frame = over.s.frame
+    for (let b = 0; b < nb; b++) {
+      const bw = over.weights ? over.weights[b] : 1
+      const w = over.s.w * bw
       if (w < 1e-4) continue
-      const clip = o.s.clip
+      const o = b * 7
+      let px = acc[o], py = acc[o + 1], pz = acc[o + 2], qx = acc[o + 3], qy = acc[o + 4], qz = acc[o + 5], qw = acc[o + 6]
+      const vt = clip.t[b], vr = clip.r[b]
       if (clip.delta) {
-        if (clip.t[b]) {
-          sampleT(clip, b, o.s.frame, restT, _p)
-          px += _p[0] * w; py += _p[1] * w; pz += _p[2] * w
+        if (vt) {
+          readT(vt, frame)
+          acc[o] = px + _p[0] * w; acc[o + 1] = py + _p[1] * w; acc[o + 2] = pz + _p[2] * w
         }
-        if (clip.r[b]) {
-          sampleR(clip, b, o.s.frame, restR, _q)
+        if (vr) {
+          readR(vr, frame)
           const neg = _q[3] < 0 ? -1 : 1
           let dx = _q[0] * w * neg, dy = _q[1] * w * neg, dz = _q[2] * w * neg, dw = _q[3] * neg * w + (1 - w)
           const dl = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz + dw * dw)
           dx *= dl; dy *= dl; dz *= dl; dw *= dl
-          const x = qx * dw + qw * dx + qy * dz - qz * dy
-          const y = qy * dw + qw * dy + qz * dx - qx * dz
-          const z = qz * dw + qw * dz + qx * dy - qy * dx
-          const ww = qw * dw - qx * dx - qy * dy - qz * dz
-          qx = x; qy = y; qz = z; qw = ww
+          acc[o + 3] = qx * dw + qw * dx + qy * dz - qz * dy
+          acc[o + 4] = qy * dw + qw * dy + qz * dx - qx * dz
+          acc[o + 5] = qz * dw + qw * dz + qx * dy - qy * dx
+          acc[o + 6] = qw * dw - qx * dx - qy * dy - qz * dz
         }
         continue
       }
-      sampleT(clip, b, o.s.frame, restT, _p)
-      px += (_p[0] - px) * w; py += (_p[1] - py) * w; pz += (_p[2] - pz) * w
-      sampleR(clip, b, o.s.frame, restR, _q)
+      if (vt) readT(vt, frame)
+      else { _p[0] = restT[b * 3]; _p[1] = restT[b * 3 + 1]; _p[2] = restT[b * 3 + 2] }
+      acc[o] = px + (_p[0] - px) * w; acc[o + 1] = py + (_p[1] - py) * w; acc[o + 2] = pz + (_p[2] - pz) * w
+      if (vr) readR(vr, frame)
+      else { _q[0] = restR[b * 4]; _q[1] = restR[b * 4 + 1]; _q[2] = restR[b * 4 + 2]; _q[3] = restR[b * 4 + 3] }
       const ql = Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw) || 1
       qx /= ql; qy /= ql; qz /= ql; qw /= ql
       const sign = _q[0] * qx + _q[1] * qy + _q[2] * qz + _q[3] * qw < 0 ? -1 : 1
-      qx += (_q[0] * sign - qx) * w; qy += (_q[1] * sign - qy) * w; qz += (_q[2] * sign - qz) * w; qw += (_q[3] * sign - qw) * w
+      acc[o + 3] = qx + (_q[0] * sign - qx) * w
+      acc[o + 4] = qy + (_q[1] * sign - qy) * w
+      acc[o + 5] = qz + (_q[2] * sign - qz) * w
+      acc[o + 6] = qw + (_q[3] * sign - qw) * w
     }
+  }
+  for (let b = 0; b < nb; b++) {
+    const o = b * 7
+    const qx = acc[o + 3], qy = acc[o + 4], qz = acc[o + 5], qw = acc[o + 6]
     const l = 1 / (Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw) || 1)
-    T[b * 3] = px; T[b * 3 + 1] = py; T[b * 3 + 2] = pz
+    T[b * 3] = acc[o]; T[b * 3 + 1] = acc[o + 1]; T[b * 3 + 2] = acc[o + 2]
     R[b * 4] = qx * l; R[b * 4 + 1] = qy * l; R[b * 4 + 2] = qz * l; R[b * 4 + 3] = qw * l
   }
 }

@@ -10,7 +10,7 @@ import React from 'react'
 import { useIsMobile } from '@utils/hooks'
 import { TEAM_HUD } from '@highlander/constants'
 import { useHlSetting } from '@highlander/extras/hooks'
-import { useHudSnapshot } from '@highlander/hud/hudSnapshot'
+import { useHudSelect } from '@highlander/hud/hudSnapshot'
 import { TeamHeader } from '@highlander/hud/widgets/TeamHeader'
 import { prettyPointName } from '@highlander/objectives/format'
 import { CartIcon, Chevron, PointIcon } from '@highlander/objectives/glyphs'
@@ -21,11 +21,15 @@ const NEUTRAL_FILL = '#5a5a5a'
 const teamColor = (team: number) => (team === 2 ? TEAM_HUD.red : team === 3 ? TEAM_HUD.blue : NEUTRAL_FILL)
 const SHADOW = '[text-shadow:0_1px_2px_rgb(0_0_0_/_0.85)]'
 
-export const ObjectiveHud = React.memo(({ renderTick }: { renderTick: number }) => {
-  const snap = useHudSnapshot(renderTick)
+// The clocks and the timer draw their `text`; their raw `seconds` change on every hudTick
+const noSeconds = (key: string, value: unknown) => (key === 'seconds' ? undefined : value)
+const sameView = (a: ObjectiveView | null, b: ObjectiveView | null) => a === b || JSON.stringify(a, noSeconds) === JSON.stringify(b, noSeconds)
+
+export const ObjectiveHud = React.memo(() => {
   const on = useHlSetting<boolean>('hud.objective')
   const isMobile = useIsMobile()
-  const view = snap?.objective
+  // The view holds display values (timer text, percentages): an equal view draws the same
+  const view = useHudSelect(snap => snap?.objective ?? null, sameView)
   if (!on || !view || (view.mode === 'none' && !view.timer)) return null
   return <ObjectiveHudView view={view} mobile={isMobile} />
 })

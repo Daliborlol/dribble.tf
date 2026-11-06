@@ -12,6 +12,7 @@ import { getHlSetting } from '@highlander/extras/hooks'
 import { byPlayerRange, eventRange, sinceTick, trackIndexAt, xformAt } from '@highlander/extras/track'
 import type { HighlanderExtras } from '@highlander/extras/types'
 import { sentryMuzzleAt, tracerBarrel } from '@highlander/buildings/render'
+import { packMuzzleOf } from '@highlander/buildings/pack'
 
 import { hash } from './time'
 import { deflectIndexAt, directionAt, flamesAliveAt, positionAt, projectilesDrawnAt, projectileTeamAt } from './projectileData'
@@ -253,6 +254,26 @@ const SENTRY_BARREL_REACH = [29, 29, 35, 35]
 const SENTRY_BARREL_SIDE = 3.5
 const _q = new THREE.Quaternion()
 const _pivot = new THREE.Vector3()
+/**
+ * A tracer row's muzzle: a pure function of the row's tick and barrel while the same pack sentry serves it. Asked twice
+ * a frame for each live row (the placeholder pass and the pack particles); on a pack sentry each answer poses the copy
+ * at the row's tick and back (about 40 us).
+ */
+const muzzleMemos = new WeakMap<HighlanderExtras, Map<number, { pack: unknown; ok: boolean; x: number; y: number; z: number }>>()
+function tracerMuzzle(x: HighlanderExtras, row: number, sentry: number, tick: number, barrel: number, out: THREE.Vector3): boolean {
+  let memo = muzzleMemos.get(x)
+  if (!memo) muzzleMemos.set(x, (memo = new Map()))
+  const pack = packMuzzleOf(x, sentry)
+  let m = memo.get(row)
+  if (!m || m.pack !== pack) {
+    if (memo.size > 4096) memo.clear()
+    const ok = sentryMuzzleAt(x, sentry, tick, barrel, out)
+    m = { pack, ok, x: out.x, y: out.y, z: out.z }
+    memo.set(row, m)
+  }
+  if (m.ok) out.set(m.x, m.y, m.z)
+  return m.ok
+}
 const tracerOrdinals = new WeakMap<HighlanderExtras, Uint32Array>()
 
 /** Per tracer row: how many earlier rows the same sentry fired (F2's twin-barrel parity). */
@@ -300,7 +321,7 @@ export function sentryTracersAt(x: HighlanderExtras, tickF: number, lifetime = S
     _pivot.z += SENTRY_EYE[level] * scale
     let startFrom: 'barrel' | 'reach' = 'reach'
     const barrel = tracerBarrel(x, i)
-    if (barrel >= 0 && sentryMuzzleAt(x, j, tick, barrel, _start)) {
+    if (barrel >= 0 && tracerMuzzle(x, i, j, tick, barrel, _start)) {
       startFrom = 'barrel'
     } else {
       _start.copy(_pivot)

@@ -103,7 +103,7 @@ const glowMaterial = (color: string, opacity = 1) =>
 
 // ─── layer ─────────────────────────────────────────────────────────────────────
 
-export const ObjectivesLayer = React.memo((_props: { renderTick: number }) => {
+export const ObjectivesLayer = React.memo(() => {
   const x = useExtras()
   const on = useHlSetting<boolean>('hud.objective')
   const meta = useDemoMapMeta()

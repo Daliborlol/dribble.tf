@@ -7,12 +7,13 @@
 // down to HUD_TICK_STEP while playing. Local-only values (clip, reserve, metal, rage, stickies, charge) need
 // hasLocalTables and hide without them.
 
-import React, { useMemo } from 'react'
+import React, { useRef } from 'react'
 
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { CLASS_MAP } from '@constants/mappings'
 import { useInstance, useStore } from '@zus/store'
 import { cn } from '@utils/styling'
+import { renderTickOf, useStoreValue } from '@utils/tickData'
 import { HUD_TICK_STEP, TEAM_FX, TEAM_HUD } from '@highlander/constants'
 import { buildingsOf, type BuildingView } from '@highlander/buildings/model'
 import { TELE_STATE } from '@highlander/extras/enums'
@@ -237,18 +238,24 @@ const BuildingLine = ({ b, team }: { b: BuildingRow; team: Team }) => {
   )
 }
 
-export const PovWeaponHud = React.memo(({ renderTick }: { renderTick: number }) => {
+const hudTickOfRender = (renderTick: number, playing: boolean) => (playing ? renderTick - (renderTick % HUD_TICK_STEP) : renderTick)
+const jsonEqual = <T,>(a: T, b: T) => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+export const PovWeaponHud = React.memo(() => {
   const enabled = useHlSetting<boolean>('pov.weaponHud')
-  const playing = useStore(s => s.playback.playing)
   const extras = useExtras()
   const demo = useInstance(s => s.parsedDemo)
-  const hudTick = playing ? renderTick - (renderTick % HUD_TICK_STEP) : renderTick
-  const subject = usePovSubject(hudTick)
-
-  const model = useMemo(
-    () => (enabled && extras && demo && subject ? weaponHudAt(extras, demo, subject, hudTick) : null),
-    [enabled, extras, demo, subject, hudTick]
-  )
+  const subject = usePovSubject(hudTickOfRender)
+  // One model per hudTick; it renders when the model's display values change
+  const last = useRef<{ tick: number; subject: PovSubject | null; model: WeaponHudModel | null } | null>(null)
+  const model = useStoreValue(s => {
+    if (!enabled || !extras || !demo || !subject) return null
+    const hudTick = hudTickOfRender(renderTickOf(s.playback.tick), s.playback.playing)
+    if (last.current && last.current.tick === hudTick && last.current.subject === subject) return last.current.model
+    const next = weaponHudAt(extras, demo, subject, hudTick)
+    last.current = { tick: hudTick, subject, model: next }
+    return next
+  }, jsonEqual)
   if (!model) return null
   const accent = TEAM_HUD[model.team]
   const glow = TEAM_FX[model.team]

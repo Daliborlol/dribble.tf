@@ -18,13 +18,19 @@ import type { ScoreboardView, ScoreColumns, ScoreRow } from '@highlander/objecti
 export const SCOREBOARD_WIDTH = 760
 const MAX_CLASS_ICONS = 3
 
-export const Scoreboard = React.memo(({ renderTick }: { renderTick: number }) => {
+export const Scoreboard = React.memo(() => {
   const open = useInstance(s => s.scoreboardOpen)
   const on = useHlSetting<boolean>('hud.scoreboard')
-  const snap = useHudSnapshot(renderTick)
-  if (!open || !on || !snap) return null
-  return <ScoreboardBox board={snap.scoreboard()} header={snap.objective?.header ?? null} />
+  if (!open || !on) return null
+  return <OpenScoreboard />
 })
+
+// Follows the hudTick only while it is open
+const OpenScoreboard = () => {
+  const snap = useHudSnapshot()
+  if (!snap) return null
+  return <ScoreboardBox board={snap.scoreboard()} header={snap.objective?.header ?? null} />
+}
 
 type ColumnKey = keyof ScoreColumns | 'kills' | 'assists' | 'deaths'
 const COLUMNS: { key: ColumnKey; label: string; title: string; width: number }[] = [

@@ -16,7 +16,7 @@ const LOADING_TEXT_MS = 3000
 const MESSAGE_MS = 6000
 const FADE = 'opacity 400ms ease'
 
-export const ExtrasNotice = React.memo((_props: { renderTick: number }) => {
+export const ExtrasNotice = React.memo(() => {
   const status = useInstance(s => s.extrasStatus)
   const progress = useInstance(s => Math.round(s.extrasProgress))
   const reason = useInstance(s => s.extrasError)

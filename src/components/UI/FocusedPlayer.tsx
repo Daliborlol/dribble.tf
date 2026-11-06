@@ -1,25 +1,36 @@
-import { CachedPlayer } from '@components/Analyse/Data/PlayerCache'
+import { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { ClassIcon } from '@components/UI/ClassIcon'
 
-import { useStore, useInstance } from '@zus/store'
+import { useStore, useInstance, getState } from '@zus/store'
+import { playersAt, renderTickOf } from '@utils/tickData'
 
 import { parseClassHealth } from '@utils/players'
 import { cn } from '@utils/styling'
 
 export interface FocusedPlayerProps {
-  players: CachedPlayer[]
-  tick: number
+  demo: AsyncParser
   intervalPerTick: number
 }
 
-export const FocusedPlayer = (props: FocusedPlayerProps) => {
+export const FocusedPlayer = ({ demo, intervalPerTick }: FocusedPlayerProps) => {
   const controlsMode = useStore(state => state.scene.controls.mode)
   const focusedObject = useInstance(state => state.focusedObject)
 
   if (controlsMode !== 'pov' || !focusedObject) return null
 
-  const { players, tick, intervalPerTick } = props
-  const focused = players.find(player => player.user.entityId === focusedObject?.userData?.entityId)
+  return <FocusedPlayerCard demo={demo} intervalPerTick={intervalPerTick} entityId={focusedObject?.userData?.entityId} />
+}
+
+// What the card shows of the focused player at the tick, as one primitive: it renders when that changes
+const FocusedPlayerCard = ({ demo, intervalPerTick, entityId }: FocusedPlayerProps & { entityId: number }) => {
+  useStore(state => {
+    const focused = playersAt(demo, renderTickOf(state.playback.tick)).byEntity.get(entityId)
+    if (!focused) return ''
+    const seconds = focused.health === 0 && focused.respawnTick != null ? Math.ceil((focused.respawnTick - state.playback.tick) * intervalPerTick) : ''
+    return `${focused.user.name}|${focused.classId}|${focused.team}|${focused.health}|${seconds}`
+  })
+  const tick = getState().playback.tick
+  const focused = playersAt(demo, renderTickOf(tick)).byEntity.get(entityId)
 
   if (!focused) return null
 

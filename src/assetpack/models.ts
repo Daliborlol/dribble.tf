@@ -10,11 +10,12 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Group } from 'three'
-import type { AnimationClip, Camera, Material, Matrix4, Object3D, Scene, WebGLRenderer } from 'three'
+import type { AnimationClip, Camera, Material, Matrix4, Mesh, Object3D, Scene, WebGLRenderer } from 'three'
 
 import { getAssetSetting, useAssetSetting } from './hooks'
 import { getAssetItem, loadPackItem, releaseAssetItem, subscribeAssetItems } from './items'
-import { loadPackModel, mergeSkinnedByMaterial, warmUpObject } from './loaders'
+import { loadPackModel, mergeSkinnedByMaterial, shareEyeMaterial, warmUpObject } from './loaders'
+import { freezeGeometryAfterFirstDraw, skipEmptyLeaves } from '@highlander/perf/sceneUpdate'
 import type { PackModel } from './loaders'
 import { bindPackTextures } from './modelTextures'
 import { bindCharacterShading } from './characterShading'
@@ -161,7 +162,10 @@ async function build(key: string, entry: Entry, renderer: WebGLRenderer, scene: 
   }
   entry.model = model
   // as/perf: one draw per material for the player models (their meshes share one skeleton since shareSkins)
-  if (info.role === 'player:model') mergeSkinnedByMaterial(model.gltf.scene)
+  if (info.role === 'player:model') {
+    shareEyeMaterial(model.gltf.scene)
+    mergeSkinnedByMaterial(model.gltf.scene)
+  }
   prepareSource(model)
   const skins = Math.max(1, info.skins | 0)
   for (let skin = 0; skin < skins; skin++) {
@@ -189,7 +193,12 @@ async function build(key: string, entry: Entry, renderer: WebGLRenderer, scene: 
     clips: model.gltf.animations ?? [],
     instantiate: (skin = 0) => {
       const template = templates[Math.min(Math.max(0, skin | 0), templates.length - 1)]
-      return model.skinned ? model.instantiateFrom(template) : template.clone(true)
+      const copy = model.skinned ? model.instantiateFrom(template) : template.clone(true)
+      copy.traverse(node => {
+        if ((node as Mesh).isMesh) freezeGeometryAfterFirstDraw(node as Mesh)
+      })
+      skipEmptyLeaves(copy)
+      return copy
     },
     release: copy => model.release(copy),
   }

@@ -16,7 +16,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
-import { useInstance } from '@zus/store'
+import { getState, useInstance } from '@zus/store'
 import { copyCharacterShading } from '@pack/characterShading'
 import { packTeamSkin, usePackModel } from '@pack/models'
 import type { PackModelHandle } from '@pack/models'
@@ -28,6 +28,9 @@ import { frameTime, readyExtras } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
 import { getActor } from '@highlander/scene/actorRegistry'
 import { createAnimInput, playerAnimInput } from './animState'
+import { getAssetSetting } from '@pack/hooks'
+import { FlatRig } from '@pack/flatSkin'
+import { skipSceneUpdateWhileHidden } from '@highlander/perf/hiddenSubtree'
 
 export interface PackPlayerProps {
   handle: PackModelHandle
@@ -126,16 +129,22 @@ function boundSkinnedMeshes(copy: THREE.Object3D) {
 
 interface Merger {
   merge(): void
+  /** the piece's model-space skinning, null when the copy stays on the Object3D path */
+  flat: FlatRig | null
 }
 
 interface BodyContext {
   rig: PlayerRigData
+  /** the eyeball meshes, sub-pixel on a far player */
+  eyes: THREE.Mesh[]
   copy: THREE.Object3D
   bones: (THREE.Object3D | null)[]
   /** lower-case bone name -> player bone */
   byName: Map<string, THREE.Object3D>
   mergers: Set<Merger>
   pose: PlayerPose
+  /** the body's model-space skinning (flatSkin.ts); the Object3D bones then only serve measurements and probes */
+  flat: FlatRig | null
   /** poses the body in `def`'s slot stand pose at cycle 0, pitch 0 (anchor measurement) */
   neutral(def: number): void
   /** the held weapon's measured muzzle (probe) */
@@ -195,6 +204,7 @@ const MergedPiece = React.memo((props: PieceProps) => {
       if ((node as THREE.Mesh).isMesh && node.visible) meshes++
     })
     const merger: Merger = {
+      flat: body.flat ? new FlatRig(copy, null, targetOf, body.flat) : null,
       merge() {
         for (const { node, target, local } of list) {
           if (local) {
@@ -226,6 +236,12 @@ const MergedPiece = React.memo((props: PieceProps) => {
       measured = measureThirdPersonAnchor(piece.copy, anchorDef)
       if (measured) setThirdPersonAnchor(measured.entityId, measured.anchor)
       body.anchor = { copy: piece.copy, def: anchorDef, neutral: measured?.anchor.muzzle?.toArray().map(v => +v.toFixed(1)) ?? null }
+    }
+    // after anything that measures through the bones; the body's current pose at once
+    const flat = piece.merger.flat
+    if (flat && body.flat && !flat.unsupported) {
+      flat.install()
+      flat.update(null, null, body.flat.matrices)
     }
     return () => {
       if (measured) setThirdPersonAnchor(measured.entityId, null, measured.anchor)
@@ -287,6 +303,9 @@ function registerProbe() {
         // a culled player's input and pose are those of the current frame too, as when he is drawn
         const culled = m.culled()
         if (culled) m.refresh()
+        // the flat path leaves the Object3D bones alone: bring them to this pose for the values below
+        applyPlayerPose(m.body.bones, m.body.pose)
+        for (const merger of m.body.mergers) merger.merge()
         const pelvis = m.body.bones[0]
         return {
           entityId: m.entityId,
@@ -359,6 +378,9 @@ function hookScene(scene: THREE.Scene) {
   } as THREE.Scene['onBeforeRender']
 }
 const _center = new THREE.Vector3()
+const _cameraAt = new THREE.Vector3()
+/** A player shorter than this on screen (pixels, 83 units tall) animates at half the tick rate and draws no eyeballs. */
+const FAR_PLAYER_PX = 64
 
 export const PackPlayer = React.memo((props: PackPlayerProps) => {
   const { handle, item, entityId, classKey, team, visible, opacity, tint, emissive, weaponDef, loadoutDefs, scaleZ } = props
@@ -380,8 +402,16 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
     bones.forEach(b => b && byName.set(b.name.toLowerCase(), b))
     const pose = createPlayerPose(rig)
     const input = createAnimInput()
+    let flat: FlatRig | null = new FlatRig(copy, bones, null, null)
+    if (flat.unsupported) flat = null
+    flat?.install()
+    const eyes: THREE.Mesh[] = []
+    copy.traverse(node => {
+      const mesh = node as THREE.Mesh
+      if (mesh.isMesh && /eyeball/i.test((mesh.material as THREE.Material)?.name ?? '')) eyes.push(mesh)
+    })
     const ctx = {
-      rig, copy, bones, byName, mergers: new Set<Merger>(), pose, materials, input, anchor: null as BodyContext['anchor'],
+      eyes, rig, copy, bones, byName, mergers: new Set<Merger>(), pose, flat, materials, input, anchor: null as BodyContext['anchor'],
       neutral(def: number) {
         const n = createAnimInput()
         n.slot = playerSlotOf(item, def)
@@ -420,11 +450,15 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
   }, [body, opacity, tint, emissive])
 
   const groupRef = useRef<THREE.Group>(null)
+  // hidden (dead, or out of view): three's scene update skips the copy's bones too
+  useLayoutEffect(() => {
+    if (groupRef.current) skipSceneUpdateWhileHidden(groupRef.current)
+  }, [])
   const scene = useThree(state => state.scene)
   // the tickF of this frame while the frame callback skipped the pose (out of view), else null
   // drawnOnce: a copy is drawn at least once before it may be culled, so its materials get their programs while
   // it mounts (as without culling), not in the frame it first comes into view
-  const posed = useRef<{ deferred: number | null; drawnOnce: boolean }>({ deferred: null, drawnOnce: false })
+  const posed = useRef<{ deferred: number | null; drawnOnce: boolean; farTick: number; eyes: boolean }>({ deferred: null, drawnOnce: false, farTick: -1, eyes: true })
 
   const evaluate = (tickF: number): boolean => {
     const demo = useInstance.getState().parsedDemo
@@ -438,15 +472,23 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
 
   const pose = (tickF: number): boolean => {
     if (!evaluate(tickF)) return false
+    const flat = body.flat
+    if (flat) {
+      flat.update(body.pose.t, body.pose.r, null)
+      let objectPath = false
+      for (const m of body.mergers) {
+        if (m.flat?.installed) m.flat.update(null, null, flat.matrices)
+        else objectPath = true
+      }
+      if (!objectPath) return true
+    }
     applyPlayerPose(body.bones, body.pose)
-    for (const m of body.mergers) m.merge()
+    for (const m of body.mergers) if (!m.flat?.installed) m.merge()
     return true
   }
 
   const setDrawn = (group: THREE.Group, drawn: boolean) => {
     group.visible = drawn
-    // hidden: three's scene update skips the copy's bones too
-    group.matrixWorldAutoUpdate = drawn
   }
 
   useEffect(() => {
@@ -470,6 +512,7 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
           // skipped by the frame callback, but in view of this render: pose it now, at the same tickF
           const tickF = posed.current.deferred
           posed.current.deferred = null
+          posed.current.farTick = -1
           pose(tickF)
           setDrawn(group, true)
           group.updateMatrixWorld(true)
@@ -486,9 +529,12 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, body, entityId])
 
-  useFrame(({ camera }) => {
+  useFrame(({ camera, size }) => {
     posed.current.deferred = null
-    if (!visibleRef.current) return
+    if (!visibleRef.current) {
+      if (groupRef.current?.visible) setDrawn(groupRef.current, false)
+      return
+    }
     const { tickF } = frameTime(_frame)
     const group = groupRef.current
     const actor = getActor(entityId)?.group
@@ -501,6 +547,29 @@ export const PackPlayer = React.memo((props: PackPlayerProps) => {
         return
       }
     }
+    // far players while playing: the pose of every other tick, staggered by player, a pure function of the tick and
+    // the player; a paused frame always poses at tickF, so seeks and screenshots do not depend on the camera (D12)
+    let far = false
+    if (getState().playback.playing && getAssetSetting('farPlayerLod') && group && actor) {
+      const view = camera as THREE.PerspectiveCamera
+      if (view.isPerspectiveCamera) {
+        const distance = _cameraAt.setFromMatrixPosition(view.matrixWorld).distanceTo(_center)
+        far = (83 * 0.5 * size.height) / Math.max(1, distance * Math.tan((view.fov * Math.PI) / 360)) < FAR_PLAYER_PX
+      }
+    }
+    if (posed.current.eyes === far) {
+      posed.current.eyes = !far
+      for (const eye of body.eyes) eye.visible = !far
+    }
+    if (far) {
+      const tick = Math.floor(tickF)
+      const q = tick - ((tick + entityId) & 1)
+      if (posed.current.farTick === q) return
+      posed.current.farTick = q
+      pose(q)
+      return
+    }
+    posed.current.farTick = -1
     pose(tickF)
   })
 

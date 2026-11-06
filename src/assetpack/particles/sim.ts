@@ -74,8 +74,11 @@ export function orientControlPoint(cp: ControlPoint, fx: number, fy: number, fz:
   return cp
 }
 
-/** Control point at absolute time t (seconds); false when there is none then (no particle is born). */
-export type ControlPointSource = (t: number, out: ControlPoint) => boolean
+/**
+ * Control point at absolute time t (seconds); false when there is none then (no particle is born). `epoch` changes when
+ * the source starts answering differently for the same times (the POV owner's anchor).
+ */
+export type ControlPointSource = ((t: number, out: ControlPoint) => boolean) & { epoch?: number }
 
 export interface EffectInstance {
   system: string
@@ -704,14 +707,100 @@ function frameOf(material: PcfMaterial | null, seq: number, cycle: number) {
   out.blend = material!.blendFrames && f.duration > 0 ? clamp01((time - acc) / f.duration) : 0
 }
 
+// A particle's initial state is a pure function of (effect, system, k, control point at birth), and that took half of
+// the evaluation: while playing it is computed once and read back on the following frames. One block per (effect,
+// system), a direct-mapped table of the particles alive at once, kept while the effect draws and pooled afterwards.
+// Numbers only, nothing of a demo (contract 12.3).
+const CACHED_FIELDS = 26
+interface InitBlock { keys: Int32Array; data: Float64Array; mask: number; frame: number; base: number; sys: number; epoch: number }
+const initBlocks = new Map<number, InitBlock>()
+const initPool = new Map<number, InitBlock[]>()
+let initFrame = 0
+let initCacheOn = false
+
+function freeBlock(key: number, block: InitBlock) {
+  initBlocks.delete(key)
+  let pool = initPool.get(block.keys.length)
+  if (!pool) initPool.set(block.keys.length, (pool = []))
+  if (pool.length < 64) pool.push(block)
+}
+
+/** Once per drawn frame: `on` while playing without a jump; off forgets everything and computes every particle anew. */
+export function particleCacheFrame(on: boolean): void {
+  initFrame++
+  initCacheOn = on
+  if (!on) initBlocks.forEach((block, key) => freeBlock(key, block))
+  else if (initFrame % 32 === 0) initBlocks.forEach((block, key) => {
+    if (block.frame < initFrame - 32) freeBlock(key, block)
+  })
+}
+
+function blockOf(sys: CompiledSystem, inst: EffectInstance, seed: number, base: number): InitBlock {
+  let block = initBlocks.get(seed)
+  const epoch = inst.cp.epoch ?? 0
+  if (block && block.sys === sys.index && block.base === base && block.epoch === epoch) {
+    block.frame = initFrame
+    return block
+  }
+  if (block) freeBlock(seed, block)
+  let want = 0
+  for (const e of sys.instants) want += Math.min(e.count, sys.max)
+  for (const e of sys.continuous) want += Math.ceil((e.duration > 0 ? e.rate : Math.min(e.rate, sys.max / sys.meanLife)) * sys.maxLife) + 1
+  let capacity = 8
+  while (capacity < want && capacity < 4096) capacity *= 2
+  block = initPool.get(capacity)?.pop()
+  if (block) block.keys.fill(-1)
+  else block = { keys: new Int32Array(capacity).fill(-1), data: new Float64Array(capacity * CACHED_FIELDS), mask: capacity - 1, frame: 0, base: 0, sys: 0, epoch: 0 }
+  block.frame = initFrame
+  block.base = base
+  block.sys = sys.index
+  block.epoch = epoch
+  initBlocks.set(seed, block)
+  return block
+}
+
+function restoreInit(d: Float64Array, o: number, keepsBirthPoint: boolean) {
+  p.life = d[o]; p.radius = d[o + 1]; p.alpha = d[o + 2]; p.r = d[o + 3]; p.g = d[o + 4]; p.b = d[o + 5]
+  p.rot = d[o + 6]; p.rotSpeed = d[o + 7]; p.seq = d[o + 8]; p.trail = d[o + 9]
+  p.px = d[o + 10]; p.py = d[o + 11]; p.pz = d[o + 12]; p.vx = d[o + 13]; p.vy = d[o + 14]; p.vz = d[o + 15]
+  p.ax = d[o + 16]; p.ay = d[o + 17]; p.az = d[o + 18]; p.lockT = d[o + 19]
+  if (keepsBirthPoint) {
+    cpBirth.pos.set(d[o + 20], d[o + 21], d[o + 22])
+    cpBirth.fwd.set(d[o + 23], d[o + 24], d[o + 25])
+  }
+}
+
+function storeInit(d: Float64Array, o: number) {
+  d[o] = p.life; d[o + 1] = p.radius; d[o + 2] = p.alpha; d[o + 3] = p.r; d[o + 4] = p.g; d[o + 5] = p.b
+  d[o + 6] = p.rot; d[o + 7] = p.rotSpeed; d[o + 8] = p.seq; d[o + 9] = p.trail
+  d[o + 10] = p.px; d[o + 11] = p.py; d[o + 12] = p.pz; d[o + 13] = p.vx; d[o + 14] = p.vy; d[o + 15] = p.vz
+  d[o + 16] = p.ax; d[o + 17] = p.ay; d[o + 18] = p.az; d[o + 19] = p.lockT
+  d[o + 20] = cpBirth.pos.x; d[o + 21] = cpBirth.pos.y; d[o + 22] = cpBirth.pos.z
+  d[o + 23] = cpBirth.fwd.x; d[o + 24] = cpBirth.fwd.y; d[o + 25] = cpBirth.fwd.z
+}
+
 /** Writes one particle born at `birth` (absolute seconds) and drawn at `t`, if it is alive. Returns 1 if drawn. */
-function particleAt(sys: CompiledSystem, inst: EffectInstance, seed: number, k: number, birth: number, t: number, sink: ParticleSink): number {
+function particleAt(sys: CompiledSystem, inst: EffectInstance, seed: number, k: number, birth: number, t: number, sink: ParticleSink, block: InitBlock | null): number {
   const a = t - birth
   if (a < 0) return 0
-  if (!inst.cp(birth, cpBirth)) return 0
-  if (inst.cp1 ? !inst.cp1(birth, cpBirth1) : !copyPoint(cpBirth, cpBirth1)) return 0
-  rng.seed(hash32(seed, sys.index, k))
-  initParticle(sys, cpBirth, cpBirth1, inst.box)
+  const slot = block ? k & block.mask : 0
+  if (block && block.keys[slot] === k) {
+    const o = slot * CACHED_FIELDS
+    const d = block.data
+    if (!(a < d[o]) || !(d[o] > 0)) return 0
+    restoreInit(d, o, !!sys.lock || (!!inst.surface && sys.collides))
+  } else {
+    // a birth without a control point stays dead in the cache (life 0)
+    if (block) {
+      block.keys[slot] = k
+      block.data[slot * CACHED_FIELDS] = 0
+    }
+    if (!inst.cp(birth, cpBirth)) return 0
+    if (inst.cp1 ? !inst.cp1(birth, cpBirth1) : !copyPoint(cpBirth, cpBirth1)) return 0
+    rng.seed(hash32(seed, sys.index, k))
+    initParticle(sys, cpBirth, cpBirth1, inst.box)
+    if (block) storeInit(block.data, slot * CACHED_FIELDS)
+  }
   const life = p.life
   if (!(a < life) || !(life > 0)) return 0
   const tau = a / life
@@ -819,12 +908,13 @@ function evaluateSystem(sys: CompiledSystem, inst: EffectInstance, base: number,
   const ownEnd = Number.isFinite(sys.ownSpan) ? base + sys.ownSpan : inst.stop + sys.maxLife
   if (t >= base && t < ownEnd + 1e-6) {
     const seed = hash32(inst.seed, depth, sys.index)
+    const block = initCacheOn ? blockOf(sys, inst, seed, base) : null
     let k = 0
     for (const e of sys.instants) {
       const birth = base + e.at
       const count = Math.min(e.count, sys.max)
       if (t >= birth && t < birth + sys.maxLife) {
-        for (let i = 0; i < count && drawn < budget; i++) drawn += particleAt(sys, inst, seed, k + i, birth, t, sink)
+        for (let i = 0; i < count && drawn < budget; i++) drawn += particleAt(sys, inst, seed, k + i, birth, t, sink, block)
       }
       k += count
     }
@@ -844,7 +934,7 @@ function evaluateSystem(sys: CompiledSystem, inst: EffectInstance, base: number,
         for (let i = lo; i <= hi && drawn < budget; i++) {
           const birth = start + i / rate
           if (birth >= end || birth > t) break
-          drawn += particleAt(sys, inst, seed, k + i, birth, t, sink)
+          drawn += particleAt(sys, inst, seed, k + i, birth, t, sink, block)
         }
       }
       k += 1 << 20

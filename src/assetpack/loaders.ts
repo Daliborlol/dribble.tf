@@ -290,12 +290,34 @@ function regroupSkeletons(copy: Object3D): Object3D {
   return copy
 }
 
+/**
+ * Nothing drives a pack model's flexes (their influences stay 0), so the morph data only costs: each head and eyeball
+ * keeps its own Skeleton and bone texture (shareSkins skips morphed meshes), its own program per morph count, a
+ * morph texture, and the morph path of the renderer and the vertex shader on every draw.
+ */
+function stripMorphTargets(root: Object3D): void {
+  root.traverse(node => {
+    const mesh = node as SkinnedMesh
+    if (!mesh.isMesh) return
+    const geometry = mesh.geometry as BufferGeometry
+    if (geometry && Object.keys(geometry.morphAttributes).length) {
+      geometry.morphAttributes = {}
+      geometry.morphTargetsRelative = false
+    }
+    if (mesh.morphTargetInfluences) {
+      delete (mesh as { morphTargetInfluences?: number[] }).morphTargetInfluences
+      delete (mesh as { morphTargetDictionary?: unknown }).morphTargetDictionary
+    }
+  })
+}
+
 export async function loadPackModel(url: string): Promise<PackModel> {
   const [{ clone }, gltf] = await Promise.all([loadLibs(), loadPackGltf(url)])
   let skinned = false
   gltf.scene.traverse(node => {
     if ((node as any).isSkinnedMesh) skinned = true
   })
+  stripMorphTargets(gltf.scene)
   if (skinned) shareSkins(gltf.scene)
   let disposed = false
   return {

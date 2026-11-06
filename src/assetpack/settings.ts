@@ -17,6 +17,11 @@ export interface AssetSettings {
   particles: boolean
   /** as/shading: TF2's VertexLitGeneric look (phong, rim light, light warp, bump maps) on pack models. Applies at once. */
   characterShading: boolean
+  /**
+   * Far players while playing (under FAR_PLAYER_PX tall on screen): the pose of every other tick, staggered by player,
+   * and no eyeballs. Changes pixels while playing, never a paused frame. Applies at once.
+   */
+  farPlayerLod: boolean
 }
 
 export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
@@ -28,6 +33,7 @@ export const DEFAULT_ASSET_SETTINGS: AssetSettings = {
   skybox3d: true,
   particles: true,
   characterShading: true,
+  farPlayerLod: true,
 }
 
 export type AssetSettingKey = keyof AssetSettings

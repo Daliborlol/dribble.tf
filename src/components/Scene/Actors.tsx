@@ -796,6 +796,22 @@ export const POVCamera = React.memo(({}: POVCameraProps) => {
   useEffect(updateCamera, [settings])
   useEventListener('resize', updateCamera, window)
 
+  // The viewmodel is portalled under this camera, about 200 nodes. drei's Html calls camera.updateMatrixWorld() once per
+  // plate every frame, and the declutter pass once more: a direct call (no force) updates the camera's own matrices
+  // only. The scene update reaches this camera with force = true (its parents move every frame) and updates the rest.
+  useLayoutEffect(() => {
+    const camera = ref.current
+    if (!camera) return
+    const update = THREE.PerspectiveCamera.prototype.updateMatrixWorld
+    camera.updateMatrixWorld = function (this: THREE.PerspectiveCamera, force?: boolean) {
+      if (force) return update.call(this, force)
+      if (this.matrixAutoUpdate) this.updateMatrix()
+      if (this.parent) this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix)
+      else this.matrixWorld.copy(this.matrix)
+      this.matrixWorldInverse.copy(this.matrixWorld).invert()
+    }
+  }, [])
+
   return (
     <perspectiveCamera
       name="povCamera"

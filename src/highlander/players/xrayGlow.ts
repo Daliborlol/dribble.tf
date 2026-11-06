@@ -90,6 +90,12 @@ function attach(root: THREE.Object3D, state: GlowState) {
       const skinned = new THREE.SkinnedMesh(source.geometry, state.material)
       skinned.bindMode = source.bindMode
       skinned.bind(source.skeleton, source.bindMatrix)
+      // model-space skinning (assetpack/flatSkin.ts): the mesh's constant inverse, as for the mesh itself
+      if (source.userData.flatSkin) {
+        skinned.bindMatrixInverse.copy(source.bindMatrixInverse)
+        skinned.updateMatrixWorld = THREE.Object3D.prototype.updateMatrixWorld
+        skinned.userData.flatSkin = true
+      }
       glow = skinned
     } else {
       glow = new THREE.Mesh(mesh.geometry, state.material)

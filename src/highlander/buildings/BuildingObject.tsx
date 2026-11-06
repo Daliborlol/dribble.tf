@@ -2,6 +2,7 @@
 // and status label (contract section 5 F2). Mounted by BuildingsLayer for every drawn instance; everything that
 // changes per tick is applied in useFrame from buildingDraw() (render.ts), so the component renders once.
 
+import { skipSceneUpdateWhileHidden } from '@highlander/perf/hiddenSubtree'
 import React, { useMemo, useRef, type MutableRefObject } from 'react'
 
 import * as THREE from 'three'
@@ -385,6 +386,9 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
   const sentryRange = useHlSetting<boolean>('buildings.sentryRange')
 
   const root = useRef<THREE.Group>(null)
+  React.useLayoutEffect(() => {
+    if (root.current) skipSceneUpdateWhileHidden(root.current)
+  }, [])
   const body = useRef<THREE.Group>(null)
   const sapper = useRef<THREE.Group>(null)
   const sapperSprite = useRef<THREE.Sprite>(null)
@@ -451,9 +455,6 @@ export const BuildingObject = React.memo(({ instance }: BuildingObjectProps) => 
     const { tick, tickF } = frameTime(_time)
     const d = buildingDraw(x, instance, tickF, { rangeRing: sentryRange, enemyCentre })
     g.visible = d.drawn
-    // as/perf: three's scene update walks hidden subtrees too (a pack building holds 100+ nodes); a hidden building
-    // updates its world matrices once it is drawn again (or when a caller updates them itself)
-    g.matrixWorldAutoUpdate = d.drawn
     // the transform follows the data even while hidden (carried), so the scene never keeps a stale pose
     if (Number.isFinite(d.pos.x)) g.position.copy(d.pos)
     g.rotation.set(0, 0, d.yaw * DEG)

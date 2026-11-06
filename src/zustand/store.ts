@@ -106,7 +106,7 @@ const sameOffsetVector = (
   b: { x: number; y: number; z: number }
 ) => a.x === b.x && a.y === b.y && a.z === b.z
 
-const useInstance = create<InstanceState>()(set => ({
+const useInstance = create<InstanceState>()((set, get) => ({
   mapOffsetDebug: {
     cameraOffset: { x: 0, y: 0, z: 0 },
   },
@@ -129,7 +129,11 @@ const useInstance = create<InstanceState>()(set => ({
   setDrawingCanvas: (drawingCanvas: CanvasDraw) => set({ drawingCanvas }),
   setFocusedObject: (focusedObject?: THREE.Object3D) => set({ focusedObject }),
   setLastFocusedPOV: (lastFocusedPOV?: THREE.Object3D) => set({ lastFocusedPOV }),
-  setFrameProgress: (frameProgress: number) => set({ frameProgress }),
+  // Every frame. Read with getState() only (never selected, see Determinism in AGENTS.md), so it notifies nobody: a set()
+  // here ran the 250 useInstance selectors of a 9v9 scene each frame.
+  setFrameProgress: (frameProgress: number) => {
+    get().frameProgress = frameProgress
+  },
   setMapCenterPickerActive: (mapCenterPickerActive: boolean) => set({ mapCenterPickerActive }),
   setMapOffsetDebug: mapOffsetDebug =>
     set(state => {

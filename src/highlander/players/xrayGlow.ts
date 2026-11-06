@@ -80,7 +80,81 @@ interface GlowState {
   frame: number
 }
 
+// One glow draw per skeleton: the meshes of a skinned model that share a skeleton (a pack player's body parts, head
+// and eyes) glow through one geometry holding what the glow shader reads. Every fragment has the same colour, so the
+// order of the faces cannot change a pixel. Cached per list of source geometries (per model), shared by all copies.
+const mergedGlowGeometry = new Map<string, THREE.BufferGeometry>()
+
+function glowGeometryOf(meshes: THREE.SkinnedMesh[]): THREE.BufferGeometry {
+  const key = meshes.map(m => m.geometry.uuid).join('|')
+  let out = mergedGlowGeometry.get(key)
+  if (out) return out
+  out = new THREE.BufferGeometry()
+  let vertices = 0
+  let indices = 0
+  for (const m of meshes) {
+    vertices += m.geometry.attributes.position.count
+    indices += m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count
+  }
+  const names = ['position', 'normal', 'skinIndex', 'skinWeight']
+  for (const name of names) {
+    const size = (meshes[0].geometry.attributes[name] as THREE.BufferAttribute).itemSize
+    const array = name === 'skinIndex' ? new Uint16Array(vertices * size) : new Float32Array(vertices * size)
+    let base = 0
+    for (const m of meshes) {
+      const attr = m.geometry.attributes[name] as THREE.BufferAttribute
+      for (let i = 0; i < attr.count; i++) for (let c = 0; c < size; c++) array[(base + i) * size + c] = attr.getComponent(i, c)
+      base += attr.count
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(array, size))
+  }
+  const index = vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices)
+  let vBase = 0
+  let iBase = 0
+  for (const m of meshes) {
+    const g = m.geometry
+    const count = g.attributes.position.count
+    if (g.index) for (let i = 0; i < g.index.count; i++) index[iBase++] = g.index.getX(i) + vBase
+    else for (let i = 0; i < count; i++) index[iBase++] = vBase + i
+    vBase += count
+  }
+  out.setIndex(new THREE.BufferAttribute(index, 1))
+  mergedGlowGeometry.set(key, out)
+  return out
+}
+
 function attach(root: THREE.Object3D, state: GlowState) {
+  const groups = new Map<THREE.Skeleton, THREE.SkinnedMesh[]>()
+  root.traverse(node => {
+    const mesh = node as THREE.SkinnedMesh
+    if (!mesh.isSkinnedMesh || mesh.type === GLOW_TYPE || state.glows.has(mesh) || !mesh.visible || !mesh.geometry?.attributes?.normal) return
+    if (!mesh.geometry.attributes.skinIndex || !mesh.geometry.attributes.skinWeight) return
+    const list = groups.get(mesh.skeleton)
+    if (list) list.push(mesh)
+    else groups.set(mesh.skeleton, [mesh])
+  })
+  for (const meshes of groups.values()) {
+    if (meshes.length < 2) continue
+    const first = meshes[0]
+    const skinned = new THREE.SkinnedMesh(glowGeometryOf(meshes), state.material)
+    if (!skinned.geometry.boundingSphere) skinned.geometry.computeBoundingSphere()
+    skinned.boundingSphere = skinned.geometry.boundingSphere as THREE.Sphere
+    skinned.bindMode = first.bindMode
+    skinned.bind(first.skeleton, first.bindMatrix)
+    ;(skinned as { type: string }).type = GLOW_TYPE
+    skinned.name = 'xray-glow'
+    skinned.renderOrder = 1
+    skinned.frustumCulled = first.frustumCulled
+    skinned.raycast = noRaycast
+    skinned.userData.xrayGlow = true
+    first.add(skinned)
+    for (const m of meshes) {
+      m.userData.xrayRenderOrder = m.renderOrder
+      m.renderOrder = 2
+      // the merged glow hangs off the first mesh; the others hold it for bookkeeping
+      state.glows.set(m, skinned)
+    }
+  }
   root.traverse(node => {
     const mesh = node as THREE.Mesh
     if (!mesh.isMesh || mesh.type === GLOW_TYPE || state.glows.has(mesh) || !mesh.geometry?.attributes?.normal) return
@@ -88,6 +162,7 @@ function attach(root: THREE.Object3D, state: GlowState) {
     let glow: THREE.Mesh
     if (source.isSkinnedMesh) {
       const skinned = new THREE.SkinnedMesh(source.geometry, state.material)
+      if (source.boundingSphere) skinned.boundingSphere = source.boundingSphere
       skinned.bindMode = source.bindMode
       skinned.bind(source.skeleton, source.bindMatrix)
       // model-space skinning (assetpack/flatSkin.ts): the mesh's constant inverse, as for the mesh itself
@@ -116,7 +191,7 @@ function attach(root: THREE.Object3D, state: GlowState) {
     let under = false
     for (let n: THREE.Object3D | null = mesh; n; n = n.parent) if (n === root) { under = true; break }
     if (under) continue
-    mesh.remove(glow)
+    glow.parent?.remove(glow)
     mesh.renderOrder = mesh.userData.xrayRenderOrder ?? 0
     state.glows.delete(mesh)
   }
@@ -124,7 +199,7 @@ function attach(root: THREE.Object3D, state: GlowState) {
 
 function detach(state: GlowState) {
   for (const [mesh, glow] of state.glows) {
-    mesh.remove(glow)
+    glow.parent?.remove(glow)
     mesh.renderOrder = mesh.userData.xrayRenderOrder ?? 0
     delete mesh.userData.xrayRenderOrder
   }

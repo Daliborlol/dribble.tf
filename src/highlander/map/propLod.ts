@@ -59,6 +59,20 @@ interface BatchPair {
 
 type Pair = InstancedPair | BatchPair
 
+// Experiment: multi-draw of batch rows. The index stays sorted by (row, level) and uploaded once; every frame each
+// batch mesh issues one multiDrawElementsWEBGL over the ranges of the rows in view, at their level.
+interface MultiDraw {
+  rowsIn: Int32Array
+  /** per entry of rowsIn: bounding sphere centre and radius in world space */
+  spheres: Float32Array
+  counts: Int32Array
+  offsets: Int32Array
+  n: number
+  indices: number
+  bytes: number
+  type: number
+}
+
 export interface PropLodStats {
   pairs: number
   rows: number
@@ -214,17 +228,30 @@ function batchRaycast(pair: BatchPair, side: BatchSide, m: number) {
   }
 }
 
+const _frustum = new THREE.Frustum()
+const _viewProj = new THREE.Matrix4()
+let _frustumFrame = -1
+
 export class PropLodController {
   private pairs: Pair[] = []
+  private multiDrawExt: { multiDrawElementsWEBGL: (...args: unknown[]) => void } | null = null
+  private renderer: THREE.WebGLRenderer | null = null
+  private restores: (() => void)[] = []
   private inverse = new THREE.Matrix4()
   private camera = new THREE.Vector3()
+  private lastCamera = new THREE.Vector3(NaN, NaN, NaN)
+  private lastFades = false
   private frame = 0
   private enabled = true
   /** Batch meshes whose raycast batchRaycast replaced, with the original to put back on dispose. */
   private raycasts: [THREE.Mesh, THREE.Mesh['raycast']][] = []
   rebuilds = 0
 
-  constructor(private root: THREE.Object3D) {
+  constructor(private root: THREE.Object3D, renderer?: THREE.WebGLRenderer) {
+    if (renderer) {
+      this.renderer = renderer
+      this.multiDrawExt = renderer.getContext().getExtension('WEBGL_multi_draw') as never
+    }
     const groups = new Map<string, { near?: THREE.Object3D; far?: THREE.Object3D; info?: any }>()
     root.traverse(node => {
       const info = node.userData?.dribble
@@ -259,6 +286,7 @@ export class PropLodController {
           mesh.raycast = batchRaycast(pair, pair.near, m)
         })
         this.pairs.push(pair)
+        if (this.multiDrawExt) this.setupMultiDraw(pair)
       } else {
         // Nodes whose meshes the runtime bake (propBatch.ts) took have nothing left to switch.
         if (!meshesUnder(near).length && !(far && meshesUnder(far).length)) return
@@ -270,6 +298,103 @@ export class PropLodController {
           level: new Int8Array(rows.length).fill(-2),
         })
       }
+    })
+  }
+
+  private setupMultiDraw(pair: BatchPair) {
+    const side = pair.near
+    const renderer = this.renderer!
+    const gl = renderer.getContext()
+    const ext = this.multiDrawExt!
+    pair.written = true
+    pair.dirty = false
+    side.meshes.forEach((mesh, m) => {
+      const range = side.ranges[m]
+      const box = side.boxes[m]
+      const rowsIn: number[] = []
+      for (let r = 0; r < pair.rows.length; r++) if (range[r * 4 + 1] || range[r * 4 + 3]) rowsIn.push(r)
+      const spheres = new Float32Array(rowsIn.length * 4)
+      const v = new THREE.Vector3()
+      let spheresOf: THREE.Matrix4 | null = null
+      const computeSpheres = () => {
+        spheresOf = mesh.matrixWorld.clone()
+        rowsIn.forEach((r, k) => {
+          const o = r * 6
+          v.set((box[o] + box[o + 3]) / 2, (box[o + 1] + box[o + 4]) / 2, (box[o + 2] + box[o + 5]) / 2)
+          const radius = Math.hypot(box[o + 3] - v.x, box[o + 4] - v.y, box[o + 5] - v.z)
+          v.applyMatrix4(mesh.matrixWorld)
+          spheres[k * 4] = v.x
+          spheres[k * 4 + 1] = v.y
+          spheres[k * 4 + 2] = v.z
+          spheres[k * 4 + 3] = radius * 1.001 + 1
+        })
+      }
+      const uint32 = (mesh.geometry.index!.array as ArrayLike<number>) instanceof Uint32Array
+      const d: MultiDraw = {
+        rowsIn: Int32Array.from(rowsIn),
+        spheres,
+        counts: new Int32Array(rowsIn.length),
+        offsets: new Int32Array(rowsIn.length),
+        n: 0,
+        indices: 0,
+        bytes: uint32 ? 4 : 2,
+        type: uint32 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
+      }
+      mesh.geometry.setDrawRange(0, 0)
+      mesh.userData.dribbleLodCount = 1
+      mesh.onBeforeRender = (_r, _s, camera) => {
+        if (!spheresOf || !spheresOf.equals(mesh.matrixWorld)) computeSpheres()
+        const frame = renderer.info.render.frame
+        if (_frustumFrame !== frame) {
+          _frustumFrame = frame
+          _viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+          _frustum.setFromProjectionMatrix(_viewProj)
+        }
+        const planes = _frustum.planes
+        let n = 0
+        let indices = 0
+        let end = -1
+        const { rowsIn: list, spheres: sp, counts, offsets } = d
+        for (let k = 0; k < list.length; k++) {
+          const r = list[k]
+          const level = pair.level[r]
+          if (level < 0) continue
+          const slot = r * 2 + level
+          const count = range[slot * 2 + 1]
+          if (!count) continue
+          const x = sp[k * 4], y = sp[k * 4 + 1], z = sp[k * 4 + 2], rad = -sp[k * 4 + 3]
+          let inside = true
+          for (let p = 0; p < 6; p++) {
+            const pl = planes[p]
+            if (pl.normal.x * x + pl.normal.y * y + pl.normal.z * z + pl.constant < rad) {
+              inside = false
+              break
+            }
+          }
+          if (!inside) continue
+          const start = range[slot * 2]
+          if (start === end) {
+            counts[n - 1] += count
+          } else {
+            counts[n] = count
+            offsets[n] = start * d.bytes
+            n++
+          }
+          end = start + count
+          indices += count
+        }
+        d.n = n
+        d.indices = indices
+      }
+      mesh.onAfterRender = () => {
+        if (d.n) ext.multiDrawElementsWEBGL(gl.TRIANGLES, d.counts, 0, d.type, d.offsets, 0, d.n)
+        renderer.info.update(d.indices, gl.TRIANGLES, 1)
+        renderer.info.render.calls--
+      }
+      this.restores.push(() => {
+        delete (mesh as Partial<THREE.Mesh>).onBeforeRender
+        delete (mesh as Partial<THREE.Mesh>).onAfterRender
+      })
     })
   }
 
@@ -290,12 +415,20 @@ export class PropLodController {
     this.root.updateWorldMatrix(true, false)
     this.inverse.copy(this.root.matrixWorld).invert()
     const c = this.camera.copy(cameraWorld).applyMatrix4(this.inverse)
+    // a camera that did not move changes no level: nothing to walk (dirty batches still flush below)
+    const still = c.x === this.lastCamera.x && c.y === this.lastCamera.y && c.z === this.lastCamera.z && fades === this.lastFades
+    this.lastCamera.copy(c)
+    this.lastFades = fades
     for (const pair of this.pairs) {
+      if (still && (pair.kind === 'instanced' || !pair.dirty)) continue
       let changed = false
       const { rows, level } = pair
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]
-        const d = Math.hypot(row.x - c.x, row.y - c.y, row.z - c.z)
+        const dx = row.x - c.x
+        const dy = row.y - c.y
+        const dz = row.z - c.z
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz)
         const old = level[i]
         let next: number
         if (fades && row.fadeMax > 0 && d > row.fadeMax) next = -1
@@ -311,6 +444,7 @@ export class PropLodController {
       if (pair.kind === 'instanced') {
         if (changed) this.writeInstanced(pair)
       } else {
+        if (this.multiDrawExt) continue
         if (changed) pair.dirty = true
         if (pair.dirty && (this.frame % REBUILD_FRAMES === 0 || !pair.written)) this.writeBatch(pair)
       }
@@ -425,6 +559,8 @@ export class PropLodController {
 
   /** Back to every row at LOD 0 (before the geometry is disposed, nothing else to free). */
   dispose() {
+    this.restores.forEach(restore => restore())
+    this.restores = []
     this.raycasts.forEach(([mesh, raycast]) => (mesh.raycast = raycast))
     this.raycasts = []
     this.pairs = []

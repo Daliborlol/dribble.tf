@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Select } from '@components/Scene/OutlineSelect'
 import { useXrayGlow } from '@highlander/players/xrayGlow'
+import { skipUpdateWhileHidden } from '@highlander/perf/sceneUpdate'
 import { Html, useGLTF } from '@react-three/drei'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
@@ -177,6 +178,16 @@ export const PlayerModel = React.memo((props: PlayerModelProps) => {
   const xrayGlow = useHlSetting<boolean>('players.xrayGlow') === true && hlEnabled
   const glowKey = packHandle && packItem ? 'pack' : 'public'
   useXrayGlow(glowRoot, xrayGlow && entityId >= 0, team, opacity, glowKey)
+  // a dead player's or the POV subject's own pack model leaves the scene update while hidden
+  const packDrawn = !!(packHandle && packItem)
+  useLayoutEffect(() => {
+    if (!packDrawn || !glowRoot.current) return
+    const group = glowRoot.current
+    skipUpdateWhileHidden(group)
+    return () => {
+      delete (group as Partial<THREE.Group>).updateMatrixWorld
+    }
+  }, [packDrawn])
 
   if (packHandle && packItem) {
     return (

@@ -203,6 +203,25 @@ function shareSkins(root: Object3D): void {
 }
 
 /**
+ * A player's two eyeball meshes have two materials that differ only by name (no texture, default parameters): one
+ * material, so mergeSkinnedByMaterial makes them one draw.
+ */
+export function shareEyeMaterial(root: Object3D): void {
+  let shared: Material | null = null
+  root.traverse(node => {
+    const mesh = node as SkinnedMesh
+    if (!mesh.isSkinnedMesh || Array.isArray(mesh.material)) return
+    const material = mesh.material as Material & { map?: unknown; normalMap?: unknown }
+    if (!/(^|\/)eyeball_[lr]$/.test(material.name) || material.map || material.normalMap) return
+    if (!shared) shared = material
+    else if (material !== shared) {
+      material.dispose()
+      mesh.material = shared
+    }
+  })
+}
+
+/**
  * Merges the default-visible opaque skinned meshes that share one skeleton, bind matrix and material into one mesh
  * (as/perf; player models only, called by models.ts): a pack player draws 4 to 8 meshes, often several with the
  * same material (the scout's body parts, the pyro's five), and every draw costs the renderer the same whatever its

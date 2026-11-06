@@ -136,6 +136,9 @@ export function basic(color: string, opacity = 1, additive = false, onTop = fals
       depthWrite: !(opacity < 1 || additive),
       depthTest: !onTop,
       side: THREE.DoubleSide,
+      // one flat colour: the order of a surface's faces cannot change a pixel, so no second pass (and no program
+      // lookup per pass, which three's two-pass path forces with material.needsUpdate on every draw)
+      forceSinglePass: true,
     })
     basics.set(key, m)
   }

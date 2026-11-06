@@ -31,6 +31,7 @@ import { createAnimInput, playerAnimInput } from './animState'
 import { getAssetSetting } from '@pack/hooks'
 import { FlatRig } from '@pack/flatSkin'
 import { skipSceneUpdateWhileHidden } from '@highlander/perf/hiddenSubtree'
+import { hideBoneSubtrees } from '@highlander/perf/sceneUpdate'
 
 export interface PackPlayerProps {
   handle: PackModelHandle
@@ -60,6 +61,12 @@ function ownMaterials(root: THREE.Object3D): THREE.Material[] {
     if (!mesh.isMesh) return
     // the pose changes every frame: the bind-pose bounds would cull a crouching or jumping player wrongly
     mesh.frustumCulled = false
+    // the render list's sort needs a sphere: the geometry's (cached per model), not SkinnedMesh's walk over every
+    // vertex with its bones, once per copy, in the frame the copy first draws
+    if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+      if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere()
+      ;(mesh as THREE.SkinnedMesh).boundingSphere = mesh.geometry.boundingSphere as THREE.Sphere
+    }
     const swap = (m: THREE.Material) => {
       let c = clones.get(m)
       if (!c) {
@@ -90,30 +97,6 @@ function applyLook(materials: THREE.Material[], opacity: number, tint: string | 
       lit.emissiveIntensity = tint ? emissive : 0
     }
   }
-}
-
-/**
- * Hides every bone subtree that holds nothing drawable (as/perf). A player copy carries 80 to 140 bones and
- * attachment nodes; three's render list walks every visible node each frame, while invisible nodes keep their
- * matrices up to date (updateMatrixWorld ignores visibility), so the skeletons skin exactly as before. Nothing
- * is attached to these copies' bones at run time.
- */
-function hideBoneSubtrees(root: THREE.Object3D) {
-  const drawable = (node: THREE.Object3D) => {
-    let found = false
-    node.traverse(n => {
-      const o = n as THREE.Mesh & { isPoints?: boolean; isLine?: boolean; isSprite?: boolean; isCamera?: boolean; isLight?: boolean }
-      if (o.isMesh || o.isPoints || o.isLine || o.isSprite || o.isCamera || o.isLight) found = true
-    })
-    return found
-  }
-  const walk = (node: THREE.Object3D) => {
-    for (const child of node.children) {
-      if ((child as THREE.Bone).isBone && !drawable(child)) child.visible = false
-      else walk(child)
-    }
-  }
-  walk(root)
 }
 
 /** Bounds of a skinned copy in its current pose (measureThirdPersonAnchor reads them). */

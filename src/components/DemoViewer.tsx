@@ -771,6 +771,11 @@ class DemoViewer extends Component<DemoViewerProps> {
           id="main-canvas"
           gl={{ alpha: true }}
           dpr={canvasDpr}
+          onCreated={({ scene }) => {
+            // The root never moves. Composing its matrix every frame would mark it dirty, and three's scene update
+            // then forces every descendant, the frozen world included.
+            scene.matrixAutoUpdate = false
+          }}
           onContextMenu={e => e.preventDefault()}
           onPointerDown={this.onPointerDown}
           onPointerUp={this.onPointerUp}

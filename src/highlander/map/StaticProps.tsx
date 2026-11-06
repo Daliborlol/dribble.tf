@@ -32,6 +32,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
+import { freezeGeometryAfterFirstDraw } from '@highlander/perf/sceneUpdate'
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
@@ -254,8 +255,13 @@ export const StaticProps = React.memo(({ url, mode, source = 'pak', itemKey, onP
     current.textures = loaded.textures
       ? { keys: keys.length, loaded: [...loaded.textures.values()].filter(Boolean).length }
       : null
+    if (loaded.batch) {
+      loaded.root.traverse(node => {
+        if ((node as THREE.Mesh).isMesh) freezeGeometryAfterFirstDraw(node as THREE.Mesh)
+      })
+    }
     const t0 = performance.now()
-    const lod = new PropLodController(loaded.root)
+    const lod = new PropLodController(loaded.root, gl)
     if (loaded.batch) loaded.batch.lodSetupMs = Math.round(performance.now() - t0)
     current.lod = lod.active ? lod : null
     if (loaded.batch) {
@@ -428,6 +434,8 @@ function freeze(root: THREE.Object3D) {
     mesh.frustumCulled = true
   })
   root.updateMatrixWorld(true)
+  // computed before the root joins the world group: the next scene update redoes it with the group's matrix
+  root.matrixWorldNeedsUpdate = true
 }
 
 /** The materials applyBspMaterials created for this file (the module-level shared ones excluded). */

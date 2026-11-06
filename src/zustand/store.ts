@@ -383,4 +383,17 @@ const useStore = create(redux<StoreState, StoreAction>(rootReducer as any, initi
 // and are essentially the Redux equivalents (makes migration/adoption easier)
 const { dispatch, getState } = useStore
 
+// One store listener for every hook that reads only the settings (react-perf): the store notifies its listeners on every
+// playback tick, and about 700 of the page's hooks only care about the settings, which change when the user changes one.
+const settingsListeners = new Set<() => void>()
+useStore.subscribe((state, prev) => {
+  if (state.settings !== prev.settings) for (const listener of settingsListeners) listener()
+})
+export const subscribeSettings = (listener: () => void) => {
+  settingsListeners.add(listener)
+  return () => {
+    settingsListeners.delete(listener)
+  }
+}
+
 export { useStore, dispatch, getState, useInstance }

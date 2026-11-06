@@ -2,15 +2,13 @@
 // S0 shipped the types and DEFAULT_ACTOR_FX; F1 writes the body of useActorFx. The rules live in
 // src/highlander/players/fxState.ts, shared with the PlayerFxLayer overlays and the fx.* probes.
 
-import { useMemo } from 'react'
-
-import { useInstance } from '@zus/store'
+import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { playerIndexOf } from '@highlander/extras/getters'
-import { useExtras } from '@highlander/extras/hooks'
+import type { HighlanderExtras } from '@highlander/extras/types'
 import { computeFxState } from '@highlander/players/fxState'
-import { useFxSettings } from '@highlander/players/fxSettings'
+import type { FxSettings } from '@highlander/players/fxSettings'
 import { povInfoOf } from '@highlander/players/pov'
-import { usePovSubject } from '@highlander/pov/subject'
+import type { PovSubject } from '@highlander/pov/subject'
 
 export interface NameplateExtra {
   disguise?: { cls: number; team: number; disguising: boolean; targetName?: string; health?: number }
@@ -57,21 +55,24 @@ export function defaultActorFx(classId: number, team: string): ActorFx {
 }
 
 /**
- * The actor's model class and team, cloak opacity and tint, condition tint, crouch scale and nameplate items at
- * `renderTick` (section 5 F1). Returns the frozen DEFAULT_ACTOR_FX while the extras are not ready, while
- * Highlander is off and for players the extras do not know; the result is a new object otherwise (never mutated).
+ * The actor's model class and team, cloak opacity and tint, condition tint, crouch scale and nameplate items at `tick`
+ * (section 5 F1). Returns the frozen DEFAULT_ACTOR_FX while the extras are not ready, while Highlander is off and for
+ * players the extras do not know; the result is a new object otherwise (never mutated). A pure function of its
+ * arguments, so a store selector can run it on every tick and render only when `actorFxEqual` says it changed.
  */
-export function useActorFx(entityId: number, renderTick: number, classId: number, team: string): ActorFx {
-  const x = useExtras()
-  const demo = useInstance(s => s.parsedDemo)
-  const settings = useFxSettings()
-  const subject = usePovSubject(renderTick)
-
-  return useMemo(() => {
-    if (!settings.enabled || !x || !demo) return DEFAULT_ACTOR_FX
-    const p = playerIndexOf(x, entityId)
-    if (p < 0) return DEFAULT_ACTOR_FX
-    const pov = povInfoOf(demo, subject, renderTick)
-    return computeFxState({ x, demo, p, classId, team, tick: renderTick, settings, pov, nameplate: true }).fx
-  }, [x, demo, settings, subject, entityId, renderTick, classId, team])
+export function actorFxAt(
+  x: HighlanderExtras | undefined,
+  demo: AsyncParser | undefined,
+  settings: FxSettings,
+  subject: PovSubject | null,
+  entityId: number,
+  tick: number,
+  classId: number,
+  team: string
+): ActorFx {
+  if (!settings.enabled || !x || !demo) return DEFAULT_ACTOR_FX
+  const p = playerIndexOf(x, entityId)
+  if (p < 0) return DEFAULT_ACTOR_FX
+  const pov = povInfoOf(demo, subject, tick)
+  return computeFxState({ x, demo, p, classId, team, tick, settings, pov, nameplate: true }).fx
 }

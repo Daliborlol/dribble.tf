@@ -15,7 +15,7 @@ import { jumpToPlayerPOVCamera } from '@zus/actions'
 
 import { TEAM_HUD } from '@highlander/constants'
 import { useHlSetting } from '@highlander/extras/hooks'
-import { useHudSnapshot, type HudBadges, type HudRow, type MedicRow } from '@highlander/hud/hudSnapshot'
+import { hudRowTitleNow, useHudSelect, type HudBadges, type HudRow, type MedicRow } from '@highlander/hud/hudSnapshot'
 import { MedicPanel } from '@highlander/hud/widgets/MedicPanel'
 import { BuildingIcon, CondIcon } from '@highlander/objectives/glyphs'
 import { HUD_LAYOUT } from '@highlander/objectives/layout'
@@ -353,8 +353,17 @@ const jumpToPlayer = (entityId: number) => {
   focusMainCanvas()
 }
 
-export const HlPlayerColumns = React.memo(({ renderTick }: { renderTick: number }) => {
-  const snap = useHudSnapshot(renderTick)
+const NO_ROWS = null as null | HudSnapshotRows
+type HudSnapshotRows = { rowsBlue: HudRow[]; rowsRed: HudRow[]; medicsBlue: MedicRow[]; medicsRed: MedicRow[] }
+const sameRows = (a: HudSnapshotRows | null, b: HudSnapshotRows | null) =>
+  a === b || (!!a && !!b && a.rowsBlue === b.rowsBlue && a.rowsRed === b.rowsRed && a.medicsBlue === b.medicsBlue && a.medicsRed === b.medicsRed)
+
+export const HlPlayerColumns = React.memo(() => {
+  // The snapshot keeps its row and medic arrays while nothing they show changes: most hudTicks render nothing here
+  const snap = useHudSelect(
+    s => (s ? { rowsBlue: s.rows.blue, rowsRed: s.rows.red, medicsBlue: s.medics.blue, medicsRed: s.medics.red } : NO_ROWS),
+    sameRows
+  )
   const badgesOn = useHlSetting<boolean>('hud.statusBadges')
   const medicOn = useHlSetting<boolean>('hud.medicPanel')
   const focusedEntityId = useInstance(s => s.focusedObject?.userData?.entityId as number | undefined)
@@ -363,15 +372,15 @@ export const HlPlayerColumns = React.memo(({ renderTick }: { renderTick: number 
     <>
       <TeamColumn
         side="blue"
-        rows={snap.rows.blue}
-        medics={medicOn ? snap.medics.blue : EMPTY_MEDICS}
+        rows={snap.rowsBlue}
+        medics={medicOn ? snap.medicsBlue : EMPTY_MEDICS}
         badges={badgesOn}
         focusedEntityId={focusedEntityId}
       />
       <TeamColumn
         side="red"
-        rows={snap.rows.red}
-        medics={medicOn ? snap.medics.red : EMPTY_MEDICS}
+        rows={snap.rowsRed}
+        medics={medicOn ? snap.medicsRed : EMPTY_MEDICS}
         badges={badgesOn}
         focusedEntityId={focusedEntityId}
       />
@@ -428,7 +437,9 @@ const PlayerRow = React.memo(({ row, side, badges, focused }: PlayerRowProps) =>
 
   return (
     <div
-      title={row.title}
+      onPointerEnter={event => {
+        event.currentTarget.title = hudRowTitleNow(row)
+      }}
       onClick={() => jumpToPlayer(row.entityId)}
       className={cn(
         'pointer-events-auto relative flex shrink-0 cursor-pointer items-center overflow-hidden rounded-[3px] text-[13px] font-semibold leading-none text-white',
@@ -508,7 +519,7 @@ const Ring = ({ value, color, title }: { value: number; color: string; title: st
 const MEDIGUN_LETTER_TITLE: Record<string, string> = { U: 'Medi Gun', K: 'Kritzkrieg', Q: 'Quick-Fix', V: 'Vaccinator' }
 const MAX_COND_GLYPHS = 3
 
-const StatusBadges = ({ badges: b, mirrored }: { badges: HudBadges; mirrored: boolean }) => {
+const StatusBadges = React.memo(({ badges: b, mirrored }: { badges: HudBadges; mirrored: boolean }) => {
   const items: React.ReactNode[] = []
   if (b.medic) {
     items.push(
@@ -557,4 +568,4 @@ const StatusBadges = ({ badges: b, mirrored }: { badges: HudBadges; mirrored: bo
   for (const cond of b.conds.slice(0, MAX_COND_GLYPHS)) items.push(<CondIcon key={cond} cond={cond} size={14} />)
   if (items.length === 0) return null
   return <div className={cn('relative flex shrink-0 items-center gap-[3px] px-[2px]', mirrored && 'flex-row-reverse')}>{items}</div>
-}
+})

@@ -18,10 +18,9 @@
 // povSubjectAt is a pure function of the demo data and the tick (D12): it reads the base caches (health, team,
 // connection, deaths) and the extras `misc` track, never the scene.
 
-import { useMemo } from 'react'
-
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useInstance, useStore } from '@zus/store'
+import { renderTickOf, useStoreValue } from '@utils/tickData'
 import { OBS_MODE } from '@highlander/extras/enums'
 import { miscAt } from '@highlander/extras/getters'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
@@ -223,7 +222,39 @@ function teammateDeathAt(
 }
 
 /** Null unless the controls mode is 'pov' and focusedObject is set. */
-export function usePovSubject(renderTick: number): PovSubject | null {
+/** Same camera, same people: what the React users of the subject depend on. */
+export function povSubjectEqual(a: PovSubject | null, b: PovSubject | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.focusedEntityId === b.focusedEntityId &&
+    a.focusedP === b.focusedP &&
+    a.entityId === b.entityId &&
+    a.p === b.p &&
+    a.camera === b.camera &&
+    a.killerEntityId === b.killerEntityId &&
+    a.deathTick === b.deathTick &&
+    a.deathOfEntityId === b.deathOfEntityId
+  )
+}
+
+interface SubjectMemo { x: HighlanderExtras | undefined; focused: number; tick: number; deadPov: string; chase: boolean; subject: PovSubject }
+const subjectMemo = new WeakMap<AsyncParser, SubjectMemo>()
+
+/** povSubjectAt with a one-entry memo per demo: every actor and layer asks for the same subject on each tick. */
+export function povSubjectCached(x: HighlanderExtras | undefined, demo: AsyncParser, focusedEntityId: number, tick: number, deadPov: 'stay' | 'spectated', chase: boolean): PovSubject {
+  const last = subjectMemo.get(demo)
+  if (last && last.x === x && last.focused === focusedEntityId && last.tick === tick && last.deadPov === deadPov && last.chase === chase) return last.subject
+  const subject = povSubjectAt(x, demo, focusedEntityId, tick, { deadPov, chase })
+  subjectMemo.set(demo, { x, focused: focusedEntityId, tick, deadPov, chase, subject })
+  return subject
+}
+
+/**
+ * The POV subject at the store's render tick: renders only when he changes (react-perf). `stepOf` maps the render tick
+ * to the tick to read, for the HUD's hudTick.
+ */
+export function usePovSubject(stepOf?: (renderTick: number, playing: boolean) => number): PovSubject | null {
   const controlsMode = useStore(s => s.scene.controls.mode)
   const focusedEntityId = useInstance(s => s.focusedObject?.userData?.entityId as number | undefined)
   const demo = useInstance(s => s.parsedDemo)
@@ -231,10 +262,12 @@ export function usePovSubject(renderTick: number): PovSubject | null {
   const deadPov = useHlSetting<'stay' | 'spectated'>('pov.deadPov')
   const chase = useHlSetting<boolean>('pov.chase')
 
-  return useMemo(() => {
+  return useStoreValue(s => {
     if (controlsMode !== 'pov' || focusedEntityId === undefined || !demo) return null
-    return povSubjectAt(extras, demo, focusedEntityId, renderTick, { deadPov, chase })
-  }, [controlsMode, focusedEntityId, demo, extras, renderTick, deadPov, chase])
+    const renderTick = renderTickOf(s.playback.tick)
+    const tick = stepOf ? stepOf(renderTick, s.playback.playing) : renderTick
+    return povSubjectCached(extras, demo, focusedEntityId, tick, deadPov, chase)
+  }, povSubjectEqual)
 }
 
 /** usePovSubject for non-React code (probes, useFrame callbacks): the subject at `tick` from the stores. */

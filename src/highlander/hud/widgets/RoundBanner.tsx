@@ -9,17 +9,16 @@ import React from 'react'
 import { useIsMobile } from '@utils/hooks'
 import { TEAM_HUD } from '@highlander/constants'
 import { useHlSetting } from '@highlander/extras/hooks'
-import { useHudSnapshot } from '@highlander/hud/hudSnapshot'
+import { jsonEqual, useHudSelect } from '@highlander/hud/hudSnapshot'
 import { bannerOpacity, type BannerView } from '@highlander/objectives/banner'
 import { HUD_LAYOUT } from '@highlander/objectives/layout'
 
-export const RoundBanner = React.memo(({ renderTick }: { renderTick: number }) => {
-  const snap = useHudSnapshot(renderTick)
+export const RoundBanner = React.memo(() => {
   const on = useHlSetting<boolean>('hud.roundBanner')
   const isMobile = useIsMobile()
-  const banner = snap?.banner
+  const banner = useHudSelect(snap => (on ? snap?.banner ?? null : null), jsonEqual)
+  const opacity = useHudSelect((snap, tick) => (on && snap?.banner ? bannerOpacity(snap.banner.eventTick, tick) : 0))
   if (!on || !banner) return null
-  const opacity = bannerOpacity(banner.eventTick, renderTick)
   if (opacity <= 0) return null
   return <BannerBox banner={banner} opacity={opacity} mobile={isMobile} />
 })

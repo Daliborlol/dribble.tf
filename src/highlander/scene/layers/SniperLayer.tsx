@@ -107,7 +107,7 @@ const _time: FrameTime = { tick: 0, tickF: 0 }
 
 // The dots and tickF come from the store in useFrame (frameTime), not from the renderTick prop: the prop reaches
 // React a frame after DemoViewer advances playback.tick, so prop + frameProgress stepped back at tick boundaries.
-export const SniperLayer = React.memo((_props: { renderTick: number }) => {
+export const SniperLayer = React.memo(() => {
   const extras = useExtras()
   const dotsOn = useHlSetting<boolean>('sniper.dots')
   const beamsOn = useHlSetting<boolean>('sniper.beams')

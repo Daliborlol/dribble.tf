@@ -17,7 +17,7 @@ import { lowerBoundOf } from '@highlander/objectives/deaths'
 import { KillIcon } from '@highlander/objectives/glyphs'
 import { HUD_LAYOUT } from '@highlander/objectives/layout'
 import { bannerOpacity } from '@highlander/objectives/banner'
-import { useHudSnapshot } from '@highlander/hud/hudSnapshot'
+import { useHudSelect } from '@highlander/hud/hudSnapshot'
 import { BOTTOM_CONTROLS_CLEARANCE, columnsBottom, KILLFEED_SQUEEZE_BELOW, useViewport } from '@highlander/hud/responsive'
 
 //
@@ -169,7 +169,7 @@ const onClickName = (entityId: number) => {
   focusMainCanvas()
 }
 
-export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) => {
+export const HlKillfeed = React.memo(() => {
   const demo = useInstance(s => s.parsedDemo)
   const x = useExtras()
   const maxLines = useHlSetting<number>('hud.killfeedMaxLines') ?? 6
@@ -184,7 +184,6 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   // as/tflook: without player columns the killfeed takes the top right corner, as in TF2
   const noColumns = useHlSetting<boolean>('view.playerColumns') === false
   const vp = useViewport()
-  const snap = useHudSnapshot(renderTick)
 
   const model = useMemo(
     () => (demo ? killfeedModel(demo, x, { feign: !!feign, objectives: !!objectives }) : null),
@@ -194,13 +193,19 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
   // only next to the compact columns (hud.compactStatuses off shows the old player list, whose geometry differs)
   const squeezed = !isMobile && !noColumns && !!compactStatuses && vp.w < KILLFEED_SQUEEZE_BELOW
   const desktopLines = Math.max(1, maxLines)
-  const belowTop = squeezed ? columnsBottom(snap, !!medicPanels) + 8 : 0
+  // What the feed takes from the tick, as one primitive: it renders when a line enters or leaves the visible window
+  // (same rule as killfeedLinesAt), when the banner shows or goes and when the columns' height changes
+  const tickKey = useHudSelect((snap, renderTick) => {
+    const end = model ? lowerBoundOf(model.ticks, renderTick + 1) : 0
+    const start = model ? lowerBoundOf(model.ticks, renderTick - KILLFEED_LINGER_TICKS + 1) : 0
+    const banner = snap?.banner
+    const shown = !!bannerOn && !!banner && bannerOpacity(banner.eventTick, renderTick) > 0
+    return `${start}|${end}|${shown ? 1 : 0}|${squeezed ? columnsBottom(snap, !!medicPanels) + 8 : 0}`
+  })
+  const [start, end, bannerFlag, belowTop] = useMemo(() => tickKey.split('|').map(Number), [tickKey])
   const below = squeezed && vp.h - BOTTOM_CONTROLS_CLEARANCE - belowTop >= desktopLines * (HUD_LAYOUT.killfeedLineHeight + HUD_LAYOUT.killfeedLineGap)
   const compactFeed = squeezed && !below
   const lineCount = isMobile || compactFeed ? 3 : desktopLines
-  // the visible window [start, end) only changes when a line enters or leaves it (same rule as killfeedLinesAt)
-  const end = model ? lowerBoundOf(model.ticks, renderTick + 1) : 0
-  const start = model ? lowerBoundOf(model.ticks, renderTick - KILLFEED_LINGER_TICKS + 1) : 0
   const lines = useMemo(
     () => (model ? model.lines.slice(Math.max(start, end - lineCount), end) : []),
     [model, start, end, lineCount]
@@ -208,8 +213,7 @@ export const HlKillfeed = React.memo(({ renderTick }: { renderTick: number }) =>
 
   if (!model || lines.length === 0) return null
 
-  const banner = snap?.banner
-  const bannerShown = !!bannerOn && !!banner && bannerOpacity(banner.eventTick, renderTick) > 0
+  const bannerShown = bannerFlag === 1
   const top = bannerShown ? HUD_LAYOUT.killfeedBelowBanner : narrow ? HUD_LAYOUT.killfeedNarrowTop : HUD_LAYOUT.killfeedTop
 
   // mobile: below the toolbar row and the reduced objective HUD (and below the banner while it shows)

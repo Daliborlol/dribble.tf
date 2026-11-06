@@ -6,9 +6,9 @@
 // small cache keyed by that string hands every actor the same FxSettings object for the same values (built from
 // the key alone, never from a store snapshot), so the object changes only when a value changes.
 
-import { useMemo } from 'react'
+import { useSyncExternalStore } from 'react'
 
-import { getState, useStore } from '@zus/store'
+import { getState, subscribeSettings } from '@zus/store'
 import { DEFAULT_HIGHLANDER_SETTINGS, type HighlanderSettings } from '@highlander/settings'
 
 export type DisguiseViewSetting = HighlanderSettings['players']['disguiseView']
@@ -97,8 +97,20 @@ export function readFxSettings(): FxSettings {
   return fromKey(fxSettingsKey(getState().settings))
 }
 
-/** The same values through one primitive selector; the returned object changes only when a value changes. */
+// The settings object the key below was built from: the store's listeners run on every playback tick, and the key only
+// changes with the settings.
+let keySettings: StoreSettings | null = null
+let lastFx: FxSettings | null = null
+const readFxSnapshot = (): FxSettings => {
+  const settings = getState().settings
+  if (settings !== keySettings || !lastFx) {
+    keySettings = settings
+    lastFx = fromKey(fxSettingsKey(settings))
+  }
+  return lastFx
+}
+
+/** The same values through one shared reader; the returned object changes only when a value changes. */
 export function useFxSettings(): FxSettings {
-  const key = useStore(state => fxSettingsKey(state.settings))
-  return useMemo(() => fromKey(key), [key])
+  return useSyncExternalStore(subscribeSettings, readFxSnapshot)
 }

@@ -64,7 +64,7 @@ function pushProjectile(
   for (const part of kindParts) if (!pack || part.def.keepWithPack) part.instances.push(matrix, partColor(part, kind, team))
 }
 
-export const ProjectilesExtraLayer = React.memo((_props: { renderTick: number }) => {
+export const ProjectilesExtraLayer = React.memo(() => {
   const extras = useExtras()
   const demo = useInstance(s => s.parsedDemo)
   const enabled = useHlSetting<boolean>('projectiles.extraTypes')

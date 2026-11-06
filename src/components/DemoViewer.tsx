@@ -20,8 +20,6 @@ import { World } from '@components/Scene/World'
 import { Skybox } from '@components/Scene/Skybox'
 import { Stickers } from '@components/Scene/Stickers'
 import { AsyncParser } from './Analyse/Data/AsyncParser'
-import { CachedPlayer } from './Analyse/Data/PlayerCache'
-import { InterpolatedProjectile } from './Scene/Projectiles'
 
 // UI Panels
 import { AboutPanel } from '@components/UI/AboutPanel'
@@ -54,7 +52,6 @@ import {
   playbackJumpAction,
   setSceneRtsCenterAction,
 } from '@zus/actions'
-import { ActorProps } from './Scene/Actors'
 import { isPerfLoggingEnabled, readJsHeapMemoryMb } from '@utils/misc'
 import { useIsMobile } from '@utils/hooks'
 import { cn } from '@utils/styling'
@@ -536,11 +533,7 @@ const DoubleTapSeek = memo(() => {
 })
 
 // FocusedPlayer wrapper - adjusts positioning for mobile
-const FocusedPlayerLayer = (props: {
-  players: CachedPlayer[]
-  tick: number
-  intervalPerTick: number
-}) => {
+const FocusedPlayerLayer = memo((props: { demo: AsyncParser; intervalPerTick: number }) => {
   const isMobile = useIsMobile()
   return (
     <div
@@ -552,7 +545,7 @@ const FocusedPlayerLayer = (props: {
       <FocusedPlayer {...props} />
     </div>
   )
-}
+})
 
 // Panel toolbar - functional component so we can use useIsMobile hook. Memoized (X1): its only prop is a boolean,
 // and the panels read their own state, so the per-tick DemoViewer render no longer re-renders the settings,
@@ -612,7 +605,6 @@ type DemoViewerProps = {
 }
 
 class DemoViewer extends Component<DemoViewerProps> {
-  playbackSub = function () {}
   settingsSub = function () {}
   canvasRef = createRef<HTMLCanvasElement>()
   uiLayers = createRef<HTMLDivElement>()
@@ -626,8 +618,8 @@ class DemoViewer extends Component<DemoViewerProps> {
   lastTimestamp = 0
   lastTouchPos = { x: 0, y: 0 }
 
+  // Only the settings: playback.tick changes on every frame, and no render depends on it here (react-perf)
   state = {
-    playback: getState().playback,
     settings: getState().settings,
   }
 
@@ -644,8 +636,9 @@ class DemoViewer extends Component<DemoViewerProps> {
     // component -- because it seems to be SUPER PAINFUL trying to get the animate()
     // requestAnimationFrame stuff working correctly as a functional component
     // (it ends up annihilating the fps and some other buggy behaviour)
-    this.playbackSub = useStore.subscribe(state => this.setState({ playback: state.playback }))
-    this.settingsSub = useStore.subscribe(state => this.setState({ settings: state.settings }))
+    this.settingsSub = useStore.subscribe((state, prev) => {
+      if (state.settings !== prev.settings) this.setState({ settings: state.settings })
+    })
 
     // Force tabIndex (r3f seems to ignore it if provided in props) as this is how
     // we can ensure separation of Global and Canvas-only keyboard events when certain
@@ -655,7 +648,6 @@ class DemoViewer extends Component<DemoViewerProps> {
   }
 
   componentWillUnmount() {
-    this.playbackSub()
     this.settingsSub()
   }
 
@@ -666,8 +658,8 @@ class DemoViewer extends Component<DemoViewerProps> {
   // TODO: it may be better to try using THREE.js Clock for playback instead
   // of this requestAnimationFrame() implementation
   // https://threejs.org/docs/#api/en/core/Clock
-  animate = async (timestamp: number) => {
-    const { playback } = this.state
+  animate = (timestamp: number) => {
+    const { playback } = getState()
 
     const intervalPerTick = playback.intervalPerTick || 0.015
     const millisPerTick = 1000 * intervalPerTick * (1 / playback.speed)
@@ -681,9 +673,11 @@ class DemoViewer extends Component<DemoViewerProps> {
         this.elapsedTime -= ticksToAdvance * millisPerTick
         goToTickAction(playback.tick + ticksToAdvance)
       }
-      useInstance.getState().setFrameProgress(Math.min(this.elapsedTime / millisPerTick, 0.999))
+      // Written in place: nothing selects frameProgress (Gotchas: Determinism), and a set() would run every useInstance
+      // selector of the page once per frame
+      useInstance.getState().frameProgress = Math.min(this.elapsedTime / millisPerTick, 0.999)
     } else {
-      useInstance.getState().setFrameProgress(0)
+      useInstance.getState().frameProgress = 0
       this.elapsedTime = 0
     }
 
@@ -764,58 +758,11 @@ class DemoViewer extends Component<DemoViewerProps> {
   //
 
   render() {
-    const { playback, settings } = this.state
+    const { settings } = this.state
     const { demo, map } = this.props
-    const INTERP_DELAY_TICKS = 2
-    const renderTick = Math.max(1, playback.tick - INTERP_DELAY_TICKS)
     // Cap Retina/high-density DPR so fill-rate does not erase later draw-call wins.
     const canvasDpr =
       typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 1.25)
-
-    let playersThisTick: CachedPlayer[] = []
-    let playersNextTick: CachedPlayer[] = []
-    let actorsThisTick: ActorProps[] = []
-    let projectilesThisTick: InterpolatedProjectile[] = []
-
-    if (!!demo) {
-      playersThisTick = demo
-        .getPlayersAtTick(renderTick)
-        .filter(({ connected, teamId }) => connected && [2, 3].includes(teamId)) // Only get CONNECTED and RED/BLU players
-
-      playersNextTick = demo
-        .getPlayersAtTick(renderTick + 1)
-        .filter(({ connected, teamId }) => connected && [2, 3].includes(teamId)) // Only get CONNECTED and RED/BLU players
-
-      const nextTickMap = new Map(playersNextTick.map(p => [p.user.entityId, p]))
-
-      actorsThisTick = playersThisTick.map(player => {
-        const next = nextTickMap.get(player.user.entityId)
-        return {
-          ...player,
-          positionNext: next?.position ?? player.position,
-          viewAnglesNext: next?.viewAngles ?? player.viewAngles,
-        }
-      })
-
-      const projectilesCurrentTick = demo.getProjectilesAtTick(renderTick)
-      const projectilesNextTick = demo.getProjectilesAtTick(renderTick + 1)
-      const projectilesNextById = new Map(projectilesNextTick.map(p => [p.entityId, p]))
-
-      // Projectiles.tsx reads only the current and next samples. The previous and second-next scans (two more
-      // full projectile-cache passes per render) fed positionPrev and positionNext2, which nothing reads (X1);
-      // the fields stay in the InterpolatedProjectile shape as aliases of the samples it does read.
-      projectilesThisTick = projectilesCurrentTick.map(projectile => {
-        const nextProjectile = projectilesNextById.get(projectile.entityId)
-        const positionNext = nextProjectile?.position ?? projectile.position
-        return {
-          ...projectile,
-          positionPrev: projectile.position,
-          positionNext,
-          positionNext2: positionNext,
-          rotationNext: nextProjectile?.rotation ?? projectile.rotation,
-        }
-      })
-    }
 
     return (
       <div className="h-screen w-screen">
@@ -853,7 +800,7 @@ class DemoViewer extends Component<DemoViewerProps> {
 
           <Suspense fallback={null}>
             <Selection>
-              <Actors actors={actorsThisTick} renderTick={renderTick} />
+              <Actors />
 
               <OutlineComposer enabled={settings.ui.playerOutlines} />
             </Selection>
@@ -861,15 +808,11 @@ class DemoViewer extends Component<DemoViewerProps> {
 
           {/* Projectiles */}
 
-          <Projectiles
-            projectiles={projectilesThisTick}
-            tick={renderTick}
-            intervalPerTick={demo?.intervalPerTick ?? 0.015}
-          />
+          <Projectiles intervalPerTick={demo?.intervalPerTick ?? 0.015} />
 
           {/* Highlander scene layers */}
 
-          <HighlanderScene renderTick={renderTick} />
+          <HighlanderScene />
         </Canvas>
 
         {/* Normal React (non-THREE.js) UI elements */}
@@ -900,28 +843,16 @@ class DemoViewer extends Component<DemoViewerProps> {
 
           {demo && (
             <div className="ui-layer m-4 items-end justify-start">
-              <ChatHud parser={demo} tick={playback.tick} />
+              <ChatHud parser={demo} />
             </div>
           )}
 
           {/* Killfeed and player statuses */}
-          <HudLayout
-            demo={demo}
-            tick={playback.tick}
-            renderTick={renderTick}
-            players={playersThisTick}
-            intervalPerTick={demo?.intervalPerTick ?? 0.015}
-          />
+          <HudLayout demo={demo} intervalPerTick={demo?.intervalPerTick ?? 0.015} />
 
-          {playersThisTick.length > 0 && (
-            <FocusedPlayerLayer
-              players={playersThisTick}
-              tick={playback.tick}
-              intervalPerTick={demo?.intervalPerTick ?? 0.015}
-            />
-          )}
+          {demo && <FocusedPlayerLayer demo={demo} intervalPerTick={demo?.intervalPerTick ?? 0.015} />}
 
-          <HighlanderHud renderTick={renderTick} />
+          <HighlanderHud />
 
           <PanelToolbar hasDemoLoaded={!!demo} />
         </div>

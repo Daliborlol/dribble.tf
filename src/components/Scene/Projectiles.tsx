@@ -8,6 +8,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 import { CachedProjectile } from '@components/Analyse/Data/ProjectileCache'
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { useStore, useInstance, getState } from '@zus/store'
+import { renderTickOf, useRenderTick } from '@utils/tickData'
 
 import { TEAM_MAP } from '@constants/mappings'
 import { objCoordsToVector3, eulerizeVector, createStaleFrameGuard, guardedLerpProgress } from '@utils/geometry'
@@ -614,19 +615,43 @@ let nextEffectId = 0
  * wall-clock time (contract D12/D13, section 5 F3 edits 1 to 4). Until then, or with Highlander off, the legacy
  * smoothed path below runs unchanged.
  */
-export const Projectiles = (props: ProjectilesProps) => {
+/** The base projectile rows of a render tick with their next-tick samples (Projectiles.tsx reads only those). */
+function interpolatedProjectilesAt(demo: AsyncParser, tick: number): InterpolatedProjectile[] {
+  const current = demo.getProjectilesAtTick(tick)
+  const nextById = new Map(demo.getProjectilesAtTick(tick + 1).map(p => [p.entityId, p]))
+  return current.map(projectile => {
+    const next = nextById.get(projectile.entityId)
+    const positionNext = next?.position ?? projectile.position
+    return {
+      ...projectile,
+      positionPrev: projectile.position,
+      positionNext,
+      positionNext2: positionNext,
+      rotationNext: next?.rotation ?? projectile.rotation,
+    }
+  })
+}
+
+/** The legacy path (Highlander off, or extras not ready) still renders on every tick. */
+const TickLegacyProjectiles = ({ demo, intervalPerTick, explosions }: { demo?: AsyncParser; intervalPerTick: number; explosions: boolean }) => {
+  const tick = useRenderTick()
+  const projectiles = demo ? interpolatedProjectilesAt(demo, tick) : []
+  return <LegacyProjectiles projectiles={projectiles} tick={tick} intervalPerTick={intervalPerTick} explosions={explosions} />
+}
+
+export const Projectiles = ({ intervalPerTick }: { intervalPerTick: number }) => {
   const hlEnabled = useHlSetting<boolean>('enabled')
   const explosionsSetting = useHlSetting<boolean>('projectiles.explosions')
   const extras = useExtras()
   const demo = useInstance(state => state.parsedDemo)
 
   if (hlEnabled && extras && demo && extras.meta.available.projectiles) {
-    return <ExtrasProjectiles {...props} x={extras} demo={demo} />
+    return <ExtrasProjectiles intervalPerTick={intervalPerTick} x={extras} demo={demo} />
   }
   // Despawn explosions: unchanged with Highlander off; with it on, the projectiles.explosions toggle decides, and
   // CombatFxLayer's TETFExplosion bursts replace them once the extras have explosions.
   const explosions = !hlEnabled || (explosionsSetting !== false && !extras?.meta.available.explosions)
-  return <LegacyProjectiles {...props} explosions={explosions} />
+  return <TickLegacyProjectiles demo={demo} intervalPerTick={intervalPerTick} explosions={explosions} />
 }
 
 const LegacyProjectiles = (props: ProjectilesProps & { explosions: boolean }) => {
@@ -1077,10 +1102,26 @@ function deflectRingMaterial(color: string): THREE.MeshBasicMaterial {
 
 const BASE_DRAWN_TYPES = ['rocket', 'pipebomb', 'stickybomb', 'healingBolt']
 
-const ExtrasProjectiles = (props: ProjectilesProps & { x: HighlanderExtras; demo: AsyncParser }) => {
-  const { projectiles = [], tick, intervalPerTick, x, demo } = props
+const ExtrasProjectiles = ({ intervalPerTick, x, demo }: { intervalPerTick: number; x: HighlanderExtras; demo: AsyncParser }) => {
   const source = getProjectileSource(x, demo)
   const match = useMemo(() => makeEntityMatch(), [])
+
+  // The mounted children as one primitive: a projectile with an extras instance draws itself in useFrame, so this list
+  // renders when one appears or goes. A row without an instance takes its samples as props: it renders on every tick.
+  useStore(state => {
+    const at = renderTickOf(state.playback.tick)
+    let key = ''
+    for (const projectile of demo.getProjectilesAtTick(at)) {
+      matchEntity(x, projectile.entityId, at, match)
+      const j = match.drawn >= 0 ? match.drawn : match.hiddenInstance >= 0 && at < landedEnd(x, match.hiddenInstance) ? match.hiddenInstance : -1
+      if (j >= 0) {
+        if (source.servedByBase[j] && BASE_DRAWN_TYPES.includes(projectile.type)) key += `x${projectile.entityId}:${projectile.type}:${projectile.teamNumber};`
+      } else if (!match.hidden) key += `l${projectile.entityId}:${at};`
+    }
+    return key
+  })
+  const tick = renderTickOf(getState().playback.tick)
+  const projectiles = interpolatedProjectilesAt(demo, tick)
 
   return (
     <group name="projectiles">

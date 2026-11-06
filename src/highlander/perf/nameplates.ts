@@ -95,6 +95,21 @@ export function registerPlate(
   }
 }
 
+/** True while the declutter pass keeps this plate hidden. */
+export function plateHidden(entityId: number): boolean {
+  return entries.get(entityId)?.applied === false
+}
+
+const showListeners = new Map<number, () => void>()
+
+/** `listener` runs when the pass shows the plate again; returns the cleanup. */
+export function onPlateShown(entityId: number, listener: () => void): () => void {
+  showListeners.set(entityId, listener)
+  return () => {
+    if (showListeners.get(entityId) === listener) showListeners.delete(entityId)
+  }
+}
+
 /** Tracks the pointer over the canvas for the hover exemption; returns the cleanup. */
 export function trackPointer(dom: HTMLElement): () => void {
   const move = (event: PointerEvent) => {
@@ -262,9 +277,12 @@ export function declutterPlates(camera: THREE.Camera, width: number, height: num
     }
     const shown = entry.shown
     if (entry.applied === shown && el.style.display === (shown ? '' : 'none')) continue
+    const wasHidden = entry.applied === false
     entry.applied = shown
-    if (shown) el.style.removeProperty('display')
-    else el.style.display = 'none'
+    if (shown) {
+      el.style.removeProperty('display')
+      if (wasHidden) showListeners.get(entry.entityId)?.()
+    } else el.style.display = 'none'
   }
 }
 

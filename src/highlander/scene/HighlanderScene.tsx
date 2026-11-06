@@ -14,20 +14,20 @@ import { ProjectilesExtraLayer } from '@highlander/scene/layers/ProjectilesExtra
 import { SniperLayer } from '@highlander/scene/layers/SniperLayer'
 import { ViewmodelLayer } from '@highlander/scene/viewmodel/ViewmodelLayer'
 
-export const HighlanderScene = React.memo(({ renderTick }: { renderTick: number }) => {
+export const HighlanderScene = React.memo(() => {
   const enabled = useHlSetting<boolean>('enabled')
   if (!enabled) return null
   return (
     <group name="highlander">
-      <PlayerFxLayer renderTick={renderTick} />
-      <BuildingsLayer renderTick={renderTick} />
-      <ProjectilesExtraLayer renderTick={renderTick} />
-      <CombatFxLayer renderTick={renderTick} />
-      <SniperLayer renderTick={renderTick} />
-      <ObjectivesLayer renderTick={renderTick} />
-      <MapDynamicsLayer renderTick={renderTick} />
-      <PovLayer renderTick={renderTick} />
-      <ViewmodelLayer renderTick={renderTick} />
+      <PlayerFxLayer />
+      <BuildingsLayer />
+      <ProjectilesExtraLayer />
+      <CombatFxLayer />
+      <SniperLayer />
+      <ObjectivesLayer />
+      <MapDynamicsLayer />
+      <PovLayer />
+      <ViewmodelLayer />
     </group>
   )
 })

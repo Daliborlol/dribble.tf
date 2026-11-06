@@ -66,7 +66,7 @@ const classBadgeClass = byTeam(team =>
   )
 )
 
-const HealthBar = ({ team, percentage }: { team: string; percentage: number }) => (
+const HealthBar = React.memo(({ team, percentage }: { team: string; percentage: number }) => (
   <div className="relative mt-1 h-[6px] w-20 overflow-hidden bg-[#8f7b89]">
     <div className={healthFillClass(team)} style={{ width: `${percentage}%` }} />
 
@@ -75,13 +75,13 @@ const HealthBar = ({ team, percentage }: { team: string; percentage: number }) =
       style={{ width: `${clamp(percentage - 100, 0, 100)}%` }}
     />
   </div>
-)
+))
 
-const ClassBadge = ({ team, classId }: { team: string; classId: number }) => (
+const ClassBadge = React.memo(({ team, classId }: { team: string; classId: number }) => (
   <div className={classBadgeClass(team)}>
     <ClassIcon classId={classId} size={16} />
   </div>
-)
+))
 
 /** A 40 x 3 px meter (cloak, shield charge) under the health bar. */
 const Meter = ({ pct, color, kind }: { pct: number; color: string; kind: 'cloak' | 'charge' }) => (

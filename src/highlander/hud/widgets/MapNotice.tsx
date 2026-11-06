@@ -29,7 +29,7 @@ const demoLoadId = (demo: object | undefined): number => {
   return id
 }
 
-export const MapNotice = React.memo((_props: { renderTick: number }) => {
+export const MapNotice = React.memo(() => {
   const map = useStore(s => s.scene.map)
   const state = useInstance(s => s.mapStatus.state)
   const folder = useInstance(s => s.mapStatus.folder)

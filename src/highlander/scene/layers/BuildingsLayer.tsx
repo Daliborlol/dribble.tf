@@ -10,6 +10,8 @@
 
 import React, { useMemo } from 'react'
 
+import { useStore } from '@zus/store'
+import { renderTickOf } from '@utils/tickData'
 import { useExtras, useHlSetting } from '@highlander/extras/hooks'
 import { BuildingObject } from '@highlander/buildings/BuildingObject'
 import { Blueprints, CarryBoxes, Destructions, DispenserBeams } from '@highlander/buildings/EngineerFx'
@@ -28,13 +30,13 @@ const extrasId = (x: HighlanderExtras) => {
   return id
 }
 
-export const BuildingsLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+export const BuildingsLayer = React.memo(() => {
   const extras = useExtras()
   const enabled = useHlSetting<boolean>('buildings.enabled')
   const blueprints = useHlSetting<boolean>('buildings.blueprints')
 
   const active = !!extras && enabled !== false && !!extras.meta.available.buildings
-  const key = active ? drawnInstancesAt(extras, renderTick).join(',') : ''
+  const key = useStore(state => (active ? drawnInstancesAt(extras, renderTickOf(state.playback.tick)).join(',') : ''))
   const instances = useMemo(() => (key ? key.split(',').map(Number) : []), [key])
 
   if (!active) return null

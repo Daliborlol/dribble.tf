@@ -15,7 +15,8 @@ import { cn } from '@utils/styling'
 export const BookmarksPanel = () => {
   const isOpen = useStore(state => state.ui.activePanels.includes('Bookmarks'))
   const bookmarks = useStore(state => state.bookmarks)
-  const tick = useStore(state => state.playback.tick)
+  // The bookmark at the current tick, -1 for none: the list needs no other tick
+  const currentBookmark = useStore(state => (state.bookmarks.includes(state.playback.tick) ? state.playback.tick : -1))
 
   const toggleUIPanel = () => {
     toggleUIPanelAction('Settings', false)
@@ -64,7 +65,7 @@ export const BookmarksPanel = () => {
                   key={`bookmark-row-${bookmarkTick}`}
                   className={cn(
                     'mb-0.5 flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-white/10 active:bg-white/10',
-                    bookmarkTick === tick && 'bg-amber-400/20'
+                    bookmarkTick === currentBookmark && 'bg-amber-400/20'
                   )}
                   onClick={() => seekToTick(bookmarkTick)}
                 >

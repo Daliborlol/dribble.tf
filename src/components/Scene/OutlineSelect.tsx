@@ -42,20 +42,24 @@ export const Select = ({ enabled = false, children, ...props }: SelectProps) => 
     select(state => [...state.filter(o => !prev.includes(o)), ...next])
   }
 
+  // Nothing reads the selection while outlines are off: no traversal of the player's nodes on his renders (react-perf),
+  // and no context update per mounting player. With outlines on, the frame callback selects within a frame.
   useEffect(() => {
-    if (!select || !enabled || !group.current) return
-    apply(meshesUnder(group.current))
+    if (!select || !enabled) return
     return () => {
       const prev = current.current
       current.current = []
       if (prev.length) select(state => state.filter(o => !prev.includes(o)))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, children, select])
+  }, [enabled, select])
 
   useFrame(() => {
     if (!select || !enabled || !group.current) return
-    if (!useStore.getState().settings.ui.playerOutlines) return
+    if (!useStore.getState().settings.ui.playerOutlines) {
+      if (current.current.length) apply([])
+      return
+    }
     apply(meshesUnder(group.current))
   })
 

@@ -14,6 +14,7 @@ import React, { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useInstance, useStore } from '@zus/store'
+import { renderTickOf, useStoreValue } from '@utils/tickData'
 import { TEAM_HUD } from '@highlander/constants'
 import { registerHlProbe } from '@highlander/debug'
 import { HL } from '@highlander/extras/enums'
@@ -59,11 +60,15 @@ export function scopeStateAt(x: HighlanderExtras | undefined, subject: PovSubjec
   }
 }
 
-export const ScopeOverlay = React.memo(({ renderTick }: { renderTick: number }) => {
+const scopeEqual = (a: ScopeState | null, b: ScopeState | null) =>
+  a === b ||
+  (!!a && !!b && a.visible === b.visible && a.opacity === b.opacity && a.fov === b.fov && a.charge === b.charge && a.sleeper === b.sleeper && a.team === b.team)
+
+export const ScopeOverlay = React.memo(() => {
   const enabled = useHlSetting<boolean>('pov.scopeOverlay')
   const extras = useExtras()
-  const subject = usePovSubject(renderTick)
-  const scope = enabled ? scopeStateAt(extras, subject, renderTick) : null
+  const subject = usePovSubject()
+  const scope = useStoreValue(s => (enabled ? scopeStateAt(extras, subject, renderTickOf(s.playback.tick)) : null), scopeEqual)
   const active = !!scope
 
   useEffect(() => {

@@ -3,7 +3,7 @@
 
 import { useSyncExternalStore } from 'react'
 
-import { useStore } from '@zus/store'
+import { subscribeSettings, useStore } from '@zus/store'
 
 import { ASSET_PACK_URL } from './config'
 import { getAssetSetting, getStoredAssetsEnabled, isAssetsOffByUrl } from './hooks'
@@ -55,9 +55,11 @@ export const useAssetPack = (): AssetPackState =>
   useSyncExternalStore(subscribeAssetPack, getAssetPackState, getAssetPackState)
 
 /** True while the pack is ready and assets.enabled is on (?assets=off included). */
+const readAssetsEnabled = () => useStore.getState().settings.assets?.enabled ?? true
+
 export const useAssetPackActive = (): boolean => {
   const pack = useAssetPack()
-  const enabled = useStore(s => s.settings.assets?.enabled ?? true)
+  const enabled = useSyncExternalStore(subscribeSettings, readAssetsEnabled)
   return pack.status === 'ready' && enabled && !isAssetsOffByUrl()
 }
 

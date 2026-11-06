@@ -10,11 +10,10 @@
 // shares one compute, and the memo never keeps an unloaded demo alive. Rows whose values did not change keep
 // their previous object, so memoized rows skip re-rendering.
 
-import { useMemo } from 'react'
-
 import type { AsyncParser } from '@components/Analyse/Data/AsyncParser'
 import { HEALTH_MAP } from '@constants/mappings'
-import { useInstance, useStore } from '@zus/store'
+import { getState, useInstance, type StoreState } from '@zus/store'
+import { renderTickOf, useStoreValue } from '@utils/tickData'
 import { buildingsOf } from '@highlander/buildings/model'
 import { HUD_TICK_STEP } from '@highlander/constants'
 import { HL } from '@highlander/extras/enums'
@@ -266,7 +265,19 @@ function titleOf(demo: AsyncParser, x: HighlanderExtras | undefined, p: number, 
   return lines.join('\n')
 }
 
-const rowSig = (r: HudRow) => JSON.stringify(r)
+const rowSigs = new WeakMap<HudRow, string>()
+const rowSig = (r: HudRow) => {
+  let sig = rowSigs.get(r)
+  if (sig === undefined) rowSigs.set(r, (sig = JSON.stringify(r)))
+  return sig
+}
+
+/** A row's hover text at the current tick: full name, loadout, K/A/D and damage. */
+export function hudRowTitleNow(row: HudRow): string {
+  const { parsedDemo, extras, extrasStatus } = useInstance.getState()
+  if (!parsedDemo || row.p < 0) return row.name
+  return titleOf(parsedDemo, extrasStatus === 'ready' ? extras : undefined, row.p, row.name, renderTickOf(getState().playback.tick))
+}
 
 // ─── medic panel ───────────────────────────────────────────────────────────────
 
@@ -329,12 +340,23 @@ export function hudTickOf(renderTick: number, playing: boolean): number {
  * The snapshot at `tick`, a pure function of its inputs. `prev` only lends its unchanged row objects (same
  * values, same object) so memoized rows skip re-rendering.
  */
+/** What MedicPanel draws from a row: its charge in whole percent, state, seconds left to a tenth and "popped" in seconds. */
+function medicSig(m: MedicRow): string {
+  return [
+    m.entityId, m.name, m.team, m.alive, m.respawn, m.known, m.type, m.typeName, m.typeLetter, Math.floor(m.charge * 100 + 1e-6), m.state,
+    m.secondsLeft !== null ? m.secondsLeft.toFixed(1) : '', m.vacc ? `${m.vacc.charges}:${m.vacc.resist}` : '', m.advantage,
+    m.lastUberAgo !== null ? Math.floor(m.lastUberAgo) : '',
+  ].join('|')
+}
+
 export function computeHudSnapshot(
   demo: AsyncParser,
   x: HighlanderExtras | undefined,
   meta: MapMeta | null,
   tick: number,
-  prev?: HudSnapshot | null
+  prev?: HudSnapshot | null,
+  /** The rows' hover text: only the probes want it for every row (the row asks for its own on hover, hudRowTitleNow) */
+  titles = true
 ): HudSnapshot {
   const ipt = demo.intervalPerTick || 0.015
   const prevRows = new Map<number, { row: HudRow; sig: string }>()
@@ -367,10 +389,11 @@ export function computeHudSnapshot(
       alive,
       respawn,
       badges: x && p >= 0 ? badgesOf(x, p, player.classId, alive, tick, player.chargeLevel) : null,
-      title: p >= 0 ? titleOf(demo, x, p, player.user.name, tick) : player.user.name,
+      title: titles && p >= 0 ? titleOf(demo, x, p, player.user.name, tick) : player.user.name,
     }
     const old = prevRows.get(entityId)
     if (old && old.sig === rowSig(row)) row = old.row
+    else if (old?.row.badges && row.badges && JSON.stringify(old.row.badges) === JSON.stringify(row.badges)) row.badges = old.row.badges
     ;(row.team === 'red' ? red : blue).push(row)
   }
 
@@ -382,6 +405,12 @@ export function computeHudSnapshot(
       .slice(0, 2)
       .map(r => medicRowOf(x, r, baseCharges.get(r.entityId) ?? null, tick))
   const medics = { blue: medicsOf(blue), red: medicsOf(red) }
+  const keepMedics = (rows: MedicRow[], old: MedicRow[] | undefined): MedicRow[] =>
+    old && old.length === rows.length && rows.every((r, i) => medicSig(r) === medicSig(old[i])) ? old : rows
+  const finishMedics = () => {
+    medics.blue = keepMedics(medics.blue, prev?.medics.blue)
+    medics.red = keepMedics(medics.red, prev?.medics.red)
+  }
   const best = (rows: MedicRow[]) => rows.filter(r => r.alive).reduce<MedicRow | null>((b, r) => (!b || r.charge > b.charge ? r : b), null)
   const bluBest = best(medics.blue), redBest = best(medics.red)
   if (bluBest && redBest) {
@@ -406,12 +435,15 @@ export function computeHudSnapshot(
     }
   }
 
+  finishMedics()
+  const keepRows = (rows: HudRow[], old: HudRow[] | undefined): HudRow[] =>
+    old && old.length === rows.length && rows.every((r, i) => r === old[i]) ? old : rows
   const mode = x ? objectiveModeOf(x, meta) : 'none'
   let scoreboard: ScoreboardView | null = null
   return {
     hudTick: tick,
     ready: !!x,
-    rows: { blue, red },
+    rows: { blue: keepRows(blue, prev?.rows.blue), red: keepRows(red, prev?.rows.red) },
     medics,
     objective: x ? objectiveViewAt(x, meta, tick) : null,
     banner: x ? bannerAt(x, mode, tick) : null,
@@ -434,7 +466,7 @@ export function getHudSnapshot(demo: AsyncParser, x: HighlanderExtras | undefine
   const last = memo.get(key)
   const same = !!last && last.demo === demo && last.x === x
   if (same && last.meta === meta && last.tick === hudTick) return last.snap
-  const snap = computeHudSnapshot(demo, x, meta, hudTick, same ? last.snap : null)
+  const snap = computeHudSnapshot(demo, x, meta, hudTick, same ? last.snap : null, false)
   memo.set(key, { demo, x, meta, tick: hudTick, snap })
   stats.computes++
   stats.lastHudTick = hudTick
@@ -452,12 +484,26 @@ export function useDemoMapMeta(): MapMeta | null {
   return useMapMeta(map)
 }
 
-/** The shared snapshot at this renderTick's hudTick, null without a demo. */
-export function useHudSnapshot(renderTick: number): HudSnapshot | null {
+/**
+ * A value derived from the shared snapshot and the render tick. The selector runs on every tick; the widget renders only
+ * when the value changes, so a HUD number that holds still costs no React work (react-perf). `pick` must be cheap: one
+ * snapshot is computed per hudTick, whoever asks first.
+ */
+export function useHudSelect<T>(pick: (snap: HudSnapshot | null, renderTick: number) => T, isEqual?: (a: T, b: T) => boolean): T {
   const demo = useInstance(s => s.parsedDemo)
   const x = useExtras()
-  const playing = useStore(s => s.playback.playing)
   const meta = useDemoMapMeta()
-  const hudTick = hudTickOf(renderTick, playing)
-  return useMemo(() => (demo ? getHudSnapshot(demo, x, meta, hudTick) : null), [demo, x, meta, hudTick])
+  return useStoreValue((state: StoreState) => {
+    const renderTick = renderTickOf(state.playback.tick)
+    const snap = demo ? getHudSnapshot(demo, x, meta, hudTickOf(renderTick, state.playback.playing)) : null
+    return pick(snap, renderTick)
+  }, isEqual)
+}
+
+/** Compares by JSON: the snapshot's views hold display values, so equal JSON draws the same. */
+export const jsonEqual = <T,>(a: T, b: T) => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+/** The shared snapshot at the store's hudTick, null without a demo: renders on every hudTick. */
+export function useHudSnapshot(): HudSnapshot | null {
+  return useHudSelect(snap => snap)
 }

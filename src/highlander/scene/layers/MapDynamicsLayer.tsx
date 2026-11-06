@@ -17,7 +17,7 @@ import '@highlander/mapdyn/probes'
 // The parts read the tick and frameProgress together from the store in useFrame (mapdyn/frame.ts frameTickF), so
 // they take no renderTick prop: the prop lags playback.tick by a frame.
 
-export const MapDynamicsLayer = React.memo((_props: { renderTick: number }) => {
+export const MapDynamicsLayer = React.memo(() => {
   const x = useExtras()
   if (!x) return null
   return (

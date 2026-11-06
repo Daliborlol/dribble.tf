@@ -15,6 +15,7 @@ import * as THREE from 'three'
 import { createPortal, useFrame, useThree } from '@react-three/fiber'
 
 import { useInstance, useStore } from '@zus/store'
+import { renderTickOf, useStoreValue } from '@utils/tickData'
 import { HEAL_BEAM_OFFSET } from '@highlander/constants'
 import { frameTime, type FrameTime } from '@highlander/combat/time'
 import { registerHlProbe } from '@highlander/debug'
@@ -56,16 +57,26 @@ function vm0ModelAt(x: HighlanderExtras, p: number, tick: number): string | null
 }
 const _time: FrameTime = { tick: 0, tickF: 0 }
 
-export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }) => {
+type ViewmodelBlock = ReturnType<typeof viewmodelBlock>
+const viewmodelBlockEqual = (a: ViewmodelBlock | null, b: ViewmodelBlock | null) => {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.block !== b.block || a.classId !== b.classId || a.team !== b.team) return false
+  const wa = a.weapon, wb = b.weapon
+  return wa === wb || (!!wa && !!wb && wa.id === wb.id && wa.def === wb.def && wa.since === wb.since && wa.kind === wb.kind && wa.cls === wb.cls && wa.name === wb.name && wa.slot === wb.slot)
+}
+
+export const ViewmodelLayer = React.memo(() => {
   const extras = useExtras()
   const demo = useInstance(s => s.parsedDemo)
-  const subject = usePovSubject(renderTick)
+  const subject = usePovSubject()
   const enabled = useHlSetting<boolean>('pov.viewmodel')
   const vmFov = useHlSetting<number>('pov.viewmodelFov')
   const minimal = useHlSetting<boolean>('pov.minimalViewmodel')
   const registryVersion = useActorRegistryVersion()
 
-  const state = demo ? viewmodelBlock(extras, demo, subject, renderTick, enabled) : null
+  // What the layer shows at the tick, as a value: it renders when the block, the weapon or the team changes (react-perf)
+  const state = useStoreValue(s => (demo ? viewmodelBlock(extras, demo, subject, renderTickOf(s.playback.tick), enabled) : null), viewmodelBlockEqual)
   const camera = useMemo(() => {
     if (!subject || state?.block !== 'ok') return null
     return getActor(subject.entityId)?.aim.getObjectByName('povCamera') ?? null
@@ -92,7 +103,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
   const localTables = !!(extras && subject && subject.p >= 0 && hasLocalTables(extras, subject.p))
   const packOn = pack.status === 'ready' && packEnabled && packModels && packViewmodels
   // the networked vm0 model picks an arms override (the Gunslinger arms)
-  const vm0Model = extras && subject && subject.p >= 0 ? vm0ModelAt(extras, subject.p, renderTick) : null
+  const vm0Model = useStore(s => (extras && subject && subject.p >= 0 ? vm0ModelAt(extras, subject.p, renderTickOf(s.playback.tick)) : null))
   const glbKeys =
     weapon && state?.block === 'ok' && localTables && packOn && !packPoseExcluded(weapon.kind, weapon.cls)
       ? glbViewmodelKeys(state.classId, weapon.def, vm0Model)
@@ -156,7 +167,7 @@ export const ViewmodelLayer = React.memo(({ renderTick }: { renderTick: number }
       instances.set(key, hit)
       return hit
     }
-    const input = buildViewmodelInput(extras, demo, subject.p, state.classId, state.team, weapon, renderTick)
+    const input = buildViewmodelInput(extras, demo, subject.p, state.classId, state.team, weapon, renderTickOf(useStore.getState().playback.tick))
     const provider = pickViewmodelProvider(input)
     const instance = provider.create(input)
     prepareViewmodelObject(instance.object)

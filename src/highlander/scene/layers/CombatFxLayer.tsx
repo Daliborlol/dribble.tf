@@ -48,7 +48,7 @@ const OWN_EYES_OPACITY = 0.4
 const SCORCH_LIFT = 0.6
 const Z_AXIS = new THREE.Vector3(0, 0, 1)
 
-export const CombatFxLayer = React.memo((_props: { renderTick: number }) => {
+export const CombatFxLayer = React.memo(() => {
   const extras = useExtras()
   const demo = useInstance(s => s.parsedDemo)
   if (!extras || !demo) return null

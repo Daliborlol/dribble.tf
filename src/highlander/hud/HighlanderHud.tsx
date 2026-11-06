@@ -16,30 +16,30 @@ import { RoundBanner } from '@highlander/hud/widgets/RoundBanner'
 import { Scoreboard } from '@highlander/hud/widgets/Scoreboard'
 import { ScopeOverlay } from '@highlander/hud/widgets/ScopeOverlay'
 
-export const HighlanderHud = React.memo(({ renderTick }: { renderTick: number }) => {
+export const HighlanderHud = React.memo(() => {
   const enabled = useHlSetting<boolean>('enabled')
   const vp = useViewport()
   const povHud = vp.h < SHORT_VIEWPORT ? (vp.w >= SHORT_VIEWPORT_WIDE ? 'short' : null) : vp.w < POV_HUD_RAISE_BELOW ? 'raised' : 'default'
   return (
     <>
-      <ExtrasNotice renderTick={renderTick} />
-      <MapNotice renderTick={renderTick} />
+      <ExtrasNotice />
+      <MapNotice />
       {enabled && (
         <>
-          <div className="ui-layer pointer-events-none items-start justify-center"><ObjectiveHud renderTick={renderTick} /></div>
-          <div className="ui-layer pointer-events-none items-start justify-center"><div className="mt-[84px]"><RoundBanner renderTick={renderTick} /></div></div>
-          <div className="ui-layer pointer-events-none"><ScopeOverlay renderTick={renderTick} /></div>
+          <div className="ui-layer pointer-events-none items-start justify-center"><ObjectiveHud /></div>
+          <div className="ui-layer pointer-events-none items-start justify-center"><div className="mt-[84px]"><RoundBanner /></div></div>
+          <div className="ui-layer pointer-events-none"><ScopeOverlay /></div>
           {povHud && (
             <div className="ui-layer pointer-events-none items-end justify-end">
               <div
                 className={povHud === 'default' ? 'mb-28 mr-4' : povHud === 'raised' ? 'mr-2' : 'mb-4'}
                 style={povHud === 'raised' ? { marginBottom: BOTTOM_CONTROLS_CLEARANCE } : povHud === 'short' ? { marginRight: POV_HUD_SHORT_RIGHT } : undefined}
               >
-                <PovWeaponHud renderTick={renderTick} />
+                <PovWeaponHud />
               </div>
             </div>
           )}
-          <div className="ui-layer pointer-events-none items-center justify-center"><Scoreboard renderTick={renderTick} /></div>
+          <div className="ui-layer pointer-events-none items-center justify-center"><Scoreboard /></div>
         </>
       )}
     </>

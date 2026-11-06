@@ -1,4 +1,4 @@
-// Model-space skinning for pack players (candidate frame-flat-skin). The bones of a copy no longer go through
+// Model-space skinning for pack players. The bones of a copy no longer go through
 // Object3D: a flat parent-first node list computes each node's matrix relative to the copy's parent (the packPlayer
 // group) and the skeletons' boneMatrices are written directly, for the bones the meshes use. The group's world matrix
 // reaches the vertices through modelMatrix, so a moving player costs no skeleton work and three's scene update skips

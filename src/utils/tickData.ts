@@ -1,4 +1,4 @@
-// Per-tick data read outside React (react-perf experiment): playback.tick changes on every frame, so nothing may render
+// Per-tick data read outside React: playback.tick changes on every frame, so nothing may render
 // on the tick itself. Components select a primitive derived from the tick (useStore re-renders only when it changes) and
 // useFrame callbacks read the rows here. One compute per tick per demo, shared by every actor and selector.
 //

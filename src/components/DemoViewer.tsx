@@ -606,7 +606,7 @@ type DemoViewerProps = {
 }
 
 class DemoViewer extends Component<DemoViewerProps> {
-  // A context attribute: fixed when the canvas is created, so the setting applies on the next demo load
+  // A context attribute: fixed when the canvas is created, so the setting applies after a page reload
   private readonly antialias = useStore.getState().settings.ui.antialias !== false
 
   settingsSub = function () {}

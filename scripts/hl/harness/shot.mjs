@@ -893,6 +893,21 @@ async function main({ root, demoPath, plan, initScripts, assetPack, playwright, 
             await bridge(([o, v]) => window.__dribble.setSetting(o, v), [option, value])
           }
         }
+        if (step.reload) {
+          // settings read once at load (ui.antialias, highlander.enabled) persist in IndexedDB: reload and wait for the demo again
+          await sleep(800)
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+          await page.waitForFunction(() => !!window.__dribble, null, { timeout: 60000 })
+          const reloadDeadline = Date.now() + 180000
+          while (true) {
+            const reloaded = await getState().catch(() => null)
+            if (reloaded?.parser?.status === 'done' && reloaded.demo && reloaded.scene.mapLoaded) break
+            if (Date.now() > reloadDeadline) throw new Error('demo did not load again after the reload')
+            await sleep(300)
+          }
+          await bridge(() => window.__dribble.setPlaying(false))
+          await waitForNetworkIdle(800, 120000)
+        }
         if (step.speed) await bridge(s => window.__dribble.setSpeed(s), Number(step.speed))
         await bridge(([t]) => window.__dribble.goToTick(t), [tick])
         entry.modeResult = await applyMode(step)

@@ -184,6 +184,7 @@ A plan is a JSON array of steps. Every field is optional.
 | `play` | seconds of real time to play after seeking, then pause |
 | `eval` | page expression. A returned promise is awaited; the JSON result goes to the manifest, a thrown error becomes `{ "error": "..." }` |
 | `hideHud` | hide the HUD layers for this shot (default: `--hide-hud`) |
+| `reload` | after applying `settings`, reload the page and wait for the demo again, for settings read once at load (`ui.antialias`, `highlander.enabled`) |
 | `screenshot` | `false` skips the PNG; the state, players and eval are still recorded |
 
 The harness logs a warning for any other field and ignores it.

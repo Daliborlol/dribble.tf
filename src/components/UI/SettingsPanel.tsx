@@ -174,7 +174,7 @@ export const SettingsPanel = () => {
           <div className="mb-4 mt-16 text-xs font-black uppercase opacity-60">Players</div>
 
           <ToggleOption
-            label="Antialiasing (off is faster, applies on next demo load)"
+            label="Antialiasing (off is faster, applies after a page reload)"
             checked={settings.ui.antialias !== false}
             onChange={checked => updateSettingsOption('ui.antialias', checked)}
           />

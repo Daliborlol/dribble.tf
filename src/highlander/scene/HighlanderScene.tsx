@@ -6,6 +6,7 @@ import React from 'react'
 import { useHlSetting } from '@highlander/extras/hooks'
 import { BuildingsLayer } from '@highlander/scene/layers/BuildingsLayer'
 import { CombatFxLayer } from '@highlander/scene/layers/CombatFxLayer'
+import { DamageNumbersLayer } from '@highlander/scene/layers/DamageNumbersLayer'
 import { MapDynamicsLayer } from '@highlander/scene/layers/MapDynamicsLayer'
 import { ObjectivesLayer } from '@highlander/scene/layers/ObjectivesLayer'
 import { PlayerFxLayer } from '@highlander/scene/layers/PlayerFxLayer'
@@ -28,6 +29,7 @@ export const HighlanderScene = React.memo(() => {
       <MapDynamicsLayer />
       <PovLayer />
       <ViewmodelLayer />
+      <DamageNumbersLayer />
     </group>
   )
 })

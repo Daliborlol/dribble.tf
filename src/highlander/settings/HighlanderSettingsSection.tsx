@@ -245,6 +245,7 @@ export const HighlanderSettingsSection = () => {
       {toggle('Class eye height', 'pov.eyeHeight')}
       {toggle('Scope overlay', 'pov.scopeOverlay')}
       {toggle('Weapon HUD', 'pov.weaponHud')}
+      {toggle('Damage numbers', 'pov.damageNumbers')}
       {toggle('Chase camera in POV', 'pov.chase', '4')}
 
       <SelectOption

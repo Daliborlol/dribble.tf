@@ -2,7 +2,7 @@
 // Builds the local TF2 asset pack from the user's own VPKs (contract 2.1). Personal use only; see
 // scripts/assets/README.md.
 //
-//   npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /home/dalibor/tf2-assets/hl2 --out <dir>
+//   npm run assets:build -- --tf2 <tf2-assets>/tf --hl2 <tf2-assets>/hl2 --out <dir>
 //     [--stages maps,models,viewmodels,shading,particles | none] [--maps <folder,...|all>] [--bsp-dir <dir>] [--tmp <dir on disk>]
 //     [--force] [--keep-tmp] [--prune] [--bsp-to-glb <binary>] [--set key=value ...] [--stage-dir <dir>]
 //

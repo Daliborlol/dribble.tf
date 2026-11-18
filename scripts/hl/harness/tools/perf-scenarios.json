@@ -5,17 +5,15 @@
     "seconds": 15,
     "speed": 1,
     "warm": true,
-    "assetPack": "/home/dalibor/tf2-pack",
+    "assetPack": "~/tf2-pack",
     "minAvailable": 2500,
-    "waitAvailable": 900,
-    "lock": "/home/dalibor/programming/personal/dribble.tf-wt/perf2-out/heavy.lock",
-    "buildCache": "/home/dalibor/programming/personal/dribble.tf-wt/perf2-out/builds"
+    "waitAvailable": 900
   },
   "demos": {
-    "test": "/home/dalibor/Downloads/test.dem",
-    "1438891": "/home/dalibor/demo_tool/demos/1438891.dem",
-    "1434434": "/home/dalibor/demo_tool/demos/1434434.dem",
-    "1428628": "/home/dalibor/demo_tool/demos/1428628.dem"
+    "test": "test.dem",
+    "1438891": "1438891.dem",
+    "1434434": "1434434.dem",
+    "1428628": "1428628.dem"
   },
   "settingsPresets": {
     "tf2look": {

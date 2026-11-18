@@ -4,12 +4,14 @@
 // `--help` lists the options; README.md "Perf matrix" has examples.
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { HARNESS_DIR, isCheckout } from '../lib/setup.mjs'
 import { powerNow, waitForQuiet } from '../lib/system-sampler.mjs'
 
 const SHOT = path.join(HARNESS_DIR, 'shot.mjs')
+const expandHome = p => (typeof p === 'string' && p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p)
 const DEFAULT_CONFIG = path.join(HARNESS_DIR, 'tools', 'perf-scenarios.json')
 const EXIT_USAGE = 2
 const EXIT_BATTERY = 3
@@ -42,7 +44,8 @@ Per-run flags, for every run (a root spec or a scenario's "flags" can add more)
                        long (default 120), and at most the budget over the whole matrix (default 1200)
 Output and setup
   --out <dir>          required; runs/<cell>/<root>-r<n>/ per run, matrix.json, report.md
-  --config <file>      scenario file (default ${DEFAULT_CONFIG})
+  --config <file>      scenario file (default ${DEFAULT_CONFIG}); its relative demo paths resolve against
+                       env DRIBBLE_DEMOS, and paths may start with ~/
   --lock <file>        the shared lock (default: env DRIBBLE_HARNESS_LOCK, else the config's)
   --build-cache <dir>  (default: env DRIBBLE_HARNESS_BUILDS, else the config's)
   --min-battery <pct>  stop before a run when discharging below this (default 12); exit ${EXIT_BATTERY}
@@ -149,7 +152,8 @@ function loadConfig(file) {
   }
   const scenarios = [...byId.values()].map(raw => {
     const scenario = resolve(raw)
-    scenario.demoPath = config.demos?.[scenario.demo] ?? scenario.demo
+    const demo = expandHome(config.demos?.[scenario.demo] ?? scenario.demo)
+    scenario.demoPath = path.isAbsolute(demo) ? demo : path.resolve(process.env.DRIBBLE_DEMOS ?? '.', demo)
     return scenario
   })
   return { config, scenarios }
@@ -620,7 +624,7 @@ async function main() {
     Object.assign(settings, scenario.settings ?? {}, extraSettings, root.set)
     const planFile = path.join(dir, 'plan.json')
     const perfPlay = [scenario.tick, seconds, scenario.mode, scenario.player ?? '', scenario.speed].join(':')
-    const pack = args.pack ?? scenario.assetPack
+    const pack = expandHome(args.pack ?? scenario.assetPack)
     const command = [SHOT, '--root', root.dir, '--demo', scenario.demoPath, '--plan', planFile, '--perf-play', perfPlay, '--size', cell.size, '--out', dir, '--lock', lock, '--build-cache', buildCache, '--timeout', String(args.timeout ?? 600)]
     if (!scenario.noPack && pack && pack !== 'none') command.push('--asset-pack', pack)
     if (cell.noVsync) command.push('--no-vsync')

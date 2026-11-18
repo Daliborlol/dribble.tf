@@ -57,7 +57,7 @@ Linux only. The memory sampler reads `/proc` and the lock uses `flock` from util
    exits 1 with the fix for anything missing:
 
    ```sh
-   node scripts/hl/harness/shot.mjs --check --demo ~/demo_tool/demos/1434434.dem
+   node scripts/hl/harness/shot.mjs --check --demo $DRIBBLE_DEMOS/1434434.dem
    ```
 
 A run without playwright-core or a browser stops before taking the lock and prints the install command.
@@ -66,19 +66,19 @@ A run without playwright-core or a browser stops before taking the lock and prin
 
 ```sh
 # baseline plan on this checkout
-node scripts/hl/harness/shot.mjs --demo ~/demo_tool/demos/1438891.dem \
+node scripts/hl/harness/shot.mjs --demo $DRIBBLE_DEMOS/1438891.dem \
   --plan scripts/hl/harness/plans/1438891-baseline.json --out ../runs/baseline
 
 # a worktree, two ticks, RTS and the POV of the blue medic
-node scripts/hl/harness/shot.mjs --root ../dribble.tf-wt/x2 --demo ~/demo_tool/demos/1438891.dem \
+node scripts/hl/harness/shot.mjs --root ../dribble.tf-wt/x2 --demo $DRIBBLE_DEMOS/1438891.dem \
   --ticks 7700,30000 --modes rts,pov --pov medic@blue --out ../runs/x2-medic
 
 # frame rate for 12 s of 1x playback from tick 21000, with a CPU profile that keeps function names
-node scripts/hl/harness/shot.mjs --demo ~/demo_tool/demos/1438891.dem --ticks 21000 --modes rts \
+node scripts/hl/harness/shot.mjs --demo $DRIBBLE_DEMOS/1438891.dem --ticks 21000 --modes rts \
   --perf-play 21000:12:rts --cpu-profile --no-minify --out ../runs/perf-21000
 
 # a big demo: wait up to 10 minutes for 3000 MB of free memory, skip the run otherwise (exit code 75)
-node scripts/hl/harness/shot.mjs --demo ~/demo_tool/demos/1429417.dem --min-available 3000 --wait-available 600 \
+node scripts/hl/harness/shot.mjs --demo $DRIBBLE_DEMOS/1429417.dem --min-available 3000 --wait-available 600 \
   --ticks 10%,62% --modes rts --out ../runs/tetsudo
 ```
 
@@ -237,13 +237,13 @@ Plan gotchas:
 
 ## Asset pack
 
-The asset phase (`specs/assets/contract.md`) loads TF2 content from a local pack folder, `/home/dalibor/tf2-pack`
+The asset phase (`specs/assets/contract.md`) loads TF2 content from a local pack folder, `~/tf2-pack`
 by default, which `scripts/assets/` builds from the user's own VPKs. Production builds request nothing from it
 unless `VITE_ASSET_PACK_URL` was set at build time (contract 3.2), so a harness run without `--asset-pack` builds
 and behaves like the hosted site.
 
 ```sh
-node scripts/hl/harness/shot.mjs --demo <demo.dem> --plan <plan.json> --asset-pack /home/dalibor/tf2-pack ...
+node scripts/hl/harness/shot.mjs --demo <demo.dem> --plan <plan.json> --asset-pack ~/tf2-pack ...
 node scripts/hl/harness/shot.mjs ... --asset-pack missing             # pack configured, but absent (404)
 node scripts/hl/harness/shot.mjs ... --asset-pack <dir> --query assets=off   # pack present, disabled
 ```
@@ -271,7 +271,7 @@ node scripts/hl/harness/shot.mjs ... --asset-pack <dir> --query assets=off   # p
 
 ```sh
 node scripts/hl/harness/plans/smoke-gen.mjs ../runs/plans            # all plans, or name some: 1434434 sample
-node scripts/hl/harness/shot.mjs --demo ~/demo_tool/demos/1434434.dem --plan ../runs/plans/smoke-1434434.json \
+node scripts/hl/harness/shot.mjs --demo $DRIBBLE_DEMOS/1434434.dem --plan ../runs/plans/smoke-1434434.json \
   --out ../runs/smoke-1434434
 node scripts/hl/harness/summarize.mjs ../runs/smoke-1434434
 ```

@@ -17,9 +17,9 @@ How to use it:
   defined here.
 - Where this file and a research doc disagree, this file wins. Where a line number here no longer matches the code,
   keep the intent and use the current line.
-- `S` means `/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad`.
-  `H` means `$S/harness`. `REPO` means `/home/dalibor/programming/personal/dribble.tf`. `PARSER` means
-  `/home/dalibor/programming/personal/dribble-parser`.
+- `S` means `<scratchpad>`.
+  `H` means `$S/harness`. `REPO` means `<projects>/dribble.tf`. `PARSER` means
+  `<projects>/dribble-parser`.
 
 ---
 
@@ -57,7 +57,7 @@ How to use it:
   as uncommitted changes in `REPO`, so a worktree made from `highlander` would not contain them. Commit them first:
 
   ```sh
-  cd /home/dalibor/programming/personal/dribble.tf
+  cd <projects>/dribble.tf
   git add src/utils/debugBridge.ts src/main.tsx src/constants/items.json scripts/build-items.mjs \
           scripts/convert-bsp.mjs scripts/lib/map-meta.mjs scripts/setup-bsp-to-glb.mjs \
           scripts/bsp-to-glb/0001-feat-support-asset-less-export-of-shipped-TF2-maps.patch \
@@ -77,14 +77,14 @@ How to use it:
   base parser binary (D2) causes it, and no Highlander task can fix it. When the machine never has the headroom,
   record that the step was skipped.
 - Each task works in its own worktree and branch:
-  - frontend: `git -C REPO worktree add /home/dalibor/programming/personal/dribble.tf-wt/<task> -b hl/<task> highlander`
-  - parser: `git -C PARSER worktree add /home/dalibor/programming/personal/dribble-parser-wt/p1 -b hl/p1-extras highlander`
+  - frontend: `git -C REPO worktree add <projects>/dribble.tf-wt/<task> -b hl/<task> highlander`
+  - parser: `git -C PARSER worktree add <projects>/dribble-parser-wt/p1 -b hl/p1-extras highlander`
 - Worktrees live on disk (`/home/...`), never in `/tmp` (tmpfs, about 2 GB free).
 - Before running `tsc` in a frontend worktree, link the shared modules once:
-  `ln -s REPO/node_modules /home/dalibor/programming/personal/dribble.tf-wt/<task>/node_modules`. The harness
+  `ln -s REPO/node_modules <projects>/dribble.tf-wt/<task>/node_modules`. The harness
   creates the same link itself.
 - Commit with `git -c commit.gpgsign=false commit`. End the message with the attribution line
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push. The orchestrator merges `hl/<task>` into
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. The orchestrator merges `hl/<task>` into
   `highlander` and tells the user that commits are unsigned.
 - Heavy commands (cargo, wasm-pack, `npm run build`, `tsc`, Node parses of demos, Chromium) run under
   `flock $S/heavy.lock <command>` with `CARGO_BUILD_JOBS=4`. `node $H/shot.mjs` takes the lock itself, so do not wrap
@@ -917,10 +917,10 @@ decreased equally often. `scoring` comes from that element only.
 ### 2.7 Build, copy and verify
 
 ```sh
-cd /home/dalibor/programming/personal/dribble-parser-wt/p1
+cd <projects>/dribble-parser-wt/p1
 flock $S/heavy.lock env CARGO_BUILD_JOBS=4 cargo build --release --bin hl_extras
-target/release/hl_extras /home/dalibor/demo_tool/demos/1434434.dem --json $S/p1/1434434.json
-flock $S/heavy.lock env CARGO_BUILD_JOBS=4 ~/.local/bin/wasm-pack build --target web --release \
+target/release/hl_extras $DRIBBLE_DEMOS/1434434.dem --json $S/p1/1434434.json
+flock $S/heavy.lock env CARGO_BUILD_JOBS=4 wasm-pack build --target web --release \
   --out-dir $S/hlextras-pkg --out-name hlextras
 mkdir -p <frontend worktree>/src/libs/hlextras
 cp $S/hlextras-pkg/hlextras.js $S/hlextras-pkg/hlextras.d.ts $S/hlextras-pkg/hlextras_bg.wasm \
@@ -994,7 +994,7 @@ below `2.6 x file size + 100 MB` (section 2.8).
 
 Survey for rare kinds. None of 1434434, 1438891 or 1440442 has a syringe gun, a `ClientProjectile_*` effect,
 jarate (cond 24), Mad Milk (27), a Quick-Fix uber (28) or a Vaccinator uber (58 to 60). P1 runs
-`hl_extras --counts-only` over every demo in `/home/dalibor/demo_tool/demos` (one at a time under the lock, about
+`hl_extras --counts-only` over every demo in `$DRIBBLE_DEMOS` (one at a time under the lock, about
 10 minutes) and writes `$S/p1/survey.json`: per demo, the rising edges of conds 15, 24, 27, 28, 58, 59, 60 and 123,
 `clientProjectiles` kinds 17 and 21, `projectiles` kinds 5, 9 and 11 to 20, `dots` with `laser` 1, and the
 `banner`, `teleported`, `sapped` and `deflect` event counts. F1, F3 and F5 pick their demos for those kinds from the
@@ -1490,7 +1490,7 @@ owns `scripts/convert-bsp.mjs` after M1 merges.
 - `package.json` gains two scripts and no dependencies (the lockfile stays frozen; `@gltf-transform/*`,
   `meshoptimizer` and `sharp` come in through `@gltf-transform/cli`):
   `"setup:bsp": "node scripts/setup-bsp-to-glb.mjs"`, `"convert:bsp": "node scripts/convert-bsp.mjs"`.
-- bsp-to-glb lives in `/home/dalibor/programming/personal/bsp-to-glb` (the setup script default `../bsp-to-glb`
+- bsp-to-glb lives in `<projects>/bsp-to-glb` (the setup script default `../bsp-to-glb`
   seen from the main checkout; worktrees set `BSP_TO_GLB_DIR`), pinned at `7b7f7fc` plus the two patches.
 
 ### 4.2 Converter changes (M1)
@@ -1506,11 +1506,11 @@ owns `scripts/convert-bsp.mjs` after M1 merges.
 ### 4.3 Outputs
 
 ```sh
-cd /home/dalibor/programming/personal/dribble.tf-wt/m1
+cd <projects>/dribble.tf-wt/m1
 # both scripts resolve ../bsp-to-glb relative to the checkout, which in a worktree is the wrong place: pin it
-export BSP_TO_GLB_DIR=/home/dalibor/programming/personal/bsp-to-glb
+export BSP_TO_GLB_DIR=<projects>/bsp-to-glb
 flock $S/heavy.lock node scripts/setup-bsp-to-glb.mjs --dir "$BSP_TO_GLB_DIR"
-TF="/home/dalibor/.local/share/Steam/steamapps/common/Team Fortress 2/tf/maps"
+TF="$HOME/.local/share/Steam/steamapps/common/Team Fortress 2/tf/maps"
 for m in cp_steel_f12 koth_ashville_final1 koth_proot_b5b koth_warmtic_f10 pl_divulgence_b4b pl_downfall_b13 \
          pl_eruption_b15 pl_upward_f12 pl_vigil_rc10 tow_tetsudo_b10c; do
   flock $S/heavy.lock node scripts/convert-bsp.mjs --bsp "$TF/$m.bsp"
@@ -2809,8 +2809,8 @@ Pass 1 asks the page for ticks. The harness awaits promises returned by `eval`, 
 ```
 
 ```sh
-node $H/shot.mjs --root /home/dalibor/programming/personal/dribble.tf-wt/<task> \
-  --demo /home/dalibor/demo_tool/demos/1438891.dem --plan $S/plans/<task>-find.json --out $S/shots/<task>-find
+node $H/shot.mjs --root <projects>/dribble.tf-wt/<task> \
+  --demo $DRIBBLE_DEMOS/1438891.dem --plan $S/plans/<task>-find.json --out $S/shots/<task>-find
 ```
 
 Read `manifest.json` (`steps[].eval`). Pass 2 uses concrete ticks. Playback tick = cache tick + 2. For a close camera
@@ -3128,8 +3128,8 @@ facts, measurements) are in `$S/handoff/wave1.md`; read the parts your task touc
 - `players.medigun.charge` is stored as charge x 1000.
 - Harness and disk: `/tmp` is a tmpfs with a per-user quota of about 5 GB shared by every agent, and it filled
   during wave 1 (EDQUOT). Put harness outputs, `TMPDIR` and large scratch files under
-  `/home/dalibor/programming/personal/dribble.tf-wt/<task>-out/` (never directly in
-  `/home/dalibor/programming/personal/`), and symlink them from `$S/shots/<task>-*` when useful. In zsh, write
+  `<projects>/dribble.tf-wt/<task>-out/` (never directly in
+  `<projects>/`), and symlink them from `$S/shots/<task>-*` when useful. In zsh, write
   `--query a=b` literally (a variable holding it reaches shot.mjs as one argument). `reqfail net::ERR_ABORTED` lines
   on player GLBs are noise. In plans, a camera set by one step survives later steps and the perf pass. Run
   `flock $S/heavy.lock <command>` directly (a flock around `bash -c` trips a safety check).
@@ -3269,7 +3269,7 @@ in `$S/handoff/wave2-results.json` (per task: `impl`, `reviews`, `final`); read 
 - `findTicks('busiest')[0]` returns the earliest of the top windows, not the busiest one.
 - Known out-of-scope cost: `src/pages/ViewerPage.tsx`'s `loadingDownloads` selector builds a new array on every store
   update, so ViewerPage (with DemoDrawing's forced layouts) re-renders every tick, about 2.4 % of main-thread time.
-- Harness: an init script can be injected with B2's copy `/home/dalibor/programming/personal/dribble.tf-wt/b2-out/fix/shot-init.mjs`
+- Harness: an init script can be injected with B2's copy `<projects>/dribble.tf-wt/b2-out/fix/shot-init.mjs`
   (env `B2_INIT_SCRIPT`). `reqfail ... textured_compressed.glb net::ERR_ABORTED` on the stubbed boot map is noise, like
   the player-GLB lines. Page memory "final" varies by about 120 MB between runs of the same code: compare peaks. To
   reach the default RTS camera in a plan, come from a POV step (`reset: true` does not restore it while the controls

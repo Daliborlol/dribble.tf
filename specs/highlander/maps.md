@@ -413,7 +413,7 @@ Repo (uncommitted):
   `0002-feat-add-vtf-to-png-helper-binary.patch`
 - `specs/highlander/maps.md`: this file
 
-Scratchpad (`/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad/`):
+Scratchpad (`<scratchpad>/`):
 - `converted/<map>/{world.glb, lightmap.webp, visibility.json, map-meta.json, conversion.json}` and `converted/<map>.log`
   for all 11 maps; `skybox-out/<sky>/` for the 4 PAK skies; `converted-nomeshopt/pl_vigil_rc10` (quantize only)
 - `bsp-to-glb/` (branch `dribble-assetless`, built); `setup-test-bsp/` (clean clone made by the setup script)

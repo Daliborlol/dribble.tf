@@ -42,7 +42,11 @@ import { scanDemoFrames, WARMUP_PACKETS } from './lib/demo-frames.mjs'
 
 const { flags } = parseArgs(process.argv.slice(2), ['confirm', 'resume', 'parser2'])
 const bin = flags['hl-extras']
-const dir = flags.demos ?? '/home/dalibor/demo_tool/demos'
+const dir = flags.demos ?? process.env.DRIBBLE_DEMOS
+if (!dir) {
+  console.error('pass the demo folder with --demos <dir> or env DRIBBLE_DEMOS')
+  process.exit(2)
+}
 if (!bin && !flags['derive-from'] && !flags.parser2) {
   console.error(
     'usage: node scripts/hl/parser2-survey.mjs [--parser2] [--hl-extras <bin>] [--derive-from <survey.json>] [--demos dir] [--only a,b] [--lock file] [--batch n] [--confirm] [--out file] [--resume] [--tmp dir] [--late-seconds s]'

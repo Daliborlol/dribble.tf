@@ -3,7 +3,7 @@
 //   node scripts/hl/harness/plans/smoke-gen.mjs <outDir> [plan ...]
 //
 // Writes <outDir>/smoke-<plan>.json for each plan (all of them by default). Plans and the demos they are for:
-//   1438891  /home/dalibor/demo_tool/demos/1438891.dem  koth_product_final (also runs with --perf-play 50%:10:rts)
+//   1438891  $DRIBBLE_DEMOS/1438891.dem  koth_product_final (also runs with --perf-play 50%:10:rts)
 //   1434434  1434434.dem  pl_vigil_rc10 (short, the fastest check)
 //   1440442  1440442.dem  cp_steel_f12
 //   1429417  1429417.dem  tow_tetsudo_b10c, base-parser fallback, no timeline (memory gate 3000 MB)

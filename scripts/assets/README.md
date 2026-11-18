@@ -13,10 +13,10 @@ The binding rules are in `specs/assets/contract.md` (sections 2 and 9 "A0-pack")
 ## Build
 
 ```sh
-flock <lock> npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /home/dalibor/tf2-assets/hl2 --out /home/dalibor/tf2-pack
+flock <lock> npm run assets:build -- --tf2 <tf2-assets>/tf --hl2 <tf2-assets>/hl2 --out ~/tf2-pack
 ```
 
-`--tf2` may also be the folder that holds `tf/` and `hl2/` (`--tf2 /home/dalibor/tf2-assets`). The builder opens
+`--tf2` may also be the folder that holds `tf/` and `hl2/` (`--tf2 <tf2-assets>`). The builder opens
 `tf2_textures_dir.vpk`, `tf2_misc_dir.vpk`, `hl2_textures_dir.vpk` and `hl2_misc_dir.vpk`, in that mount order
 (an earlier file wins).
 

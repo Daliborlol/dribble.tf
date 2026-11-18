@@ -10,14 +10,14 @@ the critique) and `$S/asset-research.json`. Numbers marked (est.) are estimates;
 
 Abbreviations:
 
-- `S` = `/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad`
+- `S` = `<scratchpad>`
 - `LOCK` = `$S/heavy.lock`
-- `REPO` = `/home/dalibor/programming/personal/dribble.tf` (main checkout, branch `highlander`, never touched)
-- `WT` = `/home/dalibor/programming/personal/dribble.tf-wt`
-- `BSP2GLB` = `/home/dalibor/programming/personal/bsp-to-glb` (main checkout on branch `dribble`, never touched)
-- `VPK` = `/home/dalibor/tf2-assets/tf` and `/home/dalibor/tf2-assets/hl2` (`tf2_textures_*`, `tf2_misc_*`,
+- `REPO` = `<projects>/dribble.tf` (main checkout, branch `highlander`, never touched)
+- `WT` = `<projects>/dribble.tf-wt`
+- `BSP2GLB` = `<projects>/bsp-to-glb` (main checkout on branch `dribble`, never touched)
+- `VPK` = `<tf2-assets>/tf` and `<tf2-assets>/hl2` (`tf2_textures_*`, `tf2_misc_*`,
   `hl2_textures_*`, `hl2_misc_*`)
-- `PACK` = `/home/dalibor/tf2-pack` (experiments: `/home/dalibor/tf2-pack-<task>`)
+- `PACK` = `~/tf2-pack` (experiments: `~/tf2-pack-<task>`)
 - `BSPS` = `~/.local/share/Steam/steamapps/common/Team Fortress 2/tf/maps/`
 
 How to use it: every task in section 9 lists the files it owns and edits nothing else. If it needs another file, it
@@ -80,7 +80,7 @@ from a local install" is guidance, not a licence. A local pack built from the us
 
 - Default output `PACK`. The builder refuses an `--out` inside any git work tree (it runs `git rev-parse` there) and
   any path under `/tmp`.
-- Command: `npm run assets:build -- --tf2 /home/dalibor/tf2-assets/tf --hl2 /home/dalibor/tf2-assets/hl2 --out <dir>
+- Command: `npm run assets:build -- --tf2 <tf2-assets>/tf --hl2 <tf2-assets>/hl2 --out <dir>
   [--stages maps,models,viewmodels] [--maps <folder,...|all>] [--bsp-dir <BSPS>] [--tmp <dir on disk>] [--force]`.
   `package.json` gains exactly one line, `"assets:build": "node scripts/assets/build-pack.mjs"`.
 - Heavy builds run under `flock LOCK`. `--tmp` defaults to `<out>/.tmp`, never `/tmp`.

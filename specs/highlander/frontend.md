@@ -6,7 +6,7 @@ and how to check them headlessly. Game mechanics and networked props are in
 branch `highlander` at `009cdb0` plus the debug bridge (`src/utils/debugBridge.ts`, registered
 at `src/main.tsx:7`).
 
-`S` below = `/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad`,
+`S` below = `<scratchpad>`,
 `H` = `$S/harness`.
 
 ---
@@ -44,23 +44,23 @@ is the debug bridge (§1.6).
 ### 1.1 Command lines
 
 ```sh
-H=/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad/harness
+H=<scratchpad>/harness
 
 # a few ticks in RTS + POV of chosen players (main repo, default output dir $S/shots/<demo>-<time>)
-node $H/shot.mjs --demo /home/dalibor/demo_tool/demos/1438891.dem \
+node $H/shot.mjs --demo $DRIBBLE_DEMOS/1438891.dem \
   --ticks 25%,60% --modes rts,pov --pov sniper@red,medic@blue
 
 # a worktree, explicit output dir
-node $H/shot.mjs --root /path/to/worktree --demo /home/dalibor/demo_tool/demos/1434434.dem \
+node $H/shot.mjs --root /path/to/worktree --demo $DRIBBLE_DEMOS/1434434.dem \
   --ticks 3000,9000 --out $S/shots/my-feature
 
 # the baseline (15 shots + perf + CPU profile), ~1 min
-node $H/shot.mjs --demo /home/dalibor/demo_tool/demos/1438891.dem \
+node $H/shot.mjs --demo $DRIBBLE_DEMOS/1438891.dem \
   --plan $H/plans/1438891-baseline.json --out $S/baseline \
   --perf --perf-play 21000:12:rts --cpu-profile --no-minify
 
 # helper: 9v9 volume stats of a demo (killfeed density, projectile peaks, uber pops), Node only
-flock $S/heavy.lock node $H/tools/demo-stats.mjs /home/dalibor/demo_tool/demos/1438891.dem
+flock $S/heavy.lock node $H/tools/demo-stats.mjs $DRIBBLE_DEMOS/1438891.dem
 ```
 
 Other tools in `$H/tools/` run the committed parser2 in Node (or launch Chromium), so run them

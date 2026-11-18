@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // End-to-end test of build-pack.mjs. Every pack goes under --base (outside every git work tree and
-// /tmp, e.g. /home/dalibor/tf2-pack-a0-test), which is deleted first and, without --keep, at the end.
+// /tmp, e.g. ~/tf2-pack-a0-test), which is deleted first and, without --keep, at the end.
 //
 //   node scripts/assets/tools/test-build.mjs --tf2 <dir> [--hl2 <dir>] --base <dir> [--keep] [--out f.json]
 //

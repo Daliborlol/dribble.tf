@@ -8,7 +8,7 @@ props that carry it, and how to decode it with `tf-demo-parser` (fork `../dribbl
 - Run: `target/release/hl_probe <demo.dem> <report.txt>` (full report, about 2.4 MB of text per demo) or
   `target/release/hl_probe --bench <demo.dem>` (parse timing and memory).
 - Reports this document was written from (regenerate in about 2 s each):
-  `/tmp/claude-1000/-home-dalibor-programming-personal-dribble-tf/bbe6eb71-192d-40ae-b6da-70834234db27/scratchpad/probe/out/{1434434,1438891,1440442}.txt`
+  `<scratchpad>/probe/out/{1434434,1438891,1440442}.txt`
 
 The probe keeps its own full entity state (instance or static baseline plus every delta), so it sees every send prop,
 not only the ~60 the `GameStateAnalyser` decodes. It also delta-merges temp entities the way the engine does (see
